@@ -1468,7 +1468,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v20';
+var APP_BUILD = 'v21';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4535,7 +4535,7 @@ var ASSIST_GREETED = false;
 function openAssistant() {
   document.getElementById('assistOverlay').classList.add('open');
   if (!ASSIST_GREETED) {
-    assistAddMsg("Hi! I'm your FruitVeg Assistant. 👋\n\nI can answer questions from your real buying data — prices, spend, margins and history. Try a question below, or ask your own.", 'bot');
+    assistAddMsg("Hi! I'm your FruitVeg Assistant. 👋\n\nI can answer questions from your real buying data — prices, spend, margins and history.\n\n🍽️ Got an order? Just tell me, e.g. **\"Restaurant order: 2 boxes banana, 5kg potato, 3 lettuce\"** and I'll load it straight into Import Order from SMS for you to review and save.\n\nTry a question below, or ask your own.", 'bot');
     ASSIST_GREETED = true;
   }
   renderAssistChips();
@@ -4567,6 +4567,44 @@ function assistAddMsg(text, who) {
 
 var _lastWasVoice = false;
 
+/* ─── ORDER ROUTING: "Restaurant order: 2 box banana, 5kg potato" ─────────
+   If the message looks like an order for the shop / restaurant / cafe, drop it
+   straight into the "Import Order from SMS" flow (sets destination, fills the
+   box, parses + fuzzy-matches), then leave it on the Add tab for review/save.
+   Returns the destination it routed to, or null if the message isn't an order. */
+function assistMaybeOrder(q) {
+  var l = q.toLowerCase();
+  var hasDest  = /(restaurant|shop|caf)/.test(l);
+  var hasOrder = /\border\b/.test(l);
+  var hasItems = /\d/.test(q) || /\n/.test(q);            // a real order has quantities or multiple lines
+  if (!(hasDest && hasOrder && hasItems)) return null;
+
+  var dest = /restaurant/.test(l) ? 'restaurant'
+           : (/caf/.test(l)       ? 'cafe'
+           : 'shop');
+
+  // Pull out just the item list. Prefer everything after the first colon;
+  // otherwise strip the lead-in phrase up to "order [for the] <destination>".
+  var body;
+  var ci = q.indexOf(':');
+  if (ci >= 0) {
+    body = q.slice(ci + 1);
+  } else {
+    body = q.replace(/^[\s\S]*?\border\b\s*(for\s+)?(the\s+|a\s+|an\s+)?(restaurant|shop|caf\w*)?\s*[-–:]?\s*/i, '');
+  }
+  // One item per line so parseSMSInput() reads them individually.
+  body = body.replace(/[,;]+/g, '\n').replace(/\n\s*\n/g, '\n').trim();
+  if (!body) return null;
+
+  // Route it into the Import Order from SMS flow.
+  showView('Add');                                         // builds the Add tab (where the import lives)
+  if (typeof setDest === 'function') setDest(dest);        // set Shop / Restaurant / Cafe
+  var sms = document.getElementById('smsInput');
+  if (sms) sms.value = body;
+  if (typeof parseSMSInput === 'function') parseSMSInput();// parse + fuzzy-match + show the Confirm card
+  return dest;
+}
+
 function assistSend() {
   var inp = document.getElementById('assistInput');
   var q = inp.value.trim();
@@ -4574,6 +4612,20 @@ function assistSend() {
   var viaVoice = _lastWasVoice; _lastWasVoice = false;
   assistAddMsg(q, 'user');
   inp.value = '';
+
+  // Order intent → push it into Import Order from SMS instead of answering as a question.
+  var routed = assistMaybeOrder(q);
+  if (routed) {
+    var label = routed.charAt(0).toUpperCase() + routed.slice(1);
+    var n = (typeof parsedItems !== 'undefined' && parsedItems) ? parsedItems.length : 0;
+    var msg = "✅ Loaded " + n + " item" + (n === 1 ? '' : 's') + " into Import Order from SMS as a "
+            + label + " order. I've opened it on the ➕ Add tab — check the matched items and tap “✓ Save Order”.";
+    assistAddMsg(msg, 'bot');
+    if (viaVoice) assistSpeak(msg);
+    setTimeout(closeAssistant, 900);                       // let them read the confirmation, then reveal the parsed list
+    return;
+  }
+
   setTimeout(function(){
     var ans = assistAnswer(q);
     assistAddMsg(ans, 'bot');
