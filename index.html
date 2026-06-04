@@ -33,13 +33,12 @@
        veggies + coffee cup drop below it and never get cropped at the top. */
     body.is-standalone .header { padding-top: max(env(safe-area-inset-top), 22px); }
     .header-row1 {
-      display: flex; align-items: center; justify-content: center;
-      padding: 12px 8px 4px; gap: 6px; background: #ffffff;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 8px 4px; gap: 8px; background: #ffffff;
     }
-    .header-veg { height: 68px; width: auto; flex-shrink: 0; }
-    .header-cup { height: 84px; width: auto; flex-shrink: 0; }
+    .header-veg { height: 60px; width: auto; flex-shrink: 0; }
     .header-wordmark {
-      flex: 1 1 auto; min-width: 0; height: 70px; object-fit: contain;
+      flex: 1 1 auto; min-width: 0; height: 100px; object-fit: contain; object-position: right center;
     }
     .grand-total-hdr {
       font-size: 14px; font-weight: 800; color: #ffffff;
@@ -598,11 +597,13 @@
     }
     .pl-cat-btn.active { background: #0d1b2a; color: #f4d03f; border-color: #0d1b2a; }
 
-    .pl-table-wrap { background: white; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+    .pl-table-wrap { background: white; border-radius: 10px; margin-bottom: 12px; }
     .pl-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .pl-table th {
+      position: sticky; top: 0; z-index: 6;
       background: #1c4587; color: white; padding: 8px 10px;
       text-align: left; font-size: 11px; font-weight: 700; white-space: nowrap;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
     .pl-table th.right, .pl-table td.right { text-align: right; }
     .pl-table td { padding: 7px 10px; border-bottom: 1px solid #f3f3f3; vertical-align: middle; }
@@ -907,7 +908,6 @@
   <div class="header-row1">
     <img class="header-veg" id="headerVeg" alt="">
     <img class="header-wordmark" id="headerWordmark" alt="Happy Days Fruit Veg & Grocery Cafe">
-    <img class="header-cup" id="headerCup" alt="">
   </div>
   <div class="header-row2">
     <div class="stat"><div class="dot dot-green"></div><span id="statBought">0 bought</span></div>
@@ -1468,7 +1468,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v19';
+var APP_BUILD = 'v20';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4281,7 +4281,9 @@ function buildPLView() {
   });
 
   if (!dates.length) {
-    pv.innerHTML += '<div class="pl-empty">No sales data imported yet.<br><br>Tap <strong>Import EPOS CSV</strong> and select your DailySales CSV file.</div>';
+    var em = document.createElement('div'); em.className = 'pl-empty';
+    em.innerHTML = 'No sales data imported yet.<br><br>Tap <strong>Import EPOS CSV</strong> and select your DailySales CSV file.';
+    pv.appendChild(em);
     return;
   }
 
@@ -4289,7 +4291,7 @@ function buildPLView() {
   var cats = document.createElement('div');
   cats.className = 'pl-cats';
   cats.id = 'plCats';
-  [['all','All'],['produce','🥦 Produce'],['cafe','☕ Café'],['other','📦 Other']].forEach(function(c) {
+  [['all','All'],['produce','🥦 Produce'],['cafe','☕ Café'],['other','🛒 Grocery']].forEach(function(c) {
     var btn = document.createElement('button');
     btn.className = 'pl-cat-btn' + (plFilter === c[0] ? ' active' : '');
     btn.textContent = c[1];
@@ -4297,17 +4299,22 @@ function buildPLView() {
       plFilter = c[0];
       document.querySelectorAll('.pl-cat-btn').forEach(function(b){b.classList.remove('active');});
       btn.classList.add('active');
-      renderPLDay(document.getElementById('plDateSel').value);
+      renderPLDay(_plCurrentDate);
     });
     cats.appendChild(btn);
   });
   pv.appendChild(cats);
 
-  // Search box
-  pv.innerHTML += '<input id="plSearch" class="pl-search" type="text" placeholder="🔍 Search products…" value="' + (plSearchTerm || '') + '" oninput="plSearchTerm=this.value.toLowerCase(); renderPLDay(_plCurrentDate);">';
+  // Search box (DOM-built so it doesn't wipe the category/import listeners)
+  var srch = document.createElement('input');
+  srch.id = 'plSearch'; srch.className = 'pl-search'; srch.type = 'text';
+  srch.placeholder = '🔍 Search products…'; srch.value = plSearchTerm || '';
+  srch.addEventListener('input', function(){ plSearchTerm = this.value.toLowerCase(); renderPLDay(_plCurrentDate); });
+  pv.appendChild(srch);
 
   // Summary + table containers
-  pv.innerHTML += '<div id="plSummary" class="pl-summary"></div><div id="plTable"></div>';
+  var sumD = document.createElement('div'); sumD.id = 'plSummary'; sumD.className = 'pl-summary'; pv.appendChild(sumD);
+  var tblD = document.createElement('div'); tblD.id = 'plTable'; pv.appendChild(tblD);
 
   renderPLDay(dates[0]);
 }
