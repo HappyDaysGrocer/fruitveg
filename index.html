@@ -4330,9 +4330,10 @@ function renderPLDay(date) {
     html += '</ul></div>';
   }
   if (plFilter === 'all' && day.corrections && day.corrections.length) {
+    var cnames = day.corrections.map(function(c){ return c.name; });
+    var cshown = cnames.slice(0,3).join(', ') + (cnames.length > 3 ? ' +' + (cnames.length - 3) + ' more' : '');
     html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;">' +
-      '✓ <strong>' + day.corrections.length + ' cost auto-corrected</strong> from your invoices: ' +
-      day.corrections.map(function(c){ return c.name + ' → cost $' + Number(c.newCost).toFixed(2) + ' (EPOS had $' + Number(c.oldCost).toFixed(0) + ')'; }).join('; ') +
+      '✓ <strong>' + day.corrections.length + ' costs auto-corrected</strong> from your invoices (' + cshown + ')' +
       '</div>';
   }
   html += '<div class="pl-table-wrap"><table class="pl-table">' +
