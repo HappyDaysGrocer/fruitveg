@@ -1484,7 +1484,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v23';
+var APP_BUILD = 'v24';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4713,28 +4713,66 @@ var _lastWasVoice = false;
    box, parses + fuzzy-matches), then leave it on the Add tab for review/save.
    Returns the destination it routed to, or null if the message isn't an order. */
 function assistMaybeOrder(q) {
-  var l = q.toLowerCase();
-  var hasDest  = /(restaurant|shop|caf)/.test(l);
-  var hasOrder = /\border\b/.test(l);
-  var hasItems = /\d/.test(q) || /\n/.test(q);            // a real order has quantities or multiple lines
-  if (!(hasDest && hasOrder && hasItems)) return null;
+  var l = q.toLowerCase().trim();
+  if (!l) return null;
 
-  var dest = /restaurant/.test(l) ? 'restaurant'
-           : (/caf/.test(l)       ? 'cafe'
-           : 'shop');
+  // A question is never an order — let those fall through to the Q&A answerer.
+  if (/\?\s*$/.test(l)) return null;
+  if (/^(how|what|whats|which|when|where|why|who|whose|is|are|am|do|does|did|can|could|should|would|will|show|list|cheapest|best|most|least)\b/.test(l)) return null;
+
+  // Destination (defaults to Shop when an order is clear but no place is named).
+  var dest = (/\brestaurant\b|\bresto\b|\bdiner\b/.test(l)) ? 'restaurant'
+           : (/\bcaf[eé]?\b|coffee shop|\bkitchen\b/.test(l)) ? 'cafe'
+           : (/\bshop\b|\bstore\b|shopfront|\bfront\b/.test(l)) ? 'shop'
+           : null;
+
+  // Does it actually look like an order (vs a chat/question)?
+  var hasQty       = /\b\d+(\.\d+)?\s*(kg|kgs|g|gram|grams|lb|lbs|pc|pcs|piece|pieces|each|ea|box|boxes|ctn|carton|bag|bags|bunch|bunches|tray|trays|punnet|punnets|pack|packs|sleeve|deck|dozen|case|cases|crate|crates)?\b/.test(l);
+  var hasX         = /\b\d+\s*[x×]\b|\b[x×]\s*\d+\b/.test(l);
+  var hasColon     = /:\s*\S/.test(l);
+  var hasList      = /,/.test(l) || /\n/.test(l);
+  var hasOrderWord = /\border(s|ed|ing)?\b/.test(l);
+  var itemsSignal  = hasQty || hasX || hasColon || hasList;
+
+  // Route only with a destination OR the word "order", plus item-ish content + a number.
+  if (!((dest || hasOrderWord) && itemsSignal && /\d/.test(l))) return null;
+  if (!dest) dest = 'shop';
 
   // Pull out just the item list. Prefer everything after the first colon;
-  // otherwise strip the lead-in phrase up to "order [for the] <destination>".
+  // otherwise strip the chatty lead-in ("we have an order for the restaurant …").
   var body;
   var ci = q.indexOf(':');
   if (ci >= 0) {
     body = q.slice(ci + 1);
   } else {
-    body = q.replace(/^[\s\S]*?\border\b\s*(for\s+)?(the\s+|a\s+|an\s+)?(restaurant|shop|caf\w*)?\s*[-–:]?\s*/i, '');
+    body = q
+      .replace(/^\s*(hi|hey|ok|okay|please|pls|yo)\b[\s,]*/i, '')
+      .replace(/\b(we|i)\s+(have got|have a|got a|have|got|need|needs)\b/gi, ' ')
+      .replace(/\bthere'?s\b|\bhere\s+is\b|\bplace\b|\bput\b|\badd\b/gi, ' ')
+      .replace(/\ban?\s+order\b/gi, ' ')
+      .replace(/\bfor\s+(the\s+|a\s+|an\s+|my\s+|our\s+)?(restaurant|resto|diner|cafe|café|coffee shop|kitchen|shop|store)\b/gi, ' ')
+      .replace(/\b(restaurant|resto|diner|cafe|café|coffee shop|kitchen|shop|store)\s+(wants?|needs?|orders?|requires?)\b/gi, ' ')
+      .replace(/\border(s|ed|ing)?\b/gi, ' ')
+      .replace(/\b(restaurant|resto|diner|cafe|café|coffee shop|kitchen|shop|store)\b/gi, ' ')
+      .replace(/^[\s,:;.\-–]+/, '');
   }
-  // One item per line so parseSMSInput() reads them individually.
-  body = body.replace(/[,;]+/g, '\n').replace(/\n\s*\n/g, '\n').trim();
-  if (!body) return null;
+  // One item per line so parseSMSInput() reads them individually. Split commas,
+  // semicolons, new lines, and "and/plus" only when a quantity follows.
+  body = body
+    .replace(/\s+\b(?:and|plus)\b\s+(?=\d)/gi, '\n')
+    .replace(/[;,]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  var lines = body.split('\n').map(function(s){
+    return s.replace(/^\s*(the|a|an|my|our|some)\s+/i, '')        // drop leading article
+            .replace(/^(\d+(?:\.\d+)?\s*[a-z]*)\s+of\s+/i, '$1 ') // "5kg of potato" → "5kg potato"
+            .replace(/[ \t]{2,}/g, ' ')
+            .trim();
+  }).filter(Boolean);
+  if (!lines.length) return null;
+  body = lines.join('\n');
 
   // Route it into the Import Order from SMS flow.
   showView('Add');                                         // builds the Add tab (where the import lives)
