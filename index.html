@@ -885,6 +885,16 @@
       cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
     .mode-toggle-btn:active { background: #15662f; color: #fff; }
+    /* Cost-correction tick-off checklist (P&L) */
+    .corr-box { background:#f0fdf4; border:1px solid #86efac; border-radius:10px; margin-bottom:12px; overflow:hidden; }
+    .corr-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:11px 14px; cursor:pointer; color:#166534; font-size:13px; }
+    .corr-body { padding:2px 14px 10px; }
+    .corr-hint { font-size:11px; color:#6b7280; padding:6px 0 4px; }
+    .corr-row { display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-top:1px solid #d1fae5; }
+    .corr-row input { width:22px; height:22px; flex-shrink:0; margin-top:1px; accent-color:#16a34a; }
+    .corr-info { flex:1; min-width:0; display:flex; flex-direction:column; }
+    .corr-name { font-size:13px; font-weight:600; color:#14532d; }
+    .corr-prices { font-size:11px; color:#6b7280; margin-top:1px; }
   </style>
 </head>
 <body>
@@ -1455,7 +1465,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v17';
+var APP_BUILD = 'v18';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4092,6 +4102,22 @@ function loadEPOS90Preload() {
   saveEPOS(epos);
 }
 
+// ── Cost-correction tick-off (remembers which you've fixed in EPOS) ──
+function corrKey(n){ return n.replace(/[^a-z0-9]/gi,'').toLowerCase(); }
+function loadFixedCosts(){ try{ var s=localStorage.getItem('fvFixedCosts'); return s?JSON.parse(s):{}; }catch(e){ return {}; } }
+function saveFixedCosts(o){ try{ localStorage.setItem('fvFixedCosts', JSON.stringify(o)); }catch(e){} }
+function toggleFixedCost(k, cb){
+  var o=loadFixedCosts(); if(cb.checked){ o[k]=true; } else { delete o[k]; } saveFixedCosts(o);
+  var row=document.getElementById('cr-'+k); if(row) row.style.opacity = cb.checked ? '0.5' : '1';
+  var boxes=document.querySelectorAll('#corrBody input[type=checkbox]'); var done=0;
+  boxes.forEach(function(b){ if(b.checked) done++; });
+  var el=document.getElementById('corrDone'); if(el) el.textContent=done;
+}
+function toggleCorrBox(){
+  var b=document.getElementById('corrBody'), a=document.getElementById('corrArrow');
+  if(!b) return; var open=b.style.display!=='none'; b.style.display=open?'none':'block'; if(a) a.textContent=open?'▼':'▲';
+}
+
 var plFilter = 'all'; // 'all' | 'produce' | 'cafe' | 'other'
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
@@ -4330,11 +4356,24 @@ function renderPLDay(date) {
     html += '</ul></div>';
   }
   if (plFilter === 'all' && day.corrections && day.corrections.length) {
-    var cnames = day.corrections.map(function(c){ return c.name; });
-    var cshown = cnames.slice(0,3).join(', ') + (cnames.length > 3 ? ' +' + (cnames.length - 3) + ' more' : '');
-    html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;">' +
-      '✓ <strong>' + day.corrections.length + ' costs auto-corrected</strong> from your invoices (' + cshown + ')' +
-      '</div>';
+    var fx = loadFixedCosts();
+    var done = day.corrections.filter(function(c){ return fx[corrKey(c.name)]; }).length;
+    html += '<div class="corr-box">' +
+      '<div class="corr-head" onclick="toggleCorrBox()">' +
+        '<span>🛠️ <strong>' + day.corrections.length + ' cost corrections</strong> to fix in EPOS — ' +
+        '<span id="corrDone">' + done + '</span>/' + day.corrections.length + ' done</span>' +
+        '<span id="corrArrow">▼</span></div>' +
+      '<div class="corr-body" id="corrBody" style="display:none;">' +
+      '<div class="corr-hint">Update each cost price in EPOS Now, then tick it off:</div>';
+    day.corrections.forEach(function(c){
+      var k = corrKey(c.name); var ck = fx[k] ? ' checked' : '';
+      html += '<label class="corr-row" id="cr-' + k + '"' + (fx[k] ? ' style="opacity:.5"' : '') + '>' +
+        '<input type="checkbox"' + ck + ' onchange="toggleFixedCost(\'' + k + '\',this)">' +
+        '<span class="corr-info"><span class="corr-name">' + c.name + '</span>' +
+        '<span class="corr-prices">was <s>$' + Number(c.unitOld).toFixed(2) + '</s> &rarr; <strong>$' + Number(c.unitC).toFixed(2) + '</strong> /' + c.unit + '</span></span>' +
+        '</label>';
+    });
+    html += '</div></div>';
   }
   html += '<div class="pl-table-wrap"><table class="pl-table">' +
     '<tr><th>Product</th><th class="right">Revenue</th><th class="right">Cost</th>' +
