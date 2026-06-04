@@ -1484,7 +1484,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v24';
+var APP_BUILD = 'v25';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5091,12 +5091,57 @@ document.getElementById('inputPrice').addEventListener('input', calcTotal);
 init();
 </script>
 <script>
-/* Register the service worker so the app installs, works offline, and auto-updates. */
+/* Service worker + reliable auto-update.
+   The SW serves fresh files when online; on top of that we poll the live
+   index.html for a newer APP_BUILD and show a one-tap "update" bar so you never
+   get stuck on an old cached copy again. */
+function fvShowUpdateBar(newv) {
+  if (document.getElementById('fvUpdateBar')) return;
+  var bar = document.createElement('div');
+  bar.id = 'fvUpdateBar';
+  bar.textContent = '🔄 New version ' + newv + ' is ready — tap to update';
+  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#15662f;color:#fff;font:600 15px/1.35 -apple-system,system-ui,sans-serif;padding:15px 16px;text-align:center;box-shadow:0 -3px 14px rgba(0,0,0,.28);cursor:pointer;';
+  bar.addEventListener('click', function () {
+    bar.textContent = 'Updating…';
+    var done = function () { location.replace('index.html?v=' + Date.now()); }; // cache-busted = guaranteed fresh
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (ks) {
+        return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+      }).then(done, done);
+    } else { done(); }
+  });
+  document.body.appendChild(bar);
+}
+
+function fvCheckUpdate() {
+  if (typeof APP_BUILD === 'undefined') return;
+  fetch('index.html?cb=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.text(); })
+    .then(function (t) {
+      var m = t.match(/APP_BUILD\s*=\s*'([^']+)'/);
+      if (m && m[1] && m[1] !== APP_BUILD) fvShowUpdateBar(m[1]);
+    })
+    .catch(function () {});
+}
+
 if ('serviceWorker' in navigator) {
+  var fvReloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (fvReloading) return; fvReloading = true; location.reload();
+  });
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      try { reg.update(); } catch (e) {}
+      setInterval(function () { try { reg.update(); } catch (e) {} }, 60 * 60 * 1000);
+    }).catch(function () {});
   });
 }
+
+// Look for a newer build on open, whenever the app regains focus, and hourly.
+window.addEventListener('load', function () { setTimeout(fvCheckUpdate, 1500); });
+document.addEventListener('visibilitychange', function () { if (!document.hidden) fvCheckUpdate(); });
+window.addEventListener('focus', fvCheckUpdate);
+setInterval(fvCheckUpdate, 60 * 60 * 1000);
 </script>
 </body>
 </html>
