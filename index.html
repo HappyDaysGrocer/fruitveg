@@ -364,10 +364,26 @@
 
     /* ── Orders summary ── */
     .order-summary-card { background: white; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
-    .order-row { display: flex; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; gap: 8px; }
-    .order-row:last-child { border-bottom: none; }
+    .order-row { display: flex; align-items: flex-start; padding: 7px 0; font-size: 13px; gap: 8px; }
     .order-prod { flex: 1; }
     .order-qty-chips { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* one order line = product row + its box-fill bar, grouped with a single divider */
+    .order-item-wrap { border-bottom: 1px solid #f0f0f0; padding-bottom: 4px; }
+    .order-item-wrap:last-child { border-bottom: none; padding-bottom: 0; }
+
+    /* ── Box-fill bar (how full the bought box is with outgoing orders) ── */
+    .box-fill { margin: 2px 0 9px; }
+    .box-fill-bar { position: relative; height: 18px; border-radius: 9px; background: #eef2f7; box-shadow: inset 0 0 0 1px #d8dee9; overflow: hidden; display: flex; cursor: default; }
+    .box-fill-seg { height: 100%; width: 0; transition: width .55s cubic-bezier(.22,.61,.36,1), filter .15s; }
+    .box-fill-seg:hover { filter: brightness(1.12); }
+    .box-fill-spare { height: 100%; width: 0; background: repeating-linear-gradient(45deg,#eef2f7,#eef2f7 5px,#e2e8f0 5px,#e2e8f0 10px); transition: width .55s cubic-bezier(.22,.61,.36,1); }
+    .box-fill-divider { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.85); z-index: 2; }
+    .box-fill-cap { display: flex; flex-wrap: wrap; gap: 5px 10px; align-items: center; margin-top: 5px; font-size: 11px; color: #374151; }
+    .box-fill-main { flex: 1 1 100%; }
+    .box-fill-leg { display: inline-flex; align-items: center; gap: 4px; color: #4b5563; }
+    .box-fill-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .box-fill-over { color: #b91c1c; font-weight: 700; }
 
     /* ── SMS Import ── */
     .dest-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
@@ -1468,7 +1484,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v22';
+var APP_BUILD = 'v23';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2250,7 +2266,14 @@ function buildOrdersView() {
         var o=loadOrders();delete o[k];saveOrders(o);buildOrdersView();refreshAllOrderChips();
       };})(x.key));
       row.appendChild(del);
-      card.appendChild(row);
+
+      // Group the product row with its visual box-fill bar under one divider.
+      var wrap = document.createElement('div');
+      wrap.className = 'order-item-wrap';
+      wrap.appendChild(row);
+      var fill = buildBoxFill(x.e, boxes, packInfo);
+      if (fill) wrap.appendChild(fill);
+      card.appendChild(wrap);
     });
     ov.appendChild(card);
   });
@@ -2270,6 +2293,107 @@ function buildOrdersView() {
     emp.innerHTML='No orders yet.<br><br>Go to ➕ Add → Import Order from SMS';
     ov.appendChild(emp);
   }
+}
+
+/* Visual "how full is the box" bar for one order entry.
+   A mandi box holds packInfo.size units (pieces / kg). The outgoing orders
+   (shop + restaurant + cafe) fill part of the box(es) you'll buy; the rest is
+   spare. Renders a stacked, animated bar + a pieces breakdown. Returns a DOM
+   node, or null if there's nothing meaningful to show (e.g. units don't map). */
+function buildBoxFill(entry, boxes, packInfo) {
+  if (!packInfo || !boxes) return null;
+  var size = packInfo.size;
+  if (!size) return null;
+  var u = (packInfo.unit === 'each') ? 'pc' : packInfo.unit;   // show piece-packed boxes in pieces
+  function plural(n){ return (u === 'pc' && n !== 1) ? 's' : ''; }
+  function tidy(n){ var r = Math.round(n*10)/10; return (r % 1 === 0) ? String(r) : r.toFixed(1); }
+
+  var DEST = [
+    { key:'shop',       cls:'shop',       color:'#1d4ed8', icon:'🏪', label:'Shop' },
+    { key:'restaurant', cls:'restaurant', color:'#6d28d9', icon:'🍽️', label:'Restaurant' },
+    { key:'cafe',       cls:'cafe',       color:'#be185d', icon:'☕', label:'Cafe' }
+  ];
+
+  // Each destination's share, converted into the box's own unit (pieces / kg).
+  var segs = [], ordered = 0, ok = true;
+  DEST.forEach(function(d){
+    var dd = entry[d.key];
+    if (!dd || !dd.qty) return;
+    var frac = convertToPackUnit(dd.qty, dd.unit, packInfo);
+    if (frac === null) { ok = false; return; }   // mixed/unknown unit → can't draw it cleanly
+    var units = frac * size;
+    ordered += units;
+    segs.push({ cls:d.cls, color:d.color, icon:d.icon, label:d.label, units:units });
+  });
+  if (!ok || ordered <= 0) return null;
+
+  var capacity = boxes * size;
+  var denom    = Math.max(capacity, ordered);    // if over-ordered, scale the bar to what's ordered
+  var spare    = capacity - ordered;
+  var pct      = Math.round((ordered / capacity) * 100);
+
+  var wrap = document.createElement('div');
+  wrap.className = 'box-fill';
+
+  // ── the bar ──
+  var bar = document.createElement('div');
+  bar.className = 'box-fill-bar';
+  var pending = [];   // segments to animate from 0 → target width
+  segs.forEach(function(s){
+    var seg = document.createElement('div');
+    seg.className = 'box-fill-seg ' + s.cls;
+    seg.style.background = s.color;
+    seg.title = s.icon + ' ' + s.label + ': ' + tidy(s.units) + u + plural(s.units);
+    bar.appendChild(seg);
+    pending.push({ el:seg, w:(s.units / denom * 100) });
+  });
+  if (spare > 0.01) {
+    var sp = document.createElement('div');
+    sp.className = 'box-fill-spare';
+    sp.title = 'Spare in box: ' + tidy(spare) + u + plural(spare);
+    bar.appendChild(sp);
+    pending.push({ el:sp, w:(spare / denom * 100) });
+  }
+  // box-boundary divider lines
+  var shown = Math.ceil(denom / size - 1e-9);
+  for (var k = 1; k < shown; k++) {
+    var dv = document.createElement('div');
+    dv.className = 'box-fill-divider';
+    dv.style.left = ((k * size / denom) * 100) + '%';
+    bar.appendChild(dv);
+  }
+  wrap.appendChild(bar);
+
+  // ── caption + per-destination legend (in pieces) ──
+  var cap = document.createElement('div');
+  cap.className = 'box-fill-cap';
+  var main = '<span class="box-fill-main"><strong>📦 ' + boxes + ' box' + (boxes !== 1 ? 'es' : '') +
+             '</strong> · ' + tidy(ordered) + ' of ' + tidy(capacity) + ' ' + u + plural(capacity) +
+             ' filled (' + pct + '%)';
+  if (ordered > capacity + 0.01) {
+    main += ' · <span class="box-fill-over">⚠️ over by ' + tidy(ordered - capacity) + u + plural(ordered-capacity) + ' — add a box</span>';
+  }
+  main += '</span>';
+  cap.innerHTML = main;
+  segs.forEach(function(s){
+    var lg = document.createElement('span');
+    lg.className = 'box-fill-leg';
+    lg.innerHTML = '<span class="box-fill-dot" style="background:' + s.color + '"></span>' +
+                   s.icon + ' ' + s.label + ' ' + tidy(s.units) + u + plural(s.units);
+    cap.appendChild(lg);
+  });
+  if (spare > 0.01) {
+    var lgs = document.createElement('span');
+    lgs.className = 'box-fill-leg';
+    lgs.innerHTML = '<span class="box-fill-dot" style="background:#cbd5e1"></span>Spare ' + tidy(spare) + u + plural(spare);
+    cap.appendChild(lgs);
+  }
+  wrap.appendChild(cap);
+
+  // animate the fill once it's in the DOM
+  setTimeout(function(){ pending.forEach(function(p){ p.el.style.width = p.w + '%'; }); }, 30);
+
+  return wrap;
 }
 
 function clearAllOrders() {
