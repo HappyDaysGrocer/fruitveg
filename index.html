@@ -895,6 +895,9 @@
     .corr-info { flex:1; min-width:0; display:flex; flex-direction:column; }
     .corr-name { font-size:13px; font-weight:600; color:#14532d; }
     .corr-prices { font-size:11px; color:#6b7280; margin-top:1px; }
+    /* P&L product search */
+    .pl-search { width:100%; padding:10px 14px; margin-bottom:10px; border:2px solid #e5e7eb; border-radius:10px; font-size:15px; outline:none; -webkit-appearance:none; }
+    .pl-search:focus { border-color:#16a34a; }
   </style>
 </head>
 <body>
@@ -1465,7 +1468,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v18';
+var APP_BUILD = 'v19';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4119,6 +4122,8 @@ function toggleCorrBox(){
 }
 
 var plFilter = 'all'; // 'all' | 'produce' | 'cafe' | 'other'
+var plSearchTerm = '';
+var _plCurrentDate = null;
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 // Handles quoted fields correctly
@@ -4298,6 +4303,9 @@ function buildPLView() {
   });
   pv.appendChild(cats);
 
+  // Search box
+  pv.innerHTML += '<input id="plSearch" class="pl-search" type="text" placeholder="🔍 Search products…" value="' + (plSearchTerm || '') + '" oninput="plSearchTerm=this.value.toLowerCase(); renderPLDay(_plCurrentDate);">';
+
   // Summary + table containers
   pv.innerHTML += '<div id="plSummary" class="pl-summary"></div><div id="plTable"></div>';
 
@@ -4305,13 +4313,17 @@ function buildPLView() {
 }
 
 function renderPLDay(date) {
+  _plCurrentDate = date;
   var epos = loadEPOS();
   var day  = epos[date];
   if (!day) return;
 
   var s = day.summary;
-  var items = plFilter === 'all' ? day.items
-    : day.items.filter(function(it){ return it.category === plFilter; });
+  var items = day.items.filter(function(it){
+    var catOk = (plFilter === 'all') || (it.category === plFilter);
+    var searchOk = !plSearchTerm || it.name.toLowerCase().indexOf(plSearchTerm) >= 0;
+    return catOk && searchOk;
+  });
 
   // Recalculate filtered summary
   var fRev=0, fCost=0, fMargin=0, fQty=0;
@@ -4346,7 +4358,7 @@ function renderPLDay(date) {
   var sorted = items.slice().sort(function(a,b){ return b.margin - a.margin; });
 
   var html = '';
-  if (plFilter === 'all' && day.dataErrors && day.dataErrors.length) {
+  if (plFilter === 'all' && !plSearchTerm && day.dataErrors && day.dataErrors.length) {
     html += '<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:14px;">' +
       '⚠️ <strong>' + day.dataErrors.length + ' product hidden</strong> — cost price is wrong in EPOS (fix so reports stay accurate):' +
       '<ul style="margin:6px 0 0 18px;padding:0;">';
@@ -4355,7 +4367,7 @@ function renderPLDay(date) {
     });
     html += '</ul></div>';
   }
-  if (plFilter === 'all' && day.corrections && day.corrections.length) {
+  if (plFilter === 'all' && !plSearchTerm && day.corrections && day.corrections.length) {
     var fx = loadFixedCosts();
     var done = day.corrections.filter(function(c){ return fx[corrKey(c.name)]; }).length;
     html += '<div class="corr-box">' +
