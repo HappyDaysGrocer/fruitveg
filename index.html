@@ -4078,15 +4078,17 @@ function saveEPOS(d) { try { localStorage.setItem('mandiEPOS', JSON.stringify(d)
 function loadEPOS90Preload() {
   if (typeof EPOS90 === 'undefined' || !EPOS90.items) return;
   var epos = loadEPOS();
-  if (epos[EPOS90.date] && epos[EPOS90.date].preloaded) return; // already loaded
+  var ex = epos[EPOS90.date];
+  var ver = EPOS90.version || 1;
+  if (ex && ex.preloaded && ex.epos90version === ver) return; // already current
   var items = EPOS90.items.map(function(it) {
     return { name:it.name, qty:it.qty, meas:null, discount:0,
       revIncVAT:it.revIncVAT, revExcVAT:it.revIncVAT, cost:it.cost,
       margin:it.margin, marginPerc:it.marginPerc, category: detectCategory(it.name) };
   });
   epos[EPOS90.date] = { date:EPOS90.date, fileName:EPOS90.label, preloaded:true,
-    imported:new Date().toISOString(), items:items, summary:EPOS90.summary,
-    dataErrors:EPOS90.dataErrors || [] };
+    epos90version:ver, imported:new Date().toISOString(), items:items, summary:EPOS90.summary,
+    dataErrors:EPOS90.dataErrors || [], corrections:EPOS90.corrections || [] };
   saveEPOS(epos);
 }
 
@@ -4326,6 +4328,12 @@ function renderPLDay(date) {
       html += '<li><strong>' + e.name + '</strong> — EPOS cost $' + Number(e.cost).toFixed(0) + ' vs only $' + Number(e.sales).toFixed(0) + ' sales</li>';
     });
     html += '</ul></div>';
+  }
+  if (plFilter === 'all' && day.corrections && day.corrections.length) {
+    html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;">' +
+      '✓ <strong>' + day.corrections.length + ' cost auto-corrected</strong> from your invoices: ' +
+      day.corrections.map(function(c){ return c.name + ' → cost $' + Number(c.newCost).toFixed(2) + ' (EPOS had $' + Number(c.oldCost).toFixed(0) + ')'; }).join('; ') +
+      '</div>';
   }
   html += '<div class="pl-table-wrap"><table class="pl-table">' +
     '<tr><th>Product</th><th class="right">Revenue</th><th class="right">Cost</th>' +
