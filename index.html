@@ -1144,6 +1144,8 @@
   </div>
 </div>
 
+<!-- Pre-loaded 90-day EPOS sales data (auto-cleaned) -->
+<script src="epos90.js"></script>
 <script>
 /* ─── DATA ─────────────────────────────────────────────────────────────── */
 
@@ -1467,6 +1469,7 @@ function init() {
   if (cp) cp.src = CUP_B64;
   if (wm) wm.src = WORDMARK_B64;
   initHistory();   // pre-load historical run data on first open
+  loadEPOS90Preload();   // pre-load the 90-day EPOS sales analysis
   loadState();
   rebuildProducts();
   // Date in header
@@ -4072,6 +4075,22 @@ function renderByDate(hist, dates, q, container) {
 function loadEPOS() { try { var s=localStorage.getItem('mandiEPOS'); return s?JSON.parse(s):{};} catch(e){return{};} }
 function saveEPOS(d) { try { localStorage.setItem('mandiEPOS', JSON.stringify(d)); } catch(e){} }
 
+// Pre-load the baked-in 90-day EPOS summary (auto-cleaned) on first open.
+function loadEPOS90Preload() {
+  if (typeof EPOS90 === 'undefined' || !EPOS90.items) return;
+  var epos = loadEPOS();
+  if (epos[EPOS90.date] && epos[EPOS90.date].preloaded) return; // already loaded
+  var items = EPOS90.items.map(function(it) {
+    return { name:it.name, qty:it.qty, meas:null, discount:0,
+      revIncVAT:it.revIncVAT, revExcVAT:it.revIncVAT, cost:it.cost,
+      margin:it.margin, marginPerc:it.marginPerc, category: detectCategory(it.name) };
+  });
+  epos[EPOS90.date] = { date:EPOS90.date, fileName:EPOS90.label, preloaded:true,
+    imported:new Date().toISOString(), items:items, summary:EPOS90.summary,
+    dataErrors:EPOS90.dataErrors || [] };
+  saveEPOS(epos);
+}
+
 var plFilter = 'all'; // 'all' | 'produce' | 'cafe' | 'other'
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
@@ -4134,6 +4153,7 @@ function importEPOSCSV(csvText, fileName) {
 
   var items = [];
   var totRevenue=0, totDiscount=0, totCost=0, totMargin=0, totQty=0;
+  var dataErrors = [];
 
   for (var i = 1; i < lines.length; i++) {
     var cols = parseCSVLine(lines[i]);
@@ -4150,6 +4170,9 @@ function importEPOSCSV(csvText, fileName) {
     var meas        = parseMeasuredQty(measRaw);
 
     if (!name || name === 'Name') continue; // skip blank/header rows
+    if (/^\s*total/i.test(name)) continue;  // skip EPOS subtotal/total rows
+    // EPOS cost-price error (cost wildly exceeds sales) — exclude from totals & flag it
+    if (cost > 500 && cost > revExcVAT * 5) { dataErrors.push({ name:name, cost:cost, sales:revIncVAT }); continue; }
 
     var category = detectCategory(name);
     items.push({ name:name, qty:qty, meas:meas, discount:discount,
@@ -4168,6 +4191,7 @@ function importEPOSCSV(csvText, fileName) {
     date: date, fileName: fileName,
     imported: new Date().toISOString(),
     items: items,
+    dataErrors: dataErrors,
     summary: {
       revenue: totRevenue, discount: totDiscount, cost: totCost,
       margin: totMargin, marginPerc: totRevenue > 0 ? totMargin/totRevenue : 0,
@@ -4294,7 +4318,17 @@ function renderPLDay(date) {
   // Sort: highest margin $ first, then by revenue
   var sorted = items.slice().sort(function(a,b){ return b.margin - a.margin; });
 
-  var html = '<div class="pl-table-wrap"><table class="pl-table">' +
+  var html = '';
+  if (plFilter === 'all' && day.dataErrors && day.dataErrors.length) {
+    html += '<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:14px;">' +
+      '⚠️ <strong>' + day.dataErrors.length + ' product hidden</strong> — cost price is wrong in EPOS (fix so reports stay accurate):' +
+      '<ul style="margin:6px 0 0 18px;padding:0;">';
+    day.dataErrors.forEach(function(e){
+      html += '<li><strong>' + e.name + '</strong> — EPOS cost $' + Number(e.cost).toFixed(0) + ' vs only $' + Number(e.sales).toFixed(0) + ' sales</li>';
+    });
+    html += '</ul></div>';
+  }
+  html += '<div class="pl-table-wrap"><table class="pl-table">' +
     '<tr><th>Product</th><th class="right">Revenue</th><th class="right">Cost</th>' +
     '<th class="right">Profit</th><th class="right">Margin</th></tr>';
 
