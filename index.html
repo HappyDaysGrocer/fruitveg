@@ -1468,7 +1468,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v21';
+var APP_BUILD = 'v22';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2667,8 +2667,8 @@ function buildProductPicker(itemIdx, selectedProdIdx) {
   return wrapper;
 }
 
-function confirmOrderImport() {
-  if (!parsedItems.length) { alert('No items to save.'); return; }
+function confirmOrderImport(silent) {
+  if (!parsedItems.length) { if(!silent) alert('No items to save.'); return 0; }
 
   var saved = 0;
   var skipped = [];
@@ -2698,8 +2698,8 @@ function confirmOrderImport() {
   });
 
   if (saved === 0) {
-    alert('Nothing saved.\n\n' + skipped.join('\n'));
-    return;
+    if(!silent) alert('Nothing saved.\n\n' + skipped.join('\n'));
+    return 0;
   }
 
   saveOrders(orders);
@@ -2709,9 +2709,12 @@ function confirmOrderImport() {
   document.getElementById('smsInput').value = '';
   parsedItems = [];
 
-  var msg = saved + ' item' + (saved !== 1 ? 's' : '') + ' saved to ' + currentDest + ' order.';
-  if (skipped.length) msg += '\n\nSkipped:\n' + skipped.join('\n');
-  alert(msg);
+  if(!silent){
+    var msg = saved + ' item' + (saved !== 1 ? 's' : '') + ' saved to ' + currentDest + ' order.';
+    if (skipped.length) msg += '\n\nSkipped:\n' + skipped.join('\n');
+    alert(msg);
+  }
+  return saved;
 }
 
 // Update getOrderFor and calcBoxesNeeded to use stored boxes value
@@ -4548,6 +4551,19 @@ function renderAssistChips() {
   var chips = ['How much did I spend on bananas?', 'Cheapest onions?', 'Best margin item', 'Total spent all time', 'What did I buy from Louis?'];
   var el = document.getElementById('assistChips');
   el.innerHTML = '';
+
+  // Example order chip — PREFILLS the box (doesn't send) so you can see the
+  // format and tweak the items before sending, instead of filing the example.
+  var ob = document.createElement('button');
+  ob.className = 'assist-chip';
+  ob.textContent = '🍽️ Try: Restaurant order: 2 box banana, 5kg potato';
+  ob.addEventListener('click', function(){
+    var inp = document.getElementById('assistInput');
+    inp.value = 'Restaurant order: 2 box banana, 5kg potato, 3 lettuce';
+    inp.focus();
+  });
+  el.appendChild(ob);
+
   chips.forEach(function(c) {
     var b = document.createElement('button');
     b.className = 'assist-chip'; b.textContent = c;
@@ -4602,7 +4618,11 @@ function assistMaybeOrder(q) {
   var sms = document.getElementById('smsInput');
   if (sms) sms.value = body;
   if (typeof parseSMSInput === 'function') parseSMSInput();// parse + fuzzy-match + show the Confirm card
-  return dest;
+
+  var total = (typeof parsedItems !== 'undefined' && parsedItems) ? parsedItems.length : 0;
+  var matched = 0;
+  if (total) parsedItems.forEach(function(it){ if (it.matched) matched++; });
+  return { dest: dest, total: total, matched: matched, allMatched: (total > 0 && matched === total) };
 }
 
 function assistSend() {
@@ -4616,13 +4636,27 @@ function assistSend() {
   // Order intent → push it into Import Order from SMS instead of answering as a question.
   var routed = assistMaybeOrder(q);
   if (routed) {
-    var label = routed.charAt(0).toUpperCase() + routed.slice(1);
-    var n = (typeof parsedItems !== 'undefined' && parsedItems) ? parsedItems.length : 0;
-    var msg = "✅ Loaded " + n + " item" + (n === 1 ? '' : 's') + " into Import Order from SMS as a "
-            + label + " order. I've opened it on the ➕ Add tab — check the matched items and tap “✓ Save Order”.";
+    var label = routed.dest.charAt(0).toUpperCase() + routed.dest.slice(1);
+    var msg, delay;
+    if (routed.allMatched) {
+      // Every item matched with high confidence → save it straight away (no review needed).
+      var n = confirmOrderImport(true);
+      showView('Orders');                                  // reveal the order it landed in
+      msg = "✅ Saved " + n + " item" + (n === 1 ? '' : 's') + " to the " + label
+          + " order — every item matched cleanly. It's on the 🧾 Orders tab now.";
+      delay = 1300;
+    } else {
+      // Some items need a human eye → leave it on the Add tab for review.
+      var need = routed.total - routed.matched;
+      msg = "✅ Loaded " + routed.total + " item" + (routed.total === 1 ? '' : 's')
+          + " into Import Order from SMS as a " + label + " order"
+          + (need > 0 ? " (" + need + " need" + (need === 1 ? 's' : '') + " a quick check)" : "")
+          + ". I've opened it on the ➕ Add tab — confirm the items and tap “✓ Save Order”.";
+      delay = 900;
+    }
     assistAddMsg(msg, 'bot');
     if (viaVoice) assistSpeak(msg);
-    setTimeout(closeAssistant, 900);                       // let them read the confirmation, then reveal the parsed list
+    setTimeout(closeAssistant, delay);                     // let them read the confirmation, then reveal the result
     return;
   }
 
