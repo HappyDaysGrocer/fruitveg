@@ -1086,7 +1086,7 @@
 <div class="assist-overlay" id="assistOverlay" onclick="assistOverlayTap(event)">
   <div class="assist-panel">
     <div class="assist-header">
-      <div class="assist-title">🤖 Mandi Assistant
+      <div class="assist-title">🤖 FruitVeg Assistant
         <small>Ask about prices, spend, margins &amp; history</small>
       </div>
       <button class="assist-close" onclick="closeAssistant()">×</button>
@@ -1455,7 +1455,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v15';
+var APP_BUILD = 'v16';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2886,7 +2886,7 @@ function buildOrderSummaryPanel() {
     var tot = document.createElement('div');
     tot.className = 'order-panel-total';
     tot.innerHTML =
-      '<div class="order-panel-total-label">TOTAL BOXES TO BUY AT MANDI</div>' +
+      '<div class="order-panel-total-label">TOTAL BOXES TO BUY</div>' +
       '<div class="order-panel-total-num">' + grandTotal + '</div>';
     body.appendChild(tot);
   }
@@ -3758,7 +3758,7 @@ function buildHistoryView() {
   saveBar.className = 'hist-save-bar';
   var boughtCount = Object.keys(state).filter(function(k){ return state[k] && state[k].status==='bought'; }).length;
   saveBar.innerHTML =
-    '<div class="hist-save-label">' + (boughtCount > 0 ? boughtCount + ' items bought in current run' : 'Complete a mandi run first') + '</div>' +
+    '<div class="hist-save-label">' + (boughtCount > 0 ? boughtCount + ' items bought in current run' : 'Complete a run first') + '</div>' +
     '<button class="hist-save-btn" onclick="saveRunToHistory();buildHistoryView();">💾 Save Run</button>';
   hv.appendChild(saveBar);
 
@@ -3784,7 +3784,7 @@ function buildHistoryView() {
   hv.appendChild(results);
 
   if (!dates.length) {
-    results.innerHTML = '<div class="hist-empty">No history yet.<br><br>Complete a mandi run and tap <strong>💾 Save Run</strong> above.</div>';
+    results.innerHTML = '<div class="hist-empty">No history yet.<br><br>Complete a run and tap <strong>💾 Save Run</strong> above.</div>';
     return;
   }
 
@@ -4477,7 +4477,7 @@ var ASSIST_GREETED = false;
 function openAssistant() {
   document.getElementById('assistOverlay').classList.add('open');
   if (!ASSIST_GREETED) {
-    assistAddMsg("Hi! I'm your Mandi Assistant. 👋\n\nI can answer questions from your real buying data — prices, spend, margins and history. Try a question below, or ask your own.", 'bot');
+    assistAddMsg("Hi! I'm your FruitVeg Assistant. 👋\n\nI can answer questions from your real buying data — prices, spend, margins and history. Try a question below, or ask your own.", 'bot');
     ASSIST_GREETED = true;
   }
   renderAssistChips();
@@ -4642,7 +4642,7 @@ function assistAnswer(qRaw) {
   var q = qRaw.toLowerCase();
   var items = assistAllPurchases();
 
-  if (!items.length) return "I don't have any purchase history yet. Once you save a mandi run, I can answer questions about it.";
+  if (!items.length) return "I don't have any purchase history yet. Once you save a run, I can answer questions about it.";
 
   // Intent: greeting / help
   if (/^(hi|hello|hey|help|what can you|yo)\b/.test(q)) {

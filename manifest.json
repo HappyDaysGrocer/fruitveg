@@ -1,7 +1,7 @@
 {
-  "name": "Happy Days Mandi",
-  "short_name": "Mandi",
-  "description": "Happy Days Fruit Veg & Grocer — Melbourne Market buying app",
+  "name": "Happy Days FruitVeg",
+  "short_name": "FruitVeg",
+  "description": "Happy Days Fruit Veg & Grocer — buying & pricing app",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
