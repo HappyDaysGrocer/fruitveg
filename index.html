@@ -42,15 +42,15 @@
       flex: 1 1 auto; min-width: 0; height: 70px; object-fit: contain;
     }
     .grand-total-hdr {
-      font-size: 60px; font-weight: 800; color: #ffffff;
+      font-size: 14px; font-weight: 800; color: #ffffff;
       text-shadow: 0 1px 3px rgba(0,0,0,0.35); flex-shrink: 0;
     }
-    .header-date { font-size: 60px; color: #d2f0d8; flex-shrink: 0; margin-left: auto; }
+    .header-date { font-size: 10px; color: #d2f0d8; flex-shrink: 0; margin-left: auto; }
     .header-row2 {
       display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
       padding: 4px 12px 5px; background: linear-gradient(135deg, #2f9e44, #15662f);
     }
-    .stat { display: flex; align-items: center; gap: 3px; font-size: 60px; color: #e3f5e8; }
+    .stat { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #e3f5e8; }
     .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .dot-green  { background: #eaff1a; box-shadow: 0 0 4px rgba(234,255,26,0.6); }
     .dot-yellow { background: #ffd23f; box-shadow: 0 0 4px rgba(255,210,63,0.6); }
@@ -65,8 +65,8 @@
       border-bottom: 1px solid #2f9e44;
     }
     .search-input {
-      width: 100%; padding: 9px 34px 9px 12px; border: 1.5px solid #2f9e44;
-      border-radius: 14px; font-size: 60px; background: #0e4a23; color: #eafff0;
+      width: 100%; padding: 5px 32px 5px 10px; border: 1.5px solid #2f9e44;
+      border-radius: 14px; font-size: 13px; background: #0e4a23; color: #eafff0;
       outline: none; -webkit-appearance: none;
     }
     .search-input::placeholder { color: #7fb98c; }
@@ -91,20 +91,20 @@
     .supplier-header {
       background: linear-gradient(135deg, #1c4587 0%, #14532d 130%);
       color: white;
-      padding: 10px 12px; border-radius: 8px 8px 0 0;
-      font-weight: 700; font-size: 60px;
+      padding: 7px 10px; border-radius: 8px 8px 0 0;
+      font-weight: 700; font-size: 11px;
       display: flex; justify-content: space-between; align-items: center;
     }
     .supplier-left { display: flex; flex-direction: column; gap: 1px; }
-    .supplier-phone { font-size: 12px; opacity: 0.7; font-weight: 400; }
-    .supplier-subtotal { font-size: 60px; color: #93c5fd; font-weight: 800; white-space: nowrap; }
+    .supplier-phone { font-size: 10px; opacity: 0.7; font-weight: 400; }
+    .supplier-subtotal { font-size: 13px; color: #93c5fd; font-weight: 800; white-space: nowrap; }
 
     /* ── Product rows ── */
     .product-list { background: white; border-radius: 0 0 6px 6px; overflow: hidden; }
     .product-row {
-      display: flex; align-items: flex-start; padding: 10px 10px;
-      border-bottom: 1px solid #f3f3f3; min-height: 54px;
-      transition: background 0.15s; gap: 8px;
+      display: flex; align-items: flex-start; padding: 6px 8px;
+      border-bottom: 1px solid #f3f3f3; min-height: 40px;
+      transition: background 0.15s; gap: 6px;
     }
     .product-row:last-child { border-bottom: none; }
     .product-row.bought  { background: #d1fae5; }
@@ -114,8 +114,8 @@
 
     .product-info { flex: 1; min-width: 0; }
     .product-name {
-      font-size: 50px; line-height: 1.3; font-weight: 500;
-      overflow-wrap: anywhere;
+      font-size: 12px; line-height: 1.25; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .product-name.crossed { text-decoration: line-through; color: #9ca3af; }
     .must-badge {
@@ -123,7 +123,7 @@
       font-size: 8px; padding: 1px 4px; border-radius: 3px;
       margin-left: 4px; font-weight: 700; vertical-align: middle;
     }
-    .product-detail { font-size: 35px; color: #9ca3af; margin-top: 2px; }
+    .product-detail { font-size: 10px; color: #9ca3af; margin-top: 1px; }
     .product-detail.done { color: #059669; font-weight: 600; }
 
     /* ── Order mini — labelled chips below name ── */
@@ -133,7 +133,7 @@
     }
     .order-mini.has-orders { display: flex; }
     .order-chip-mini {
-      font-size: 60px; font-weight: 600; padding: 3px 8px;
+      font-size: 10px; font-weight: 600; padding: 2px 6px;
       border-radius: 4px; white-space: nowrap; line-height: 1.4;
     }
     .order-chip-mini strong { font-weight: 800; }
@@ -144,10 +144,10 @@
     .chip-mini-total-pending { background: #1e3a5f; color: #f4d03f; font-weight: 800; }
 
     /* ── Row buttons ── */
-    .row-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+    .row-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
     .btn-offseason {
       background: none; border: 1.5px solid #d1d5db; color: #9ca3af;
-      border-radius: 6px; padding: 6px 7px; font-size: 11px; font-weight: 700;
+      border-radius: 6px; padding: 4px 5px; font-size: 9px; font-weight: 700;
       cursor: pointer; line-height: 1.2; text-align: center;
       white-space: nowrap; opacity: 0.5; margin-right: 2px;
     }
@@ -158,8 +158,8 @@
     .product-row.offseason .btn-offseason { opacity: 1; }
     .btn-buy {
       background: #16a34a; color: white; border: none;
-      border-radius: 6px; padding: 10px 14px;
-      font-size: 18px; font-weight: 800; cursor: pointer; min-width: 54px;
+      border-radius: 6px; padding: 6px 9px;
+      font-size: 11px; font-weight: 800; cursor: pointer; min-width: 40px;
       text-align: center; transition: background 0.15s, transform 0.1s; line-height: 1;
       box-shadow: 0 1px 3px rgba(22,163,74,0.3);
     }
@@ -167,8 +167,8 @@
     .btn-buy:active { transform: scale(0.92); }
     .btn-skip {
       background: #fbbf24; color: #78350f; border: none;
-      border-radius: 6px; padding: 10px 11px;
-      font-size: 60px; font-weight: 900; cursor: pointer;
+      border-radius: 6px; padding: 6px 7px;
+      font-size: 13px; font-weight: 900; cursor: pointer;
       text-align: center; transition: background 0.15s, transform 0.1s; line-height: 1;
     }
     .btn-skip.active { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b; }
@@ -179,22 +179,21 @@
       flex: 0 0 auto; position: relative; z-index: 100;
       background: linear-gradient(180deg, #2f9e44 0%, #15662f 100%);
       display: flex; border-top: 1px solid #2f9e44;
-      min-height: 62px;
       padding-bottom: env(safe-area-inset-bottom);
       box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
     }
     .nav-btn {
-      flex: 1 1 0; min-width: 0; padding: 9px 0 10px; color: #cdeed5;
-      background: none; border: none; font-size: 3px; font-weight: 600;
-      cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      flex: 1 1 0; min-width: 0; padding: 6px 0 7px; color: #cdeed5;
+      background: none; border: none; font-size: 8px; font-weight: 600;
+      cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
       transition: color 0.15s; position: relative; overflow: hidden;
     }
     .nav-btn.active { color: #fffbe0; }
     .nav-btn.active::before {
       content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-      width: 26px; height: 3px; border-radius: 0 0 3px 3px; background: #eaff1a;
+      width: 22px; height: 3px; border-radius: 0 0 3px 3px; background: #eaff1a;
     }
-    .nav-icon { font-size: 50px; line-height: 1; transition: transform 0.15s; }
+    .nav-icon { font-size: 20px; line-height: 1; transition: transform 0.15s; }
     .nav-btn.active .nav-icon { transform: scale(1.12); }
 
     /* ── Modal overlay ── */
@@ -312,8 +311,8 @@
     }
     .stall-strip::-webkit-scrollbar { display: none; }
     .stall-pill {
-      flex-shrink: 0; padding: 8px 14px; background: rgba(255,255,255,0.15); color: #fff;
-      border: 1px solid rgba(255,255,255,0.25); border-radius: 16px; font-size: 60px; font-weight: 700;
+      flex-shrink: 0; padding: 6px 11px; background: rgba(255,255,255,0.15); color: #fff;
+      border: 1px solid rgba(255,255,255,0.25); border-radius: 16px; font-size: 12px; font-weight: 700;
       cursor: pointer; white-space: nowrap;
     }
     .stall-pill:active { background: #eaff1a; color: #15662f; border-color: #eaff1a; }
@@ -1456,7 +1455,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v14';
+var APP_BUILD = 'v15';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
