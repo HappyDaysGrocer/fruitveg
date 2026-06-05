@@ -1117,6 +1117,10 @@
       <div id="accountBox"></div>
     </div>
     <div class="manage-card">
+      <div class="manage-title">📂 Invoice backup (Google Drive)</div>
+      <div id="driveBox"></div>
+    </div>
+    <div class="manage-card">
       <div class="manage-title">Run Tools</div>
       <button class="manage-btn btn-green" onclick="exportSummary()">📋&nbsp; Copy Summary to Clipboard</button>
       <button class="manage-btn" style="background:#1c4587;color:white;" onclick="saveRunToHistory()">🕐&nbsp; Save Run to History</button>
@@ -1567,7 +1571,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v35';
+var APP_BUILD = 'v36';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1594,6 +1598,7 @@ function init() {
   // Re-measure once fonts/logo have settled
   setTimeout(applyResponsive, 400);
   fvAuthGate();   // show the login gate unless already signed in on this device
+  if (typeof fvRenderDrive === 'function') fvRenderDrive();
 }
 
 /* ─── BUILD LIST ────────────────────────────────────────────────────────── */
@@ -5310,6 +5315,7 @@ function assistPhotoPicked(input) {
       assistRemoveThinking(thinking);
       fvPendingInvoice = { dataUrl: dataUrl, mediaType: m[1], base64: m[2], data: data };
       assistAddInvoiceCard(data);
+      if (fvDriveConnected()) fvSaveInvoiceToDrive(true);   // auto-back-up the photo to Drive
     }).catch(function(e){
       assistRemoveThinking(thinking);
       assistAddMsg("⚠️ Couldn't read the invoice (" + ((e && e.message) || 'error') + "). Try a clearer, straight-on photo.", 'bot');
@@ -5349,6 +5355,7 @@ function assistAddInvoiceCard(data) {
   });
   html += '</div>';
   html += '<button class="inv-add-btn" onclick="fvAddInvoiceItems()">＋ Add ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' to my products</button>';
+  html += '<button class="inv-add-btn" style="background:#1c4587;margin-top:6px;" onclick="fvSaveInvoiceToDrive(false)">📂 Save photo to Drive</button>';
   card.innerHTML = html;
   box.appendChild(card); box.scrollTop = box.scrollHeight;
 }
@@ -5508,6 +5515,138 @@ function fvAllowed(action, label) {
 function fvConfirmDanger(msg) {
   if (fvIsOwner()) return confirm(msg);
   return confirm('⚠️ Careful — this can affect everyone.\n\n' + msg + '\n\nAre you sure you want to do this?');
+}
+
+/* ─── GOOGLE DRIVE — invoice photo backup (client-side OAuth via GIS) ────────
+   Scope is drive.file (only files this app creates). The Client ID is public by
+   design; the access token lives only in memory. The user signs in via Google's
+   own popup — we never see their Google password. */
+var fvDriveTok = null, fvDriveTokExp = 0, fvDriveTokenClient = null, fvGisLoading = null;
+var fvDriveTokResolve = null, fvDriveTokReject = null;
+
+function fvDriveClientId() { try { return localStorage.getItem('fvDriveClientId') || ''; } catch(e){ return ''; } }
+function fvDriveConnected() { return !!fvDriveClientId(); }
+
+function fvLoadGis() {
+  if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+  if (fvGisLoading) return fvGisLoading;
+  fvGisLoading = new Promise(function(res, rej){
+    var s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
+    s.onload = function(){ res(); };
+    s.onerror = function(){ rej(new Error('could not load Google sign-in')); };
+    document.head.appendChild(s);
+  });
+  return fvGisLoading;
+}
+
+function fvDriveInitClient() {
+  var cid = fvDriveClientId(); if (!cid) throw new Error('no Drive Client ID');
+  if (fvDriveTokenClient) return;
+  fvDriveTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    callback: function(resp){
+      if (resp && resp.access_token) {
+        fvDriveTok = resp.access_token;
+        fvDriveTokExp = Date.now() + ((resp.expires_in ? resp.expires_in * 1000 : 3300000) - 60000);
+        if (fvDriveTokResolve) { fvDriveTokResolve(fvDriveTok); fvDriveTokResolve = null; fvDriveTokReject = null; }
+      } else if (fvDriveTokReject) { fvDriveTokReject(new Error('no access token')); fvDriveTokResolve = null; fvDriveTokReject = null; }
+    }
+  });
+}
+
+function fvDriveEnsureToken(forceConsent) {
+  return fvLoadGis().then(function(){
+    fvDriveInitClient();
+    if (!forceConsent && fvDriveTok && Date.now() < fvDriveTokExp) return fvDriveTok;
+    return new Promise(function(res, rej){
+      fvDriveTokResolve = res; fvDriveTokReject = rej;
+      try { fvDriveTokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' }); }
+      catch(e){ fvDriveTokResolve = null; fvDriveTokReject = null; rej(e); }
+    });
+  });
+}
+
+function fvDriveFolder(token) {
+  var cached; try { cached = localStorage.getItem('fvDriveFolder'); } catch(e){}
+  if (cached) return Promise.resolve(cached);
+  var q = encodeURIComponent("name='Happy Days Invoices' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  return fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name)', { headers: { Authorization: 'Bearer ' + token } })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.files && d.files.length) { try { localStorage.setItem('fvDriveFolder', d.files[0].id); } catch(e){} return d.files[0].id; }
+      return fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Happy Days Invoices', mimeType: 'application/vnd.google-apps.folder' })
+      }).then(function(r){ return r.json(); }).then(function(f){ try { localStorage.setItem('fvDriveFolder', f.id); } catch(e){} return f.id; });
+    });
+}
+
+function fvB64ToBlob(b64, type) {
+  var bin = atob(b64), len = bin.length, arr = new Uint8Array(len);
+  for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: type });
+}
+
+function fvDriveUpload(token, folderId, name, mediaType, base64) {
+  var fd = new FormData();
+  fd.append('metadata', new Blob([JSON.stringify({ name: name, parents: [folderId] })], { type: 'application/json' }));
+  fd.append('file', fvB64ToBlob(base64, mediaType));
+  return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd
+  }).then(function(r){ if (!r.ok) return r.text().then(function(){ throw new Error('Drive ' + r.status); }); return r.json(); });
+}
+
+function fvSaveInvoiceToDrive(silent) {
+  if (!fvPendingInvoice) { if (!silent) assistAddMsg('Scan an invoice first, then I can save it.', 'bot'); return Promise.resolve(); }
+  if (!fvDriveConnected()) { if (!silent) assistAddMsg('Connect Google Drive first: ⚙️ Manage → Invoice backup.', 'bot'); return Promise.resolve(); }
+  var inv = fvPendingInvoice;
+  var sup = (inv.data && inv.data.supplier && inv.data.supplier.name) ? inv.data.supplier.name : 'invoice';
+  var stamp = new Date().toISOString().slice(0, 10);
+  var ext = (inv.mediaType.indexOf('png') >= 0) ? 'png' : 'jpg';
+  var name = stamp + ' ' + String(sup).replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 60) + '.' + ext;
+  return fvDriveEnsureToken(false).then(function(tok){
+    return fvDriveFolder(tok).then(function(fid){ return fvDriveUpload(tok, fid, name, inv.mediaType, inv.base64); });
+  }).then(function(){
+    assistAddMsg('📂 Backed up the invoice photo to Google Drive (' + name + ').', 'bot');
+  }).catch(function(e){
+    assistAddMsg('⚠️ Couldn\'t save to Drive (' + ((e && e.message) || 'error') + '). The invoice data was still captured.', 'bot');
+  });
+}
+
+function fvRenderDrive() {
+  var el = document.getElementById('driveBox'); if (!el) return;
+  if (fvDriveConnected()) {
+    el.innerHTML = '<div class="acct-row">✓ Drive connected'
+      + ' <button class="acct-logout" onclick="fvDriveDisconnect()">disconnect</button></div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-top:6px;">Scanned invoice photos auto-save to a “Happy Days Invoices” folder in your Drive.</div>';
+  } else {
+    el.innerHTML = '<div style="font-size:12px;color:#4b5563;margin-bottom:8px;">Paste your Google OAuth Client ID to auto-save invoice photos to your Drive. One-time setup — ask me for the steps.</div>'
+      + '<input id="driveClientId" type="text" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-bottom:8px;">'
+      + '<button class="btn-confirm" style="margin:0;" onclick="fvDriveConnect()">Connect Google Drive</button>';
+  }
+}
+
+function fvDriveConnect() {
+  var v = document.getElementById('driveClientId'); var cid = v ? v.value.trim() : '';
+  if (!cid) { alert('Paste your Google OAuth Client ID first.'); return; }
+  try { localStorage.setItem('fvDriveClientId', cid); } catch(e){}
+  fvDriveTokenClient = null;
+  fvDriveEnsureToken(true).then(function(){
+    fvRenderDrive();
+    alert('✓ Google Drive connected. Invoice photos will now back up automatically.');
+  }).catch(function(e){
+    try { localStorage.removeItem('fvDriveClientId'); } catch(e2){}
+    alert('Could not connect Drive: ' + ((e && e.message) || 'check the Client ID and try again') + '.');
+  });
+}
+
+function fvDriveDisconnect() {
+  if (!confirm('Disconnect Google Drive?')) return;
+  try { localStorage.removeItem('fvDriveClientId'); localStorage.removeItem('fvDriveFolder'); } catch(e){}
+  fvDriveTok = null; fvDriveTokExp = 0; fvDriveTokenClient = null;
+  fvRenderDrive();
 }
 
 /* ─── VOICE: speech-to-text input + spoken answers (Web Speech API) ──────── */
