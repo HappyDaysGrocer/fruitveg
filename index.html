@@ -1294,6 +1294,7 @@
 <script src="shopProducts.js"></script>
 <script src="invoices.js"></script>
 <script src="bankledger.js"></script>
+<script src="bankfeed.js"></script>
 <script>
 /* ─── DATA ─────────────────────────────────────────────────────────────── */
 
@@ -1609,7 +1610,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v53';
+var APP_BUILD = 'v54';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4918,9 +4919,110 @@ function fvCapitalOpen() {
     var ref = e.r ? e.r : ('BNK-' + ('000' + (i + 1)).slice(-3));
     h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + e.d + ' · <strong>' + fvEsc(e.p) + '</strong> · ' + fvEsc(e.n) + ' <span style="color:#9ca3af;">[' + fvEsc(ref) + ']</span></span><span style="font-weight:700;white-space:nowrap;">$' + e.a.toFixed(2) + '</span></div>';
   });
+
+  // ---- Recent live bank activity (actual cash-flow from the screenshots) ----
+  if (typeof BANK_FEED !== 'undefined' && BANK_FEED.length) {
+    var bIn = 0, bOut = 0, adyen = 0;
+    BANK_FEED.forEach(function (t) { if (t.dir === 'in') { bIn += t.a; if (/adyen/i.test(t.p)) adyen += t.a; } else bOut += t.a; });
+    var bm = (typeof BANK_FEED_META !== 'undefined') ? BANK_FEED_META : { from: '', to: '' };
+    var bnet = bIn - bOut;
+    h += '<div style="font-weight:800;color:#0d4420;font-size:15px;margin:18px 0 6px;">📲 Recent bank activity (' + bm.from + ' → ' + bm.to + ')</div>';
+    h += '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">Actual money in/out from the live CommBank account, read from your screenshots. This is real cash-flow — kept separate from the invoice list and the Jan–Mar ledger above so nothing is double-counted.</div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#15803d;padding:2px 0;"><span>💚 Money in <span style="color:#6b7280;">(incl. Adyen card takings ' + money(adyen) + ')</span></span><strong>' + money(bIn) + '</strong></div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#b91c1c;padding:2px 0;"><span>💸 Money out</span><strong>' + money(bOut) + '</strong></div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;border-top:1px solid #e5e7eb;padding:4px 0;margin-top:2px;"><span>Net</span><strong>' + (bnet >= 0 ? '+' : '−') + money(Math.abs(bnet)) + '</strong></div>';
+    h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:10px 0 4px;">All ' + BANK_FEED.length + ' transactions (newest first)</div>';
+    BANK_FEED.forEach(function (t) {
+      var col = t.dir === 'in' ? '#15803d' : '#374151';
+      var sign = t.dir === 'in' ? '+' : '−';
+      h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:' + col + ';border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + t.d + ' · <strong>' + fvEsc(t.p) + '</strong>' + (t.pend ? ' <em style="color:#b45309;">(pending)</em>' : '') + (t.n ? (' <span style="color:#9ca3af;">' + fvEsc(t.n) + '</span>') : '') + '</span><span style="font-weight:700;white-space:nowrap;">' + sign + '$' + t.a.toFixed(2) + '</span></div>';
+    });
+  }
+
   ov.innerHTML = '<div style="background:#fff;width:100%;max-width:600px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:0;background:#fff;"><strong style="font-size:17px;color:#0d4420;">💰 Capital &amp; bank</strong>'
     + '<button onclick="fvCapitalClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>'
+    + h + '</div>';
+}
+
+/* ── Invoice display name, matching the renamed Drive files:
+      YYYY_MM_DD Supplier- Inv# Descriptor ── */
+var FV_INV_DESC = {
+  'RT-1193761':'Cladding','7906931':'Licence','7910712':'Licence','INV-3807':'Grease Trap',
+  '2036981':'Grocery','5179805':'ESM Test','5191816':'Waste','5212888':'Rent','5214912':'Water',
+  '5221700':'Hydrant','5247323':'Council Rates','5275095':'Rent','WK20077845':'Weekly',
+  'WK20078684':'Weekly','WK20079527':'Weekly','WK20080356':'Weekly','17027':'Milk','17679':'Milk',
+  '18137':'Milk','24689':'Legal'
+};
+function fvInvName(iv){
+  var d = (iv.d || '').replace(/-/g,'_');
+  var desc = (typeof FV_INV_DESC !== 'undefined' && FV_INV_DESC[iv.n]) ? (' ' + FV_INV_DESC[iv.n]) : '';
+  return d + ' ' + iv.s + '- ' + iv.n + desc;
+}
+
+/* ── Trading cash flow (Apr–Jun) from the bank app screenshots (BANK_TX) ── */
+var FV_CAT_LABEL = {
+  SALES:'Card sales (Adyen)', B2B:'Wholesale veg sales', PRODUCE:'Produce — market',
+  STOCK_OTHER:'Other stock (dairy, coffee, bakery…)', RENT:'Rent',
+  OUTGOINGS:'Outgoings (water, waste, rates)', HIRE:'Equipment / sign hire',
+  REIMBURSE:'Staff reimbursements', COMPLIANCE:'Council & compliance', LEGAL:'Legal',
+  POS_SOFTWARE:'POS & software', UTILITIES:'Utilities', INSURANCE:'Insurance',
+  PACKAGING:'Packaging & cleaning', SECURITY:'Security & pest', TRANSFER:'Transfers',
+  FREIGHT:'Freight', WASTE:'Waste / bins', WAGES:'Wages', PETROL:'Fuel', FITOUT:'Fit-out'
+};
+function fvCatLabel_(c){ return (FV_CAT_LABEL[c] || c); }
+function fvBankCompute(){
+  if (typeof BANK_TX === 'undefined') return null;
+  var inn=0, out=0, byMonth={}, byCat={}, unread=0;
+  BANK_TX.forEach(function(t){
+    if (t.u){ unread++; return; }
+    var mo = (t.d || '').slice(0,7);
+    byMonth[mo] = byMonth[mo] || {inn:0,out:0};
+    byCat[t.c] = byCat[t.c] || {inn:0,out:0,n:0}; byCat[t.c].n++;
+    if (t.a >= 0){ inn += t.a; byMonth[mo].inn += t.a; byCat[t.c].inn += t.a; }
+    else { out += -t.a; byMonth[mo].out += -t.a; byCat[t.c].out += -t.a; }
+  });
+  return {inn:inn, out:out, byMonth:byMonth, byCat:byCat, unread:unread};
+}
+function fvCashflowButtonHTML(){
+  var c = fvBankCompute(); if (!c) return '';
+  var net = c.inn - c.out;
+  var bg = net>=0?'#dcfce7':'#fef3c7', bd = net>=0?'#16a34a':'#f59e0b', col = net>=0?'#15803d':'#92400e';
+  var label = '📊 Trading cash flow (Apr–Jun) — ' + (net>=0?'+':'−') + '$' + Math.abs(Math.round(net)).toLocaleString();
+  return '<button onclick="fvCashflowOpen()" style="width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px;border:1px solid '+bd+';background:'+bg+';color:'+col+';border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;text-align:left;">'+label+' &rsaquo;</button>';
+}
+function fvCashflowClose(){ var o=document.getElementById('fvCashflowOverlay'); if(o) o.remove(); }
+function fvCashflowOpen(){
+  var c = fvBankCompute(); if (!c) return;
+  var ov = document.getElementById('fvCashflowOverlay');
+  if (!ov){ ov=document.createElement('div'); ov.id='fvCashflowOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style','position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:flex-end;justify-content:center;');
+  ov.onclick = function(e){ if (e.target===ov) fvCashflowClose(); };
+  var money = function(n){ return '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var net = c.inn - c.out, h = '';
+  h += '<div style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+    + '<div style="display:flex;justify-content:space-between;"><span style="color:#bbf7d0;font-size:13px;">💰 Money IN</span><strong>'+money(c.inn)+'</strong></div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:#fde68a;font-size:13px;">💸 Money OUT</span><strong>−'+money(c.out)+'</strong></div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:8px;"><span>Net</span><strong style="color:'+(net>=0?'#86efac':'#fca5a5')+';">'+(net>=0?'+':'−')+money(Math.abs(net))+'</strong></div></div>';
+  var MLAB = {'2026-04':'April','2026-05':'May','2026-06':'June (to 5th)'};
+  h += '<div style="font-weight:800;color:#0d4420;font-size:14px;margin:6px 0;">Month by month</div>';
+  Object.keys(c.byMonth).sort().forEach(function(mo){
+    var x=c.byMonth[mo], n=x.inn-x.out;
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;margin-bottom:6px;background:'+(n>=0?'#f0fdf4':'#fffbeb')+';">'
+      + '<span style="font-weight:700;color:#1c4587;">'+(MLAB[mo]||mo)+'</span>'
+      + '<span style="text-align:right;font-size:12px;">in '+money(x.inn)+' · out '+money(x.out)+'<br><strong style="color:'+(n>=0?'#15803d':'#b45309')+';">'+(n>=0?'+':'−')+money(Math.abs(n))+'</strong></span></div>';
+  });
+  if (c.byMonth['2026-06']) h += '<div style="font-size:12px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:8px 10px;margin-bottom:10px;">🎉 June is the first cash-positive period — card sales now run ~$1,400–3,000/day.</div>';
+  h += '<div style="font-weight:800;color:#0d4420;font-size:14px;margin:8px 0 4px;">Money IN</div>';
+  ['SALES','B2B'].forEach(function(k){ if (c.byCat[k] && c.byCat[k].inn>0) h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>'+fvCatLabel_(k)+'</span><span style="font-weight:700;">'+money(c.byCat[k].inn)+'</span></div>'; });
+  h += '<div style="font-weight:800;color:#0d4420;font-size:14px;margin:12px 0 4px;">Money OUT by category</div>';
+  Object.keys(c.byCat).filter(function(k){return c.byCat[k].out>0;}).sort(function(a,b){return c.byCat[b].out-c.byCat[a].out;}).forEach(function(k){
+    h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>'+fvCatLabel_(k)+' <span style="color:#9ca3af;">('+c.byCat[k].n+')</span></span><span style="font-weight:700;">'+money(c.byCat[k].out)+'</span></div>';
+  });
+  h += '<div style="font-size:10px;color:#9ca3af;margin-top:10px;line-height:1.5;">From 40 CommBank app screenshots (Apr–Jun). Small amounts are OCR-read so may vary a few $; a few card-sale days weren’t captured, so sales are a touch higher. The Dec–Mar fit-out (~$106k) lives in the “Capital &amp; bank” view, not here.</div>';
+  ov.innerHTML = '<div style="background:#fff;width:100%;max-width:600px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:0;background:#fff;"><strong style="font-size:17px;color:#0d4420;">📊 Trading cash flow</strong>'
+    + '<button onclick="fvCashflowClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>'
     + h + '</div>';
 }
 
@@ -4962,6 +5064,7 @@ function buildSpendView() {
     + '<div style="font-size:10px;color:#9ca3af;margin-top:5px;">Income = last-90-day shop sales; invoices span Jan–Jun, so this net is indicative, not an exact P&amp;L.</div></div>';
   html += fvReviewButtonHTML();
   html += fvCapitalButtonHTML();
+  html += fvCashflowButtonHTML();
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
@@ -4986,7 +5089,7 @@ function renderSpendRows() {
       + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
     g.items.slice().sort(function(a,b){ return a.d < b.d ? -1 : 1; }).forEach(function(iv){
       var fid = (typeof FV_INVOICE_FILES !== 'undefined') ? FV_INVOICE_FILES[iv.n] : null;
-      var meta = iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
+      var meta = fvEsc(fvInvName(iv)) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
       var amt = (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2)));
       html += '<div style="border-top:1px solid #eef0f2;padding:9px 0;">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;"><span style="flex:1;min-width:0;">' + meta + '</span><span style="white-space:nowrap;font-weight:700;">' + amt + '</span></div>';
