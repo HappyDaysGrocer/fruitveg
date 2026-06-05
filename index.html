@@ -180,9 +180,10 @@
       display: flex; border-top: 1px solid #2f9e44;
       padding-bottom: env(safe-area-inset-bottom);
       box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
     }
     .nav-btn {
-      flex: 1 1 0; min-width: 0; padding: 6px 0 7px; color: #cdeed5;
+      flex: 1 0 auto; min-width: 56px; padding: 6px 0 7px; color: #cdeed5;
       background: none; border: none; font-size: 8px; font-weight: 600;
       cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
       transition: color 0.15s; position: relative; overflow: hidden;
@@ -1016,6 +1017,9 @@
   <!-- Store / product lookup -->
   <div class="view" id="viewStore"></div>
 
+  <!-- Spend / suppliers view -->
+  <div class="view" id="viewSpend"></div>
+
   <!-- Totals view -->
   <div class="view" id="viewTotals"></div>
 
@@ -1243,6 +1247,7 @@
 <div class="bottom-nav">
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
   <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store</button>
+  <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Spend</button>
   <button class="nav-btn"        id="navOrders" onclick="showView('Orders')"><span class="nav-icon">📦</span>Orders</button>
   <button class="nav-btn"        id="navTotals" onclick="showView('Totals')"><span class="nav-icon">💰</span>Totals</button>
   <button class="nav-btn"        id="navAdd"    onclick="showView('Add')"><span class="nav-icon">➕</span>Add</button>
@@ -1284,6 +1289,7 @@
 <!-- Pre-loaded 90-day EPOS sales data (auto-cleaned) -->
 <script src="epos90.js"></script>
 <script src="shopProducts.js"></script>
+<script src="invoices.js"></script>
 <script>
 /* ─── DATA ─────────────────────────────────────────────────────────────── */
 
@@ -1599,7 +1605,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v44';
+var APP_BUILD = 'v45';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1956,7 +1962,7 @@ function toggleSkip(idx) {
 /* ─── VIEWS ─────────────────────────────────────────────────────────────── */
 
 function showView(name) {
-  ['List','Store','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
+  ['List','Store','Spend','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
     document.getElementById('view' + v).classList.toggle('active', v === name);
     document.getElementById('nav'  + v).classList.toggle('active', v === name);
   });
@@ -1974,6 +1980,7 @@ function showView(name) {
   if (name === 'PL')      buildPLView();
   if (name === 'History') buildHistoryView();
   if (name === 'Store')   buildStoreView();
+  if (name === 'Spend')   buildSpendView();
   if (typeof applyResponsive === 'function') applyResponsive();
 }
 
@@ -4785,6 +4792,65 @@ function fvStoreList() {
   rows.sort(function(a, b){ return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()); });
   return rows;
 }
+
+/* ─── SPEND / SUPPLIERS — purchases per supplier vs shop income ───────────── */
+function buildSpendView() {
+  var v = document.getElementById('viewSpend'); if (!v) return;
+  if (typeof SHOP_INVOICES === 'undefined') { v.innerHTML = '<div class="manage-card">No invoice data yet.</div>'; return; }
+  var supp = {}, unknownCount = 0;
+  SHOP_INVOICES.forEach(function(iv){
+    if (iv.dup) return;
+    var g = supp[iv.s]; if (!g) { g = supp[iv.s] = { name: iv.s, spendInv:0, spendStmt:0, invCount:0, stmtCount:0, items:[], hasUnknown:false }; }
+    g.items.push(iv);
+    if (iv.ty === 'Statement') { g.stmtCount++; if (iv.t != null) g.spendStmt += iv.t; }
+    else { g.invCount++; if (iv.t == null) { g.hasUnknown = true; unknownCount++; } else g.spendInv += iv.t; }
+  });
+  var supList = [], totalPurch = 0;
+  Object.keys(supp).forEach(function(k){
+    var g = supp[k];
+    g.spend = g.invCount > 0 ? g.spendInv : g.spendStmt;   // statements only count if no invoices (avoid double-count)
+    g.count = g.invCount > 0 ? g.invCount : g.stmtCount;
+    totalPurch += g.spend; supList.push(g);
+  });
+  supList.sort(function(a,b){ return b.spend - a.spend; });
+  var income = 0; try { if (typeof EPOS90 !== 'undefined' && EPOS90.items) EPOS90.items.forEach(function(it){ income += (it.revIncVAT || 0); }); } catch(e){}
+
+  var html = '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;">'
+    + '<div class="grand-label" style="color:#bbf7d0;">SHOP SALES INCOME (last 90 days)</div>'
+    + '<div class="grand-amount" style="color:#fff;">$' + income.toFixed(2) + '</div>'
+    + '<div style="font-size:12px;color:#bbf7d0;margin-top:6px;">Paid to suppliers (these invoices): <strong style="color:#fff;">$' + totalPurch.toFixed(2) + '</strong>'
+    + (unknownCount ? ' (+' + unknownCount + ' to confirm)' : '') + '</div></div>';
+  html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
+  html += '<div id="spendList"></div>';
+  html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
+  html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">“Income” is your total shop sales. Linking income to one supplier needs product→supplier tagging — ask me and I’ll set it up.</div>';
+  v.innerHTML = html;
+  window._spendSuppliers = supList;
+  renderSpendRows();
+}
+
+function renderSpendRows() {
+  var el = document.getElementById('spendList'); if (!el) return;
+  var q = ((document.getElementById('spendSearch') || {}).value || '').trim().toLowerCase();
+  var list = (window._spendSuppliers || []).filter(function(g){ return !q || g.name.toLowerCase().indexOf(q) >= 0; });
+  var html = '';
+  list.forEach(function(g, gi){
+    html += '<div class="order-summary-card">'
+      + '<div onclick="fvToggleSupp(' + gi + ')" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">'
+      + '<span style="font-weight:700;color:#1c4587;">' + fvEsc(g.name) + ' <span style="font-weight:400;color:#6b7280;font-size:11px;">(' + g.count + ' invoice' + (g.count === 1 ? '' : 's') + ')</span></span>'
+      + '<span style="font-weight:800;">$' + g.spend.toFixed(2) + (g.hasUnknown ? ' +' : '') + '</span></div>'
+      + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
+    g.items.slice().sort(function(a,b){ return a.d < b.d ? -1 : 1; }).forEach(function(iv){
+      html += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;border-top:1px solid #f0f0f0;padding:4px 0;">'
+        + '<span>' + iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '') + '</span>'
+        + '<span>' + (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2))) + '</span></div>';
+    });
+    html += '</div></div>';
+  });
+  if (!list.length) html += '<div class="empty-state">No suppliers match.</div>';
+  el.innerHTML = html;
+}
+function fvToggleSupp(i){ var e = document.getElementById('supp' + i); if (e) e.style.display = (e.style.display === 'none' ? 'block' : 'none'); }
 
 function buildStoreView() {
   var v = document.getElementById('viewStore'); if (!v) return;
