@@ -1217,8 +1217,8 @@
     <video id="scanVideo" playsinline muted></video>
     <div class="scan-frame"></div>
   </div>
-  <div class="scan-hint">Point the camera at a barcode…</div>
-  <button class="scan-cancel" onclick="fvStopScan()">Cancel</button>
+  <div class="scan-hint" id="scanHint">Point the camera at a barcode…</div>
+  <button class="scan-cancel" id="scanCancelBtn" onclick="fvStopScan()">Cancel</button>
 </div>
 
 <!-- Login gate -->
@@ -1595,7 +1595,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v39';
+var APP_BUILD = 'v40';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4803,7 +4803,11 @@ function buildStoreView() {
   v.innerHTML =
     '<div class="manage-card">'
     + '<div class="manage-title">🏬 Store — product lookup</div>'
-    + '<button class="inv-add-btn" style="margin:0 0 10px;" onclick="fvScanBarcode()">📷 Scan barcode</button>'
+    + '<div style="display:flex;gap:8px;margin:0 0 10px;">'
+    +   '<button class="inv-add-btn" style="margin:0;flex:1;" onclick="fvScanBarcode()">📷 Scan barcode</button>'
+    +   '<button class="inv-add-btn" style="margin:0;flex:1;background:#7c3aed;" onclick="fvStockTakeStart()">📋 Stock Take</button>'
+    + '</div>'
+    + '<div id="stockTakePanel" style="display:none;border:1px solid #ddd6fe;background:#faf5ff;border-radius:10px;padding:12px;margin:0 0 10px;"></div>'
     + '<div id="storeResult"></div>'
     + '<input id="storeSearch" type="text" placeholder="Search by name or barcode…" oninput="renderStoreRows()" autocomplete="off" '
     +   'style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
@@ -4811,6 +4815,7 @@ function buildStoreView() {
     + '<div class="pl-table-wrap"><table class="pl-table" id="storeTable"></table></div>'
     + '</div>';
   renderStoreRows();
+  fvRenderStockTake();
 }
 
 function renderStoreRows() {
@@ -4859,11 +4864,22 @@ function editStock(idx) {
    Uses the browser's native BarcodeDetector (Chrome on Android). Falls back to
    typing the number if unsupported. Camera needs HTTPS + the user's permission. */
 var fvScanStream = null, fvScanTimer = null, fvScanDetector = null;
+var fvScanMode = 'lookup';            // 'lookup' = scan → price · 'count' = stock take
+var fvLastCode = '', fvLastCodeAt = 0;
 
-function fvScanBarcode() {
+function fvScanBarcode() { fvScanMode = 'lookup'; fvOpenScanner(); }
+function fvStockScan()   { fvScanMode = 'count';  fvOpenScanner(); }
+
+function fvOpenScanner() {
   var video = document.getElementById('scanVideo');
   var modal = document.getElementById('scanModal');
+  var hint  = document.getElementById('scanHint');
+  var btn   = document.getElementById('scanCancelBtn');
+  var counting = (fvScanMode === 'count');
+  if (hint) hint.textContent = counting ? 'Scan each item to count it…' : 'Point the camera at a barcode…';
+  if (btn)  btn.textContent  = counting ? 'Done' : 'Cancel';
   if (!('BarcodeDetector' in window)) {
+    if (counting) { var cc = prompt('Type a barcode to count it:'); if (cc && cc.trim()) fvCountCode(cc.trim()); fvScanShowSummary(); return; }
     var typed = prompt('Live scanning needs Chrome on Android. You can type the barcode number instead:');
     if (typed && typed.trim()) fvBarcodeResult(typed.trim());
     return;
@@ -4878,9 +4894,18 @@ function fvScanBarcode() {
     fvScanTimer = setInterval(function(){
       if (!fvScanDetector || !video.videoWidth) return;
       fvScanDetector.detect(video).then(function(codes){
-        if (codes && codes.length && codes[0].rawValue) { var val = codes[0].rawValue; fvStopScan(); fvBarcodeResult(val); }
+        if (!codes || !codes.length || !codes[0].rawValue) return;
+        var val = codes[0].rawValue;
+        if (fvScanMode === 'count') {
+          var now = Date.now();
+          if (val === fvLastCode && (now - fvLastCodeAt) < 1500) return;   // debounce a held item
+          fvLastCode = val; fvLastCodeAt = now;
+          fvCountCode(val);                                                // keep scanning
+        } else {
+          fvStopScan(); fvBarcodeResult(val);
+        }
       }).catch(function(){});
-    }, 350);
+    }, 300);
   }).catch(function(e){
     fvStopScan();
     alert('Could not open the camera (' + ((e && e.message) || 'permission needed') + '). Allow camera access for this page and try again.');
@@ -4892,6 +4917,19 @@ function fvStopScan() {
   if (fvScanStream) { try { fvScanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){} fvScanStream = null; }
   var v = document.getElementById('scanVideo'); if (v) v.srcObject = null;
   var modal = document.getElementById('scanModal'); if (modal) modal.classList.remove('show');
+  if (fvScanMode === 'count') fvScanShowSummary();
+}
+
+function fvScanShowSummary() { showView('Store'); fvRenderStockTake(); }
+
+function fvCountCode(code) {
+  var idx = fvFindByBarcode(code);
+  var hint = document.getElementById('scanHint');
+  try { if (navigator.vibrate) navigator.vibrate(idx < 0 ? 120 : 40); } catch(e){}
+  if (idx < 0) { if (hint) hint.textContent = '❓ Unknown barcode ' + code + ' — skipped'; return; }
+  fvStockActive = true;
+  fvStockSession[idx] = (fvStockSession[idx] || 0) + 1;
+  if (hint) hint.textContent = '✅ ' + PRODUCTS[idx][3] + '  (×' + fvStockSession[idx] + ')';
 }
 
 function fvFindByBarcode(code) {
@@ -4928,6 +4966,86 @@ function fvBarcodeResult(code) {
       + '</div></div>';
     res.scrollIntoView({ behavior: 'smooth' });
   }
+}
+
+/* ─── STOCK TAKE MODE (scan → running count → apply to stock / export) ──────── */
+var fvStockSession = {}, fvStockActive = false;
+
+function fvStockTakeStart() {
+  fvStockActive = true;
+  showView('Store');
+  fvRenderStockTake();
+  fvStockScan();              // jump straight into counting
+}
+
+function fvRenderStockTake() {
+  var el = document.getElementById('stockTakePanel'); if (!el) return;
+  if (!fvStockActive) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  var idxs = Object.keys(fvStockSession);
+  var totalUnits = 0;
+  var html = '<div style="font-weight:800;color:#6d28d9;font-size:15px;margin-bottom:2px;">📋 Stock Take</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">Scan items to count them, adjust below, then apply to stock or export.</div>'
+    + '<button class="inv-add-btn" style="margin:0 0 10px;background:#7c3aed;" onclick="fvStockScan()">📷 Scan to count</button>';
+  if (!idxs.length) {
+    html += '<div style="font-size:12px;color:#6b7280;">No items counted yet.</div>'
+      + '<div style="margin-top:10px;"><button class="inv-add-btn" style="margin:0;background:#6b7280;" onclick="fvStockClear()">Close</button></div>';
+    el.innerHTML = html; return;
+  }
+  html += '<div class="pl-table-wrap"><table class="pl-table"><tr><th>Product</th><th class="right">Count</th><th></th></tr>';
+  idxs.forEach(function(k){
+    var idx = parseInt(k, 10), p = PRODUCTS[idx], n = fvStockSession[idx]; totalUnits += n;
+    html += '<tr><td><span style="font-weight:600;">' + fvEsc(p[3]) + '</span><br><span style="font-size:10px;color:#6b7280;">' + fvEsc(p[0]||'') + (p[9] ? ' · ' + fvEsc(p[9]) : '') + '</span></td>'
+      + '<td class="right" style="white-space:nowrap;"><span onclick="fvStockAdjust(' + idx + ',-1)" style="display:inline-block;width:26px;height:26px;line-height:24px;text-align:center;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;">−</span> <strong style="display:inline-block;min-width:22px;text-align:center;">' + n + '</strong> <span onclick="fvStockAdjust(' + idx + ',1)" style="display:inline-block;width:26px;height:26px;line-height:24px;text-align:center;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;">＋</span></td>'
+      + '<td class="right"><span onclick="fvStockRemove(' + idx + ')" style="color:#dc2626;cursor:pointer;font-weight:700;">✕</span></td></tr>';
+  });
+  html += '</table></div>';
+  html += '<div style="font-size:12px;margin:8px 0;font-weight:700;">' + idxs.length + ' products · ' + totalUnits + ' units counted</div>';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    + '<button class="inv-add-btn" style="margin:0;flex:1 1 30%;" onclick="fvStockApply()">✅ Apply to stock</button>'
+    + '<button class="inv-add-btn" style="margin:0;flex:1 1 30%;background:#1c4587;" onclick="fvStockExport()">⬇️ Export CSV</button>'
+    + '<button class="inv-add-btn" style="margin:0;flex:1 1 30%;background:#b91c1c;" onclick="fvStockClear()">🗑️ Clear</button>'
+    + '</div>';
+  el.innerHTML = html;
+}
+
+function fvStockAdjust(idx, delta) {
+  fvStockSession[idx] = (fvStockSession[idx] || 0) + delta;
+  if (fvStockSession[idx] <= 0) delete fvStockSession[idx];
+  fvRenderStockTake();
+}
+function fvStockRemove(idx) { delete fvStockSession[idx]; fvRenderStockTake(); }
+function fvStockClear() {
+  if (Object.keys(fvStockSession).length && !confirm('Clear this stock take session?')) return;
+  fvStockSession = {}; fvStockActive = false; fvRenderStockTake();
+}
+function fvStockApply() {
+  var idxs = Object.keys(fvStockSession);
+  if (!idxs.length) { alert('Nothing counted yet.'); return; }
+  var o = loadStock();
+  idxs.forEach(function(k){ o[orderKey(PRODUCTS[parseInt(k,10)])] = fvStockSession[k]; });
+  saveStock(o);
+  alert('✅ Stock on hand updated for ' + idxs.length + ' product' + (idxs.length===1?'':'s') + '.');
+  renderStoreRows();
+}
+function fvStockExport() {
+  var idxs = Object.keys(fvStockSession);
+  if (!idxs.length) { alert('Nothing to export.'); return; }
+  function c(s){ s = String(s == null ? '' : s); return /[",\n]/.test(s) ? ('"' + s.replace(/"/g,'""') + '"') : s; }
+  var lines = ['Product,Category,Barcode,Count,Buy,Sell'];
+  idxs.forEach(function(k){
+    var idx = parseInt(k,10), p = PRODUCTS[idx];
+    var cost = (p[6]!=null)?p[6]:(p[5]!=null?p[5]:'');
+    var sell = (p[7]!=null)?p[7]:'';
+    lines.push([c(p[3]), c(p[0]||''), c(p[9]||''), fvStockSession[idx], cost, sell].join(','));
+  });
+  try {
+    var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'stocktake.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  } catch(e) { alert('Export not supported on this device.'); }
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
