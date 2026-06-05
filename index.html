@@ -425,6 +425,19 @@
     .acct-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: #111827; }
     .acct-role { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 6px; padding: 1px 8px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
     .acct-logout { margin-left: auto; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    /* Barcode scanner */
+    .scan-overlay { position: fixed; inset: 0; z-index: 100002; background: #000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+    .scan-overlay.show { display: flex; }
+    .scan-box { position: relative; width: 100%; max-width: 520px; }
+    #scanVideo { width: 100%; height: auto; display: block; background: #000; }
+    .scan-frame { position: absolute; top: 34%; left: 10%; right: 10%; height: 32%; border: 3px solid #2f9e44; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); pointer-events: none; }
+    .scan-hint { color: #fff; text-align: center; margin-top: 18px; font-size: 15px; }
+    .scan-cancel { display: block; margin: 18px auto 0; background: #fff; color: #111; border: none; border-radius: 10px; padding: 12px 28px; font-size: 16px; font-weight: 700; cursor: pointer; }
+    .scan-result { border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    .scan-result.hit { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .scan-result.miss { background: #fef9c3; border: 1px solid #fde68a; font-size: 13px; }
+    .scan-prices { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #374151; }
+    .scan-prices strong { font-size: 16px; }
 
     /* ── SMS Import ── */
     .dest-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
@@ -1198,6 +1211,16 @@
   </div>
 </div>
 
+<!-- Barcode scanner -->
+<div class="scan-overlay" id="scanModal">
+  <div class="scan-box">
+    <video id="scanVideo" playsinline muted></video>
+    <div class="scan-frame"></div>
+  </div>
+  <div class="scan-hint">Point the camera at a barcode…</div>
+  <button class="scan-cancel" onclick="fvStopScan()">Cancel</button>
+</div>
+
 <!-- Login gate -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
@@ -1572,7 +1595,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v38';
+var APP_BUILD = 'v39';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4769,7 +4792,7 @@ function fvStoreList() {
     var name = p[3]; if (!name) return;
     var cost = (p[6] != null) ? p[6] : (p[5] != null ? p[5] : null);
     var sell = (p[7] != null) ? p[7] : null;
-    rows.push({ idx: i, name: name, cat: p[0] || '', cost: cost, sell: sell });
+    rows.push({ idx: i, name: name, cat: p[0] || '', cost: cost, sell: sell, bc: p[9] || null });
   });
   rows.sort(function(a, b){ return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()); });
   return rows;
@@ -4780,7 +4803,9 @@ function buildStoreView() {
   v.innerHTML =
     '<div class="manage-card">'
     + '<div class="manage-title">🏬 Store — product lookup</div>'
-    + '<input id="storeSearch" type="text" placeholder="Search any product…" oninput="renderStoreRows()" autocomplete="off" '
+    + '<button class="inv-add-btn" style="margin:0 0 10px;" onclick="fvScanBarcode()">📷 Scan barcode</button>'
+    + '<div id="storeResult"></div>'
+    + '<input id="storeSearch" type="text" placeholder="Search by name or barcode…" oninput="renderStoreRows()" autocomplete="off" '
     +   'style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
     + '<div id="storeCount" style="font-size:11px;color:#6b7280;margin:6px 0 8px;"></div>'
     + '<div class="pl-table-wrap"><table class="pl-table" id="storeTable"></table></div>'
@@ -4798,13 +4823,13 @@ function renderStoreRows() {
   var html = '<tr><th>Product</th><th class="right">Buy</th><th class="right">Sell</th><th class="right">Stock</th></tr>';
   var shown = 0;
   rows.forEach(function(r){
-    var text = (r.name + ' ' + r.cat).toLowerCase();
+    var text = (r.name + ' ' + r.cat + ' ' + (r.bc || '')).toLowerCase();
     if (words.length && !words.every(function(w){ return text.indexOf(w) >= 0; })) return;
     shown++;
     var key = orderKey(PRODUCTS[r.idx]);
     var st = stock[key];
     html += '<tr>'
-      + '<td><span style="font-weight:600;">' + fvEsc(r.name) + '</span><br><span style="font-size:10px;color:#6b7280;">' + fvEsc(r.cat) + '</span></td>'
+      + '<td><span style="font-weight:600;">' + fvEsc(r.name) + '</span><br><span style="font-size:10px;color:#6b7280;">' + fvEsc(r.cat) + (r.bc ? ' · ' + fvEsc(r.bc) : '') + '</span></td>'
       + '<td class="right">' + (r.cost != null ? '$' + Number(r.cost).toFixed(2) : '—') + '</td>'
       + '<td class="right">' + (r.sell != null ? '$' + Number(r.sell).toFixed(2) : '—') + '</td>'
       + '<td class="right"><span onclick="editStock(' + r.idx + ')" style="display:inline-block;min-width:32px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;">' + (st != null ? st : '＋') + '</span></td>'
@@ -4828,6 +4853,81 @@ function editStock(idx) {
   else { var n = parseFloat(val); if (isNaN(n)) { alert('Please enter a number.'); return; } o[key] = n; }
   saveStock(o);
   renderStoreRows();
+}
+
+/* ─── BARCODE SCANNER (phone camera → product + price) ─────────────────────
+   Uses the browser's native BarcodeDetector (Chrome on Android). Falls back to
+   typing the number if unsupported. Camera needs HTTPS + the user's permission. */
+var fvScanStream = null, fvScanTimer = null, fvScanDetector = null;
+
+function fvScanBarcode() {
+  var video = document.getElementById('scanVideo');
+  var modal = document.getElementById('scanModal');
+  if (!('BarcodeDetector' in window)) {
+    var typed = prompt('Live scanning needs Chrome on Android. You can type the barcode number instead:');
+    if (typed && typed.trim()) fvBarcodeResult(typed.trim());
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Camera not available on this device.'); return; }
+  if (modal) modal.classList.add('show');
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function(stream){
+    fvScanStream = stream; video.srcObject = stream; video.setAttribute('playsinline', ''); video.muted = true;
+    var pl = video.play(); if (pl && pl.catch) pl.catch(function(){});
+    try { fvScanDetector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','codabar'] }); }
+    catch(e) { fvScanDetector = new BarcodeDetector(); }
+    fvScanTimer = setInterval(function(){
+      if (!fvScanDetector || !video.videoWidth) return;
+      fvScanDetector.detect(video).then(function(codes){
+        if (codes && codes.length && codes[0].rawValue) { var val = codes[0].rawValue; fvStopScan(); fvBarcodeResult(val); }
+      }).catch(function(){});
+    }, 350);
+  }).catch(function(e){
+    fvStopScan();
+    alert('Could not open the camera (' + ((e && e.message) || 'permission needed') + '). Allow camera access for this page and try again.');
+  });
+}
+
+function fvStopScan() {
+  if (fvScanTimer) { clearInterval(fvScanTimer); fvScanTimer = null; }
+  if (fvScanStream) { try { fvScanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){} fvScanStream = null; }
+  var v = document.getElementById('scanVideo'); if (v) v.srcObject = null;
+  var modal = document.getElementById('scanModal'); if (modal) modal.classList.remove('show');
+}
+
+function fvFindByBarcode(code) {
+  code = String(code).trim(); if (!code) return -1;
+  for (var i = 0; i < PRODUCTS.length; i++) {
+    if (PRODUCTS[i][9] && String(PRODUCTS[i][9]) === code) return i;
+  }
+  return -1;
+}
+
+function fvBarcodeResult(code) {
+  showView('Store');
+  var res = document.getElementById('storeResult');
+  var idx = fvFindByBarcode(code);
+  if (idx < 0) {
+    if (res) res.innerHTML = '<div class="scan-result miss">🔍 No product matches barcode <strong>' + fvEsc(code) + '</strong>. Search by name below, or add this barcode to the product in EPOS and re-export.</div>';
+    if (res) res.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  var p = PRODUCTS[idx];
+  var cost = (p[6] != null) ? p[6] : (p[5] != null ? p[5] : null);
+  var sell = (p[7] != null) ? p[7] : null;
+  var st = loadStock()[orderKey(p)];
+  if (res) {
+    res.innerHTML = '<div class="scan-result hit">'
+      + '<div style="font-weight:800;font-size:15px;color:#111;">' + fvEsc(p[3]) + '</div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">' + fvEsc(p[0] || '') + ' · barcode ' + fvEsc(code) + '</div>'
+      + '<div class="scan-prices"><span>Buy <strong>' + (cost != null ? '$' + Number(cost).toFixed(2) : '—') + '</strong></span>'
+      + '<span>Sell <strong style="color:#16a34a;">' + (sell != null ? '$' + Number(sell).toFixed(2) : '—') + '</strong></span>'
+      + '<span>Stock <strong>' + (st != null ? st : '—') + '</strong></span></div>'
+      + '<div style="margin-top:10px;display:flex;gap:8px;">'
+      + '<button class="inv-add-btn" style="margin:0;flex:1;" onclick="editStock(' + idx + ')">📦 Set stock</button>'
+      + '<button class="inv-add-btn" style="margin:0;flex:1;background:#1c4587;" onclick="fvScanBarcode()">📷 Scan next</button>'
+      + '</div></div>';
+    res.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
