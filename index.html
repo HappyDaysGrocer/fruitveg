@@ -411,6 +411,21 @@
     .inv-empty { font-size: 12px; color: #6b7280; }
     .inv-add-btn { margin-top: 8px; width: 100%; background: #15662f; color: #fff; border: none; border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; cursor: pointer; }
 
+    /* ── Login gate (shown by default; hidden once signed in) ── */
+    .login-overlay { position: fixed; inset: 0; z-index: 100001; background: linear-gradient(160deg,#15662f,#0b3d1c); display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-overlay.hidden { display: none; }
+    .login-box { background: #fff; border-radius: 16px; padding: 26px 22px; width: 100%; max-width: 340px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+    .login-logo { font-size: 20px; font-weight: 800; color: #15662f; text-align: center; }
+    .login-sub { font-size: 13px; color: #6b7280; text-align: center; margin: 4px 0 18px; }
+    .login-input { width: 100%; box-sizing: border-box; padding: 13px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 16px; margin-bottom: 12px; }
+    .login-remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; margin-bottom: 16px; }
+    .login-remember input { width: 18px; height: 18px; }
+    .login-btn { width: 100%; background: #15662f; color: #fff; border: none; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 800; cursor: pointer; }
+    .login-error { color: #b91c1c; font-size: 13px; text-align: center; margin-top: 12px; min-height: 18px; }
+    .acct-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: #111827; }
+    .acct-role { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 6px; padding: 1px 8px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
+    .acct-logout { margin-left: auto; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+
     /* ── SMS Import ── */
     .dest-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
     .dest-btn { padding: 11px 4px; background: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; color: #374151; }
@@ -1085,6 +1100,10 @@
   </div>
 
   <div class="view" id="viewManage">
+    <div class="manage-card" id="accountCard">
+      <div class="manage-title">Account</div>
+      <div id="accountBox"></div>
+    </div>
     <div class="manage-card">
       <div class="manage-title">Run Tools</div>
       <button class="manage-btn btn-green" onclick="exportSummary()">📋&nbsp; Copy Summary to Clipboard</button>
@@ -1157,6 +1176,20 @@
       <button class="assist-send" onclick="assistSend()">➤</button>
     </div>
     <input type="file" id="invoiceFile" accept="image/*" capture="environment" style="display:none" onchange="assistPhotoPicked(this)">
+  </div>
+</div>
+
+<!-- Login gate -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">🍏 Happy Days FruitVeg</div>
+    <div class="login-sub">Please sign in to continue</div>
+    <input class="login-input" id="loginUser" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input class="login-input" id="loginPass" type="password" placeholder="Password" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')fvLogin()">
+    <label class="login-remember"><input type="checkbox" id="loginRemember" checked> Keep me signed in on this device</label>
+    <button class="login-btn" id="loginBtn" onclick="fvLogin()">Sign in</button>
+    <div class="login-error" id="loginError"></div>
   </div>
 </div>
 
@@ -1516,7 +1549,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v28';
+var APP_BUILD = 'v29';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1542,6 +1575,7 @@ function init() {
   applyResponsive();
   // Re-measure once fonts/logo have settled
   setTimeout(applyResponsive, 400);
+  fvAuthGate();   // show the login gate unless already signed in on this device
 }
 
 /* ─── BUILD LIST ────────────────────────────────────────────────────────── */
@@ -2295,6 +2329,7 @@ function buildOrdersView() {
       var del=document.createElement('button');
       del.className='parsed-remove';del.textContent='✕';
       del.addEventListener('click',(function(k){return function(){
+        if(!fvConfirmDanger('Remove this item from the order?')) return;
         var o=loadOrders();delete o[k];saveOrders(o);buildOrdersView();refreshAllOrderChips();
       };})(x.key));
       row.appendChild(del);
@@ -2967,7 +3002,7 @@ function refreshOrderMini(idx) {
 
 // Orders summary view
 function clearAllOrders() {
-  if (confirm('Clear all order quantities?')) {
+  if (fvConfirmDanger('Clear ALL order quantities?')) {
     saveOrders({});
     buildOrdersView();
     refreshAllOrderChips();
@@ -3542,7 +3577,7 @@ function removeCustomProduct(idx) {
 }
 
 function clearCustomProducts() {
-  if (confirm('Remove all added products?')) {
+  if (fvConfirmDanger('Remove ALL added products?')) {
     saveCustomProducts([]);
     rebuildProducts();
     buildList();
@@ -5205,6 +5240,101 @@ function fvAddInvoiceItems() {
   if (typeof buildList === 'function') buildList();
   assistAddMsg("✅ Added " + added + " item" + (added === 1 ? '' : 's') + " from " + fvEsc(supName) + " to your products (see 📋 List). Costs came straight off the invoice — set sell prices when you like.", 'bot');
   fvPendingInvoice = null;
+}
+
+/* ─── LOGIN / ACCOUNTS (lightweight client-side gate) ──────────────────────
+   This keeps casual users out and separates owner vs staff powers. It is NOT
+   server-grade security (the code runs in the browser), but passwords are kept
+   as salted SHA-256 hashes so they are never readable in the source. To add a
+   teammate: add a row to FV_USERS with their salted hash (ask me to generate). */
+var FV_SALT = 'fv:HD:grocer:2026';
+var FV_USERS = [
+  { user:'abhishek', name:'Abhishek', role:'owner', hash:'c281530dca8be9092f9ce7b1d853c4e217a1a569429c1d32c1bd31eade3d940b' }
+];
+var fvSession = null;   // { user, name, role }
+
+function fvHash(pw) {
+  var enc = new TextEncoder();
+  return crypto.subtle.digest('SHA-256', enc.encode(FV_SALT + ':' + pw)).then(function(buf){
+    var b = new Uint8Array(buf), h = '';
+    for (var i = 0; i < b.length; i++) h += b[i].toString(16).padStart(2, '0');
+    return h;
+  });
+}
+
+function fvLoadSession() {
+  try {
+    var s = sessionStorage.getItem('fvAuth') || localStorage.getItem('fvAuth');
+    if (s) fvSession = JSON.parse(s);
+  } catch(e) {}
+  return fvSession;
+}
+function fvCurrentRole() { return (fvSession && fvSession.role) || 'guest'; }
+function fvIsOwner()     { return fvCurrentRole() === 'owner'; }
+
+function fvShowLogin() {
+  var o = document.getElementById('loginOverlay'); if (o) o.classList.remove('hidden');
+  var u = document.getElementById('loginUser'); if (u) setTimeout(function(){ u.focus(); }, 200);
+}
+function fvHideLogin() { var o = document.getElementById('loginOverlay'); if (o) o.classList.add('hidden'); }
+
+function fvLogin() {
+  var u   = (document.getElementById('loginUser').value || '').trim().toLowerCase();
+  var p   = document.getElementById('loginPass').value || '';
+  var rem = document.getElementById('loginRemember').checked;
+  var err = document.getElementById('loginError');
+  var btn = document.getElementById('loginBtn');
+  if (err) err.textContent = '';
+  if (!u || !p) { if (err) err.textContent = 'Enter your username and password.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+  fvHash(p).then(function(h){
+    var found = null;
+    for (var i = 0; i < FV_USERS.length; i++)
+      if (FV_USERS[i].user === u && FV_USERS[i].hash === h) { found = FV_USERS[i]; break; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+    if (!found) { if (err) err.textContent = 'Wrong username or password.'; return; }
+    fvSession = { user: found.user, name: found.name, role: found.role };
+    var js = JSON.stringify(fvSession);
+    try {
+      sessionStorage.setItem('fvAuth', js);
+      if (rem) localStorage.setItem('fvAuth', js); else localStorage.removeItem('fvAuth');
+    } catch(e) {}
+    document.getElementById('loginPass').value = '';
+    fvHideLogin();
+    fvRenderAccount();
+  }).catch(function(){
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+    if (err) err.textContent = 'Could not sign in — try again.';
+  });
+}
+
+function fvLogout() {
+  if (!confirm('Log out of this device?')) return;
+  fvSession = null;
+  try { sessionStorage.removeItem('fvAuth'); localStorage.removeItem('fvAuth'); } catch(e) {}
+  fvShowLogin();
+  fvRenderAccount();
+}
+
+function fvRenderAccount() {
+  var el = document.getElementById('accountBox'); if (!el) return;
+  if (!fvSession) { el.innerHTML = '<div class="acct-row">Not signed in</div>'; return; }
+  el.innerHTML = '<div class="acct-row">👤 <strong>' + fvEsc(fvSession.name) + '</strong>'
+    + ' <span class="acct-role">' + fvEsc(fvSession.role) + '</span>'
+    + ' <button class="acct-logout" onclick="fvLogout()">Log out</button></div>';
+}
+
+function fvAuthGate() {
+  fvLoadSession();
+  if (fvSession) { fvHideLogin(); } else { fvShowLogin(); }
+  fvRenderAccount();
+}
+
+/* Confirmation guard for destructive/bulk actions. Everyone gets a prompt;
+   staff get a sterner one (the owner's "are you sure" fail-safe for the team). */
+function fvConfirmDanger(msg) {
+  if (fvIsOwner()) return confirm(msg);
+  return confirm('⚠️ Careful — this can affect everyone.\n\n' + msg + '\n\nAre you sure you want to do this?');
 }
 
 /* ─── VOICE: speech-to-text input + spoken answers (Web Speech API) ──────── */
