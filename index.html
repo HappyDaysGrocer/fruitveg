@@ -654,18 +654,27 @@
     }
     .pl-cat-btn.active { background: #0d1b2a; color: #f4d03f; border-color: #0d1b2a; }
 
-    .pl-table-wrap { background: white; border-radius: 10px; margin-bottom: 12px; }
-    .pl-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    /* 2D scroller: header row stays on top, Product column stays on the left */
+    .pl-table-wrap { background: white; border-radius: 10px; margin-bottom: 12px; overflow: auto; max-height: 70vh; -webkit-overflow-scrolling: touch; }
+    .pl-table { min-width: 100%; border-collapse: collapse; font-size: 12px; }
     .pl-table th {
       position: sticky; top: 0; z-index: 6;
       background: #1c4587; color: white; padding: 8px 10px;
       text-align: left; font-size: 11px; font-weight: 700; white-space: nowrap;
       box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
-    .pl-table th.right, .pl-table td.right { text-align: right; }
+    .pl-table th.right, .pl-table td.right { text-align: right; white-space: nowrap; }
     .pl-table td { padding: 7px 10px; border-bottom: 1px solid #f3f3f3; vertical-align: middle; }
+    /* Frozen Product column (first cell of every row) */
+    .pl-table td:first-child {
+      position: sticky; left: 0; z-index: 5; background: #fff;
+      min-width: 128px; max-width: 168px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.06);
+    }
+    .pl-table th:first-child { left: 0; z-index: 8; }   /* top-left corner: pinned both ways, above all */
     .pl-table tr:last-child td { border-bottom: none; }
     .pl-table tr:hover td { background: #f8fafc; }
+    .pl-table tr:hover td:first-child { background: #f8fafc; }
     .pl-margin-bar {
       display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle; margin-left: 4px;
     }
@@ -1552,7 +1561,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v32';
+var APP_BUILD = 'v33';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
