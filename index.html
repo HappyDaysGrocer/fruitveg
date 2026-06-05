@@ -1076,10 +1076,13 @@
         <button class="dest-btn"        id="destCafe"       onclick="setDest('cafe')">☕ Cafe</button>
       </div>
 
-      <div class="add-section-label" style="margin-top:14px;">Paste SMS or message</div>
-      <textarea class="add-textarea" id="smsInput" placeholder="e.g.&#10;2x Avocado&#10;Bananas x3&#10;5 Lemons&#10;Cauliflower - 10"></textarea>
+      <div class="add-section-label" style="margin-top:14px;">Paste, type, or 🎤 speak the order</div>
+      <textarea class="add-textarea" id="smsInput" placeholder="Type/paste e.g. 2x Avocado, Bananas x3, 5 Lemons&#10;…or tap 🎤 and just talk: &quot;two boxes of bananas and five kilos of spuds&quot;"></textarea>
 
-      <button class="btn-confirm" style="margin-top:12px;" onclick="parseSMSInput()">Parse Message</button>
+      <div style="display:flex; gap:8px; margin-top:12px; align-items:stretch;">
+        <button class="btn-confirm" style="flex:1 1 auto; margin:0;" onclick="parseSMSInput()">Parse Message</button>
+        <button class="assist-mic" id="smsMic" onclick="fvDictate('smsInput','smsMic')" title="Speak your order" style="flex:0 0 auto;">🎤</button>
+      </div>
     </div>
 
     <!-- Parsed results -->
@@ -1549,7 +1552,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v31';
+var APP_BUILD = 'v32';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2606,29 +2609,143 @@ function fuzzyMatch(name) {
   };
 }
 
+/* The bulletproof circle: voice/typed/pasted text → clean items → review → save.
+   With an AI key, messy voice-to-text is understood by the AI. Without one, a
+   strong normaliser + regex still does a solid job. It never dead-ends — if the
+   AI call fails, it falls back to the regex parser automatically. */
 function parseSMSInput() {
-  var text=document.getElementById('smsInput').value.trim();
-  if(!text){alert('Please paste a message first.');return;}
+  var text = document.getElementById('smsInput').value.trim();
+  if (!text) { alert('Type, paste, or tap 🎤 to speak your order first.'); return; }
 
-  var lines=text.split(/[\n\r]+/).map(function(l){return l.trim();}).filter(Boolean);
-  parsedItems=[];
+  if (fvGetKey()) {
+    fvSetParseBusy(true);
+    fvExtractOrder(text).then(function(res){
+      fvSetParseBusy(false);
+      if (res && res.destination) setDest(res.destination);
+      var items = (res && res.items) ? res.items : [];
+      var built = items.filter(function(it){ return it && (it.name || '').trim(); }).map(fvItemToParsed);
+      if (!built.length) { parseSMSRegex(text); return; }   // AI found nothing usable → fall back
+      parsedItems = built;
+      fvShowParsed();
+    }).catch(function(){
+      fvSetParseBusy(false);
+      parseSMSRegex(text);                                   // AI hiccup → never dead-end
+    });
+  } else {
+    parseSMSRegex(text);
+  }
+}
 
+// No-AI path: normalise messy text, then the original line/qty/unit parser.
+function parseSMSRegex(text) {
+  var norm  = fvNormalizeOrderText(text);
+  var lines = norm.split(/[\n\r]+/).map(function(l){ return l.trim(); }).filter(Boolean);
+  if (!lines.length) lines = [text];
+  parsedItems = [];
   lines.forEach(function(line){
-    var parsed      = parseLine(line);
-    var matchResult = fuzzyMatch(parsed.name);
-    parsedItems.push({
-      rawLine:     line,
-      qty:         parsed.qty,
-      unit:        parsed.unit,
-      name:        parsed.name,
-      matchResult: matchResult,
-      matched:     matchResult.matched  // null unless HIGH confidence
+    var parsed = parseLine(line);
+    var mr = fuzzyMatch(parsed.name);
+    parsedItems.push({ rawLine: line, qty: parsed.qty, unit: parsed.unit, name: parsed.name, matchResult: mr, matched: mr.matched });
+  });
+  fvShowParsed();
+}
+
+function fvItemToParsed(it) {
+  var name = (it.name || '').trim();
+  var mr   = fuzzyMatch(name);
+  var qn   = (it.qty === 0 || it.qty) ? Number(it.qty) : null; if (isNaN(qn)) qn = null;
+  return { rawLine: ((qn != null ? qn + ' ' : '') + (it.unit ? it.unit + ' ' : '') + name).trim(),
+           qty: qn, unit: (it.unit || null), name: name, matchResult: mr, matched: mr.matched };
+}
+
+function fvShowParsed() {
+  renderParsedList();
+  var card = document.getElementById('parsedCard');
+  if (card) { card.style.display = 'block'; card.scrollIntoView({ behavior: 'smooth' }); }
+}
+
+function fvSetParseBusy(busy) {
+  var card = document.getElementById('parsedCard');
+  var list = document.getElementById('parsedList');
+  if (busy) {
+    if (card) card.style.display = 'block';
+    if (list) list.innerHTML = '<div style="padding:14px;color:#6b7280;font-size:13px;">🤖 Reading your order…</div>';
+    if (card) card.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+// AI extraction for the order box (handles run-on voice text, spelled numbers, filler).
+var FV_ORDER_SYS = `You turn a grocer's order message (often messy voice-to-text) into clean JSON and nothing else:
+{"destination":"shop|restaurant|cafe|null","items":[{"qty":number_or_null,"unit":"kg|g|box|bunch|each|bag|tray|punnet|pack|null","name":"string"}]}
+Cope with spelled-out numbers (two->2), filler words, and run-on text with no punctuation. Use clean common produce names (nanas->banana, spuds->potato). If a place (restaurant/cafe/shop) is mentioned, set destination, else null. Never invent items. Return only the JSON.`;
+function fvExtractOrder(text) {
+  return fvAICall(FV_ORDER_SYS, [{ text: text }], 900).then(function(t){ return fvParseJSON(t); });
+}
+
+// Normalise messy/voice text for the no-AI parser: words→numbers, units, filler, split into lines.
+function fvNormalizeOrderText(text) {
+  var t = ' ' + String(text).toLowerCase() + ' ';
+  var nums = { zero:'0', one:'1', two:'2', three:'3', four:'4', five:'5', six:'6', seven:'7', eight:'8',
+    nine:'9', ten:'10', eleven:'11', twelve:'12', thirteen:'13', fourteen:'14', fifteen:'15', sixteen:'16',
+    seventeen:'17', eighteen:'18', nineteen:'19', twenty:'20', thirty:'30', forty:'40', fifty:'50' };
+  Object.keys(nums).forEach(function(w){ t = t.replace(new RegExp('\\b' + w + '\\b', 'g'), nums[w]); });
+  t = t.replace(/\b(a couple of|a couple|couple of|couple)\b/g, '2')
+       .replace(/\b(a few|few)\b/g, '3')
+       .replace(/\bhalf\b/g, '0.5')
+       .replace(/\bdozen\b/g, '12')
+       .replace(/\b(a|an)\s+(?=[a-z])/g, '1 ');
+  // units → canonical
+  t = t.replace(/\bkilos?\b|\bkgs\b|\bkilograms?\b/g, 'kg').replace(/\bgrams?\b/g, 'g')
+       .replace(/\bboxes\b|\bbxs?\b|\bcartons?\b|\bctns?\b/g, 'box').replace(/\bpunnets?\b/g, 'punnet')
+       .replace(/\btrays?\b/g, 'tray').replace(/\bbunch(es)?\b/g, 'bunch').replace(/\bbags?\b/g, 'bag')
+       .replace(/\bpacks?\b|\bpackets?\b/g, 'pack').replace(/\bpieces?\b|\bpcs?\b|\beach\b|\bea\b/g, 'each');
+  // destination phrases + filler / lead-ins
+  t = t.replace(/\bfor (the |my |our )?(restaurant|resto|cafe|café|coffee shop|kitchen|shop|store)\b/g, ' ')
+       .replace(/\b(i|we)\s+(need|want|will need|also want|also need|gotta get|have to get)\b/g, ' ')
+       .replace(/\b(get me|grab me|grab|give me|can you get|could you get|please get|please|order|get|need|also)\b/g, ' ')
+       .replace(/\bof\b/g, ' ');
+  // separators → newlines
+  t = t.replace(/[,;]+/g, '\n').replace(/\s+(?:and|plus)\s+(?=\d)/g, '\n');
+  // qty-first run-on: split before each following number ("2 box banana 5 kg potato" → two lines)
+  var out = [];
+  t.split('\n').forEach(function(l){
+    l = l.trim(); if (!l) return;
+    if (/^\d/.test(l)) l = l.replace(/\s+(?=\d)/g, '\n');
+    l.split('\n').forEach(function(x){
+      x = x.replace(/^(me|a|an|the|some|please|and|plus|for|of)\s+/i, '').replace(/[ \t]{2,}/g, ' ').trim();
+      if (!x) return;
+      if (/^[\d.]+\s*(kg|kgs|g|box|boxes|bag|bunch|tray|punnet|pack|each)?$/i.test(x)) return; // qty, no product
+      if (!/[a-z]{2,}/i.test(x)) return;                                                       // no real word
+      out.push(x);
     });
   });
+  return out.join('\n').trim();
+}
 
-  renderParsedList();
-  document.getElementById('parsedCard').style.display='block';
-  document.getElementById('parsedCard').scrollIntoView({behavior:'smooth'});
+/* Reusable voice dictation into any field (the mic on the order box). */
+var _fvRecog = null, _fvRecogOn = false;
+function fvDictate(targetId, micId) {
+  var SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var inp = document.getElementById(targetId);
+  var mic = micId ? document.getElementById(micId) : null;
+  if (!SR) { alert("Voice typing isn't supported here. Use your keyboard's mic button, or type it in."); return; }
+  if (_fvRecogOn && _fvRecog) { try { _fvRecog.stop(); } catch(e){} return; }  // tap again to stop
+  _fvRecog = new SR();
+  _fvRecog.lang = 'en-AU'; _fvRecog.interimResults = true; _fvRecog.continuous = true; _fvRecog.maxAlternatives = 1;
+  var base = inp ? inp.value : ''; if (base && !/\s$/.test(base)) base += ' ';
+  var finalText = '';
+  _fvRecog.onstart  = function(){ _fvRecogOn = true;  if (mic) mic.classList.add('listening'); if (inp) inp.placeholder = 'Listening… talk now, tap 🎤 to stop'; };
+  _fvRecog.onresult = function(e){
+    var interim = '';
+    for (var i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
+    }
+    if (inp) inp.value = (base + finalText + interim).replace(/\s{2,}/g, ' ');
+  };
+  _fvRecog.onerror = function(){};
+  _fvRecog.onend   = function(){ _fvRecogOn = false; if (mic) mic.classList.remove('listening'); };
+  try { _fvRecog.start(); } catch(e){}
 }
 
 function renderParsedList() {
