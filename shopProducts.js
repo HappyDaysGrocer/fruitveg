@@ -1,6 +1,7 @@
 /* Shop product catalogue exported from EPOS Now (2026-06-05), 614 items.
    Schema: [category, stall, phone, name, defaultQty, boxPrice, cost, sellPrice, mustCheck] */
 var SHOP_PRODUCTS = [
+  ['A-B',null,null,'Apples Golden /kg',null,null,2.5,5.5,false],
   ['A-B',null,null,'Apples Granny Smith /kg',null,null,2.5,4.99,false],
   ['A-B',null,null,'Apples Jazz /kg',null,null,5,5.99,false],
   ['A-B',null,null,'Apples Pink Lady /kg',null,null,4.17,5.49,false],
