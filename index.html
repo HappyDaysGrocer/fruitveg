@@ -1000,6 +1000,9 @@
   <!-- List view -->
   <div class="view active" id="viewList"></div>
 
+  <!-- Store / product lookup -->
+  <div class="view" id="viewStore"></div>
+
   <!-- Totals view -->
   <div class="view" id="viewTotals"></div>
 
@@ -1212,6 +1215,7 @@
 <!-- Bottom nav -->
 <div class="bottom-nav">
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
+  <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store</button>
   <button class="nav-btn"        id="navOrders" onclick="showView('Orders')"><span class="nav-icon">📦</span>Orders</button>
   <button class="nav-btn"        id="navTotals" onclick="showView('Totals')"><span class="nav-icon">💰</span>Totals</button>
   <button class="nav-btn"        id="navAdd"    onclick="showView('Add')"><span class="nav-icon">➕</span>Add</button>
@@ -1568,7 +1572,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v37';
+var APP_BUILD = 'v38';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1922,7 +1926,7 @@ function toggleSkip(idx) {
 /* ─── VIEWS ─────────────────────────────────────────────────────────────── */
 
 function showView(name) {
-  ['List','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
+  ['List','Store','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
     document.getElementById('view' + v).classList.toggle('active', v === name);
     document.getElementById('nav'  + v).classList.toggle('active', v === name);
   });
@@ -1939,6 +1943,7 @@ function showView(name) {
   if (name === 'Sell')    buildSellView();
   if (name === 'PL')      buildPLView();
   if (name === 'History') buildHistoryView();
+  if (name === 'Store')   buildStoreView();
   if (typeof applyResponsive === 'function') applyResponsive();
 }
 
@@ -4751,6 +4756,78 @@ function renderPLDay(date) {
 
   html += '</table></div>';
   tableDiv.innerHTML = html;
+}
+
+/* ─── STORE / PRODUCT LOOKUP — search any product's buy/sell + stock ───────── */
+function loadStock() { try { var s = localStorage.getItem('mandiStock'); return s ? JSON.parse(s) : {}; } catch(e) { return {}; } }
+function saveStock(o) { try { localStorage.setItem('mandiStock', JSON.stringify(o)); } catch(e) {} }
+
+// Every product (base produce + shop catalogue), sorted by name, with buy/sell.
+function fvStoreList() {
+  var rows = [];
+  PRODUCTS.forEach(function(p, i){
+    var name = p[3]; if (!name) return;
+    var cost = (p[6] != null) ? p[6] : (p[5] != null ? p[5] : null);
+    var sell = (p[7] != null) ? p[7] : null;
+    rows.push({ idx: i, name: name, cat: p[0] || '', cost: cost, sell: sell });
+  });
+  rows.sort(function(a, b){ return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()); });
+  return rows;
+}
+
+function buildStoreView() {
+  var v = document.getElementById('viewStore'); if (!v) return;
+  v.innerHTML =
+    '<div class="manage-card">'
+    + '<div class="manage-title">🏬 Store — product lookup</div>'
+    + '<input id="storeSearch" type="text" placeholder="Search any product…" oninput="renderStoreRows()" autocomplete="off" '
+    +   'style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
+    + '<div id="storeCount" style="font-size:11px;color:#6b7280;margin:6px 0 8px;"></div>'
+    + '<div class="pl-table-wrap"><table class="pl-table" id="storeTable"></table></div>'
+    + '</div>';
+  renderStoreRows();
+}
+
+function renderStoreRows() {
+  var t = document.getElementById('storeTable'); if (!t) return;
+  var qel = document.getElementById('storeSearch');
+  var q = (qel ? qel.value : '').trim().toLowerCase();
+  var words = q.split(/\s+/).filter(Boolean);
+  var stock = loadStock();
+  var rows = fvStoreList();
+  var html = '<tr><th>Product</th><th class="right">Buy</th><th class="right">Sell</th><th class="right">Stock</th></tr>';
+  var shown = 0;
+  rows.forEach(function(r){
+    var text = (r.name + ' ' + r.cat).toLowerCase();
+    if (words.length && !words.every(function(w){ return text.indexOf(w) >= 0; })) return;
+    shown++;
+    var key = orderKey(PRODUCTS[r.idx]);
+    var st = stock[key];
+    html += '<tr>'
+      + '<td><span style="font-weight:600;">' + fvEsc(r.name) + '</span><br><span style="font-size:10px;color:#6b7280;">' + fvEsc(r.cat) + '</span></td>'
+      + '<td class="right">' + (r.cost != null ? '$' + Number(r.cost).toFixed(2) : '—') + '</td>'
+      + '<td class="right">' + (r.sell != null ? '$' + Number(r.sell).toFixed(2) : '—') + '</td>'
+      + '<td class="right"><span onclick="editStock(' + r.idx + ')" style="display:inline-block;min-width:32px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;">' + (st != null ? st : '＋') + '</span></td>'
+      + '</tr>';
+  });
+  if (!shown) html += '<tr><td colspan="4" style="color:#6b7280;padding:14px;">No products match.</td></tr>';
+  t.innerHTML = html;
+  var c = document.getElementById('storeCount');
+  if (c) c.textContent = shown + ' of ' + rows.length + ' products' + (q ? (' matching “' + q + '”') : '') + ' · tap a Stock cell to set stock on hand';
+}
+
+function editStock(idx) {
+  if (!PRODUCTS[idx]) return;
+  var key = orderKey(PRODUCTS[idx]);
+  var o = loadStock();
+  var cur = (o[key] != null) ? o[key] : '';
+  var val = prompt('Stock on hand for "' + PRODUCTS[idx][3] + '":', cur);
+  if (val === null) return;
+  val = String(val).trim();
+  if (val === '') { delete o[key]; }
+  else { var n = parseFloat(val); if (isNaN(n)) { alert('Please enter a number.'); return; } o[key] = n; }
+  saveStock(o);
+  renderStoreRows();
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
