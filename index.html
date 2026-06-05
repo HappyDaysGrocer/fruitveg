@@ -385,6 +385,24 @@
     .box-fill-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     .box-fill-over { color: #b91c1c; font-weight: 700; }
 
+    /* ── Smart AI connect panel + typing dots ── */
+    .assist-ai-setup { padding: 0 14px; }
+    .ai-setup { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px; margin: 8px 0; }
+    .ai-setup-title { font-weight: 800; color: #15662f; font-size: 14px; margin-bottom: 4px; }
+    .ai-setup-note { font-size: 11px; color: #4b5563; margin-bottom: 8px; line-height: 1.45; }
+    .ai-setup input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
+    .ai-setup button { background: #15662f; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; font-size: 13px; cursor: pointer; }
+    .ai-setup-help { margin-top: 8px; font-size: 12px; }
+    .ai-setup-help a { color: #1c4587; font-weight: 600; text-decoration: none; }
+    .ai-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 7px 10px; margin: 8px 0; font-size: 12px; color: #065f46; font-weight: 700; }
+    .ai-status small { color: #059669; font-weight: 600; }
+    .ai-status button { margin-left: auto; background: #fff; border: 1px solid #cbd5e1; color: #374151; border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: 600; }
+    .assist-thinking { display: inline-flex; gap: 4px; align-items: center; }
+    .assist-thinking span { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; display: inline-block; animation: fvdot 1s infinite ease-in-out; }
+    .assist-thinking span:nth-child(2) { animation-delay: .15s; }
+    .assist-thinking span:nth-child(3) { animation-delay: .3s; }
+    @keyframes fvdot { 0%,80%,100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
+
     /* ── SMS Import ── */
     .dest-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
     .dest-btn { padding: 11px 4px; background: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; color: #374151; }
@@ -1120,6 +1138,7 @@
       </div>
       <button class="assist-close" onclick="closeAssistant()">×</button>
     </div>
+    <div class="assist-ai-setup" id="assistAISetup"></div>
     <div class="assist-messages" id="assistMessages"></div>
     <div class="assist-chips" id="assistChips"></div>
     <div class="assist-input-row">
@@ -1487,7 +1506,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v26';
+var APP_BUILD = 'v27';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4669,6 +4688,7 @@ function openAssistant() {
     ASSIST_GREETED = true;
   }
   renderAssistChips();
+  fvRenderAISetup();
   setTimeout(function(){ document.getElementById('assistInput').focus(); }, 300);
 }
 function closeAssistant() { document.getElementById('assistOverlay').classList.remove('open'); }
@@ -4790,6 +4810,49 @@ function assistMaybeOrder(q) {
   return { dest: dest, total: total, matched: matched, allMatched: (total > 0 && matched === total) };
 }
 
+/* Rule-based handling — used when no AI key is connected, or as a fallback if
+   the AI call fails. */
+function assistHandleRuleBased(q, viaVoice) {
+  var routed = assistMaybeOrder(q);
+  if (routed) {
+    var label = routed.dest.charAt(0).toUpperCase() + routed.dest.slice(1);
+    var msg, delay;
+    if (routed.allMatched) {
+      var n = confirmOrderImport(true);
+      showView('Orders');
+      msg = "✅ Saved " + n + " item" + (n === 1 ? '' : 's') + " to the " + label
+          + " order — every item matched cleanly. It's on the 🧾 Orders tab now.";
+      delay = 1300;
+    } else {
+      var need = routed.total - routed.matched;
+      msg = "✅ Loaded " + routed.total + " item" + (routed.total === 1 ? '' : 's')
+          + " as a " + label + " order"
+          + (need > 0 ? " (" + need + " need" + (need === 1 ? 's' : '') + " a quick check)" : "")
+          + ". I've opened it on the ➕ Add tab — confirm the items and tap “✓ Save Order”.";
+      delay = 900;
+    }
+    assistAddMsg(msg, 'bot');
+    if (viaVoice) assistSpeak(msg);
+    setTimeout(closeAssistant, delay);
+    return;
+  }
+  setTimeout(function(){
+    var ans = assistAnswer(q);
+    assistAddMsg(ans, 'bot');
+    if (viaVoice) assistSpeak(ans);
+  }, 200);
+}
+
+function assistAddThinking() {
+  var m = document.createElement('div');
+  m.className = 'assist-msg bot assist-thinking';
+  m.innerHTML = '<span></span><span></span><span></span>';
+  var box = document.getElementById('assistMessages');
+  box.appendChild(m); box.scrollTop = box.scrollHeight;
+  return m;
+}
+function assistRemoveThinking(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+
 function assistSend() {
   var inp = document.getElementById('assistInput');
   var q = inp.value.trim();
@@ -4798,38 +4861,191 @@ function assistSend() {
   assistAddMsg(q, 'user');
   inp.value = '';
 
-  // Order intent → push it into Import Order from SMS instead of answering as a question.
-  var routed = assistMaybeOrder(q);
-  if (routed) {
-    var label = routed.dest.charAt(0).toUpperCase() + routed.dest.slice(1);
-    var msg, delay;
-    if (routed.allMatched) {
-      // Every item matched with high confidence → save it straight away (no review needed).
-      var n = confirmOrderImport(true);
-      showView('Orders');                                  // reveal the order it landed in
-      msg = "✅ Saved " + n + " item" + (n === 1 ? '' : 's') + " to the " + label
-          + " order — every item matched cleanly. It's on the 🧾 Orders tab now.";
-      delay = 1300;
-    } else {
-      // Some items need a human eye → leave it on the Add tab for review.
-      var need = routed.total - routed.matched;
-      msg = "✅ Loaded " + routed.total + " item" + (routed.total === 1 ? '' : 's')
-          + " into Import Order from SMS as a " + label + " order"
-          + (need > 0 ? " (" + need + " need" + (need === 1 ? 's' : '') + " a quick check)" : "")
-          + ". I've opened it on the ➕ Add tab — confirm the items and tap “✓ Save Order”.";
-      delay = 900;
-    }
-    assistAddMsg(msg, 'bot');
-    if (viaVoice) assistSpeak(msg);
-    setTimeout(closeAssistant, delay);                     // let them read the confirmation, then reveal the result
-    return;
-  }
+  // No AI key → use the built-in rule-based brain.
+  if (!fvGetKey()) { assistHandleRuleBased(q, viaVoice); return; }
 
-  setTimeout(function(){
-    var ans = assistAnswer(q);
-    assistAddMsg(ans, 'bot');
-    if (viaVoice) assistSpeak(ans);   // speak the answer back when the question was spoken
-  }, 200);
+  // AI brain: let Claude work out intent + extract any order, then act.
+  var thinking = assistAddThinking();
+  fvAskClaude(q).then(function(res){
+    assistRemoveThinking(thinking);
+    if (res && res.intent === 'order' && res.items && res.items.length) {
+      var dest = res.destination || 'shop';
+      var r = fvFileOrder(dest, res.items);
+      var label = dest.charAt(0).toUpperCase() + dest.slice(1);
+      var lead = res.reply ? (res.reply + "\n\n") : "";
+      var msg;
+      if (r.allMatched) {
+        msg = lead + "✅ Saved " + r.saved + " item" + (r.saved === 1 ? '' : 's')
+            + " to the " + label + " order — all matched. It's on the 🧾 Orders tab.";
+      } else {
+        var need = r.total - r.matched;
+        msg = lead + "✅ Loaded " + r.total + " item" + (r.total === 1 ? '' : 's')
+            + " as a " + label + " order"
+            + (need > 0 ? " (" + need + " need a quick check)" : "")
+            + ". Open ➕ Add and tap “✓ Save Order”.";
+      }
+      assistAddMsg(msg, 'bot');
+      if (viaVoice) assistSpeak(res.reply || ("Saved your " + label + " order."));
+      setTimeout(closeAssistant, r.allMatched ? 1500 : 1900);
+      return;
+    }
+    if (res && res.intent === 'question') {
+      var ans = assistAnswer(q);             // answer data questions from the real numbers
+      assistAddMsg(ans, 'bot');
+      if (viaVoice) assistSpeak(ans);
+      return;
+    }
+    var reply = (res && res.reply) ? res.reply : "I didn't quite catch that — want to try again?";
+    assistAddMsg(reply, 'bot');
+    if (viaVoice) assistSpeak(reply);
+  }).catch(function(e){
+    assistRemoveThinking(thinking);
+    assistAddMsg("⚠️ AI hiccup (" + ((e && e.message) || 'unavailable') + ") — using basic mode for this one.", 'bot');
+    assistHandleRuleBased(q, viaVoice);
+  });
+}
+
+/* ─── SMART AI BRAIN (Claude, connected with the user's own key) ───────────
+   The key is stored only on this device (localStorage) and sent only to
+   api.anthropic.com over HTTPS. Never logged, never placed in a URL. */
+function fvGetKey()  { try { return localStorage.getItem('fvAIKey') || ''; } catch(e){ return ''; } }
+function fvClearKey(){ try { localStorage.removeItem('fvAIKey'); localStorage.removeItem('fvAIModel'); } catch(e){} }
+
+function fvPickModel(ids) {
+  var prefs = [/haiku/i, /sonnet/i];
+  for (var p = 0; p < prefs.length; p++)
+    for (var i = 0; i < ids.length; i++)
+      if (prefs[p].test(ids[i])) return ids[i];
+  return ids[0] || 'claude-3-5-haiku-latest';
+}
+
+// Validate the key by listing models, then remember the cheapest good one.
+function fvSaveKey(k) {
+  k = (k || '').trim();
+  if (!k) return Promise.reject(new Error('paste your key first'));
+  return fetch('https://api.anthropic.com/v1/models?limit=100', {
+    headers: {
+      'x-api-key': k,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    }
+  }).then(function(r){
+    if (!r.ok) throw new Error('key rejected (' + r.status + ')');
+    return r.json();
+  }).then(function(d){
+    var ids = (d && d.data) ? d.data.map(function(m){ return m.id; }) : [];
+    var model = fvPickModel(ids);
+    try { localStorage.setItem('fvAIKey', k); localStorage.setItem('fvAIModel', model); } catch(e){}
+    return model;
+  });
+}
+
+var FV_SYS = `You are the built-in assistant inside "Happy Days FruitVeg", a grocer's produce-buying app. The user types or speaks (their speech may be messy). Work out what they want and reply with ONLY one JSON object, no markdown and no text around it, shaped exactly:
+{"intent":"order|question|chat","destination":"shop|restaurant|cafe|null","items":[{"qty":number_or_null,"unit":"kg|g|box|bunch|each|pack|punnet|tray|null","name":"string"}],"reply":"one short friendly Australian-tone sentence"}
+Rules:
+- "order": the user is placing or recording an order, or saying what the shop/restaurant/cafe needs. Put every line item in "items" with a clean common produce name (nanas->banana, spuds->potato). Infer "destination" from context; if unclear use "shop".
+- "question": the user asks about prices, spend, margins, suppliers, history or any numbers. Leave items empty; the app answers with real data, so keep "reply" short like "Let me check that.".
+- "chat": anything else; reply naturally and briefly.
+- Never invent prices or figures.
+Return only the JSON object.`;
+
+function fvParseJSON(txt) {
+  if (!txt) throw new Error('empty AI response');
+  var s = txt.indexOf('{'), e = txt.lastIndexOf('}');
+  return JSON.parse((s >= 0 && e >= s) ? txt.slice(s, e + 1) : txt);
+}
+
+function fvAskClaude(userText) {
+  var key = fvGetKey();
+  if (!key) return Promise.reject(new Error('no AI key'));
+  var model = '';
+  try { model = localStorage.getItem('fvAIModel') || ''; } catch(e){}
+  if (!model) model = 'claude-3-5-haiku-latest';
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model,
+      max_tokens: 700,
+      system: FV_SYS,
+      messages: [{ role: 'user', content: userText }]
+    })
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(){ throw new Error('AI ' + r.status); });
+    return r.json();
+  }).then(function(d){
+    var txt = (d && d.content && d.content[0] && d.content[0].text) || '';
+    return fvParseJSON(txt);
+  });
+}
+
+// Turn AI-extracted items into the order pipeline; auto-save if all matched.
+function fvFileOrder(dest, items) {
+  setDest(dest || 'shop');
+  parsedItems = (items || []).filter(function(it){ return it && (it.name || '').trim(); }).map(function(it){
+    var name = (it.name || '').trim();
+    var mr = fuzzyMatch(name);
+    var qn = (it.qty === 0 || it.qty) ? Number(it.qty) : null; if (isNaN(qn)) qn = null;
+    var raw = ((qn != null ? qn + ' ' : '') + (it.unit ? it.unit + ' ' : '') + name).trim();
+    return { rawLine: raw, qty: qn, unit: (it.unit || null), name: name, matchResult: mr, matched: mr.matched };
+  });
+  showView('Add');
+  renderParsedList();
+  var card = document.getElementById('parsedCard'); if (card) card.style.display = 'block';
+  var total = parsedItems.length, matched = 0;
+  parsedItems.forEach(function(p){ if (p.matched) matched++; });
+  if (total > 0 && matched === total) {
+    var n = confirmOrderImport(true);
+    showView('Orders');
+    return { saved: n, total: total, matched: matched, allMatched: true };
+  }
+  if (card) card.scrollIntoView({ behavior: 'smooth' });
+  return { saved: 0, total: total, matched: matched, allMatched: false };
+}
+
+/* AI connect panel inside the assistant */
+function fvRenderAISetup() {
+  var box = document.getElementById('assistAISetup'); if (!box) return;
+  if (fvGetKey()) {
+    var model = '';
+    try { model = localStorage.getItem('fvAIModel') || ''; } catch(e){}
+    box.innerHTML = '<div class="ai-status">⚡ Smart AI connected'
+      + (model ? ' <small>(' + model + ')</small>' : '')
+      + ' <button onclick="fvDisconnectAI()">change</button></div>';
+  } else {
+    box.innerHTML =
+      '<div class="ai-setup">'
+      + '<div class="ai-setup-title">⚡ Make me smart</div>'
+      + '<div class="ai-setup-note">Paste your AI key to chat naturally and take orders by voice/text. It stays on this device only.</div>'
+      + '<input id="aiKeyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">'
+      + '<button id="aiKeyBtn" onclick="fvConnectAI()">Connect</button>'
+      + '<div class="ai-setup-help"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key →</a></div>'
+      + '</div>';
+  }
+}
+function fvConnectAI() {
+  var inp = document.getElementById('aiKeyInput');
+  var btn = document.getElementById('aiKeyBtn');
+  var k = inp ? inp.value : '';
+  if (!k.trim()) { alert('Paste your AI key first.'); return; }
+  if (btn) { btn.textContent = 'Checking…'; btn.disabled = true; }
+  fvSaveKey(k).then(function(){
+    fvRenderAISetup();
+    assistAddMsg("⚡ Smart AI connected! Talk to me normally — give me an order, ask about prices, anything.", 'bot');
+  }).catch(function(e){
+    if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
+    alert('Could not connect: ' + ((e && e.message) || 'check the key and try again') + '.');
+  });
+}
+function fvDisconnectAI() {
+  if (confirm('Disconnect smart AI? You can reconnect anytime with your key.')) {
+    fvClearKey(); fvRenderAISetup();
+  }
 }
 
 /* ─── VOICE: speech-to-text input + spoken answers (Web Speech API) ──────── */
