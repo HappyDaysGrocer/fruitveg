@@ -1137,6 +1137,10 @@
       <div id="driveBox"></div>
     </div>
     <div class="manage-card">
+      <div class="manage-title">☁️ Live stock sync (all devices)</div>
+      <div id="syncBox"></div>
+    </div>
+    <div class="manage-card">
       <div class="manage-title">Run Tools</div>
       <button class="manage-btn btn-green" onclick="exportSummary()">📋&nbsp; Copy Summary to Clipboard</button>
       <button class="manage-btn" style="background:#1c4587;color:white;" onclick="saveRunToHistory()">🕐&nbsp; Save Run to History</button>
@@ -1595,7 +1599,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v41';
+var APP_BUILD = 'v42';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1623,6 +1627,9 @@ function init() {
   setTimeout(applyResponsive, 400);
   fvAuthGate();   // show the login gate unless already signed in on this device
   if (typeof fvRenderDrive === 'function') fvRenderDrive();
+  if (typeof fvRenderSync === 'function') fvRenderSync();
+  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); fvStartSyncPolling(); }
+  window.addEventListener('focus', function(){ if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) fvSyncPull(); });
 }
 
 /* ─── BUILD LIST ────────────────────────────────────────────────────────── */
@@ -4735,26 +4742,7 @@ function renderPLDay(date) {
     });
     html += '</ul></div>';
   }
-  if (plFilter === 'all' && !plSearchTerm && day.corrections && day.corrections.length) {
-    var fx = loadFixedCosts();
-    var done = day.corrections.filter(function(c){ return fx[corrKey(c.name)]; }).length;
-    html += '<div class="corr-box">' +
-      '<div class="corr-head" onclick="toggleCorrBox()">' +
-        '<span>🛠️ <strong>' + day.corrections.length + ' cost corrections</strong> to fix in EPOS — ' +
-        '<span id="corrDone">' + done + '</span>/' + day.corrections.length + ' done</span>' +
-        '<span id="corrArrow">▼</span></div>' +
-      '<div class="corr-body" id="corrBody" style="display:none;">' +
-      '<div class="corr-hint">Update each cost price in EPOS Now, then tick it off:</div>';
-    day.corrections.forEach(function(c){
-      var k = corrKey(c.name); var ck = fx[k] ? ' checked' : '';
-      html += '<label class="corr-row" id="cr-' + k + '"' + (fx[k] ? ' style="opacity:.5"' : '') + '>' +
-        '<input type="checkbox"' + ck + ' onchange="toggleFixedCost(\'' + k + '\',this)">' +
-        '<span class="corr-info"><span class="corr-name">' + c.name + '</span>' +
-        '<span class="corr-prices">was <s>$' + Number(c.unitOld).toFixed(2) + '</s> &rarr; <strong>$' + Number(c.unitC).toFixed(2) + '</strong> /' + c.unit + '</span></span>' +
-        '</label>';
-    });
-    html += '</div></div>';
-  }
+  // Cost-corrections checklist removed — all 32 completed in EPOS.
   html += '<div class="pl-table-wrap"><table class="pl-table">' +
     '<tr><th>Product</th><th class="right">Revenue</th><th class="right">Cost</th>' +
     '<th class="right">Profit</th><th class="right">Margin</th></tr>';
@@ -4862,9 +4850,11 @@ function editStock(idx) {
   var val = prompt('Stock on hand for "' + PRODUCTS[idx][3] + '":', cur);
   if (val === null) return;
   val = String(val).trim();
+  var newVal = null;
   if (val === '') { delete o[key]; }
-  else { var n = parseFloat(val); if (isNaN(n)) { alert('Please enter a number.'); return; } o[key] = n; }
+  else { var n = parseFloat(val); if (isNaN(n)) { alert('Please enter a number.'); return; } o[key] = n; newVal = n; }
   saveStock(o);
+  if (typeof fvSyncPush === 'function') { var u = {}; u[key] = newVal; fvSyncPush(u); }
   renderStoreRows();
 }
 
@@ -5030,9 +5020,10 @@ function fvStockClear() {
 function fvStockApply() {
   var idxs = Object.keys(fvStockSession);
   if (!idxs.length) { alert('Nothing counted yet.'); return; }
-  var o = loadStock();
-  idxs.forEach(function(k){ o[orderKey(PRODUCTS[parseInt(k,10)])] = fvStockSession[k]; });
+  var o = loadStock(); var updates = {};
+  idxs.forEach(function(k){ var key = orderKey(PRODUCTS[parseInt(k,10)]); o[key] = fvStockSession[k]; updates[key] = fvStockSession[k]; });
   saveStock(o);
+  if (typeof fvSyncPush === 'function') fvSyncPush(updates);
   alert('✅ Stock on hand updated for ' + idxs.length + ' product' + (idxs.length===1?'':'s') + '.');
   renderStoreRows();
 }
@@ -5054,6 +5045,89 @@ function fvStockExport() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   } catch(e) { alert('Export not supported on this device.'); }
+}
+
+/* ─── LIVE STOCK SYNC (shared across devices via Firebase Realtime DB REST) ──
+   Stock levels push/pull to a cloud database the team shares. The DB link is
+   entered in-app (not in the public code) and stored on each device. Near-live
+   (pulls every ~15s + on focus); persistent in the cloud so nothing is lost. */
+var fvSyncTimer = null;
+function fvSyncUrl()     { try { return localStorage.getItem('fvSyncUrl') || ''; } catch(e){ return ''; } }
+function fvSyncEnabled() { return !!fvSyncUrl(); }
+function fvSafeKey(s) {
+  try { return btoa(unescape(encodeURIComponent(String(s)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+  catch(e){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
+}
+
+function fvSyncPush(updates) {
+  var url = fvSyncUrl(); if (!url || !updates) return;
+  var body = {};
+  Object.keys(updates).forEach(function(k){ body[fvSafeKey(k)] = (updates[k] == null) ? null : { k: k, q: updates[k] }; });
+  fetch(url + '/stock.json', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function(){});
+}
+
+function fvSyncPull() {
+  var url = fvSyncUrl(); if (!url) return Promise.resolve();
+  return fetch(url + '/stock.json', { cache: 'no-store' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d) return;
+      var local = {};
+      Object.keys(d).forEach(function(sk){ var e = d[sk]; if (e && e.k != null && e.q != null) local[e.k] = e.q; });
+      saveStock(local);
+      var sv = document.getElementById('viewStore');
+      if (sv && sv.classList.contains('active') && typeof renderStoreRows === 'function') renderStoreRows();
+    }).catch(function(){});
+}
+
+function fvSyncSeed() {
+  var o = loadStock(); var keys = Object.keys(o); if (!keys.length) return;
+  var updates = {}; keys.forEach(function(k){ updates[k] = o[k]; });
+  fvSyncPush(updates);
+}
+
+function fvStartSyncPolling() {
+  if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
+  if (fvSyncEnabled()) fvSyncTimer = setInterval(fvSyncPull, 15000);
+}
+
+function fvSyncEnable(url) {
+  url = String(url || '').trim().replace(/\/+$/, '');
+  if (!/^https:\/\/.+/i.test(url)) { alert('Enter the full https:// database link.'); return; }
+  fetch(url + '/stock.json', { cache: 'no-store' }).then(function(r){
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(){
+    try { localStorage.setItem('fvSyncUrl', url); } catch(e){}
+    fvSyncSeed();
+    setTimeout(fvSyncPull, 700);
+    fvStartSyncPolling();
+    fvRenderSync();
+    alert('✓ Live stock sync connected. Stock now syncs across every device using this link.');
+  }).catch(function(e){
+    alert('Could not connect (' + ((e && e.message) || 'check the link') + '). Make sure the database rules allow read & write and the link is the full https URL.');
+  });
+}
+
+function fvSyncConnectFromInput() { var v = document.getElementById('syncUrlInput'); fvSyncEnable(v ? v.value : ''); }
+function fvSyncDisable() {
+  if (!confirm('Turn off live sync on this device? Stock stays here but stops syncing with the team.')) return;
+  try { localStorage.removeItem('fvSyncUrl'); } catch(e){}
+  if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
+  fvRenderSync();
+}
+
+function fvRenderSync() {
+  var el = document.getElementById('syncBox'); if (!el) return;
+  if (fvSyncEnabled()) {
+    el.innerHTML = '<div class="acct-row">☁️ Live sync ON <button class="acct-logout" onclick="fvSyncDisable()">turn off</button></div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-top:6px;">Stock levels sync across everyone on this link — changes appear within ~15 seconds.</div>'
+      + '<button class="inv-add-btn" style="margin:8px 0 0;background:#1c4587;" onclick="fvSyncPull()">⟳ Refresh now</button>';
+  } else {
+    el.innerHTML = '<div style="font-size:12px;color:#4b5563;margin-bottom:8px;">Paste your cloud database link to keep stock levels synced across all phones. One-time setup — ask me for the steps.</div>'
+      + '<input id="syncUrlInput" type="text" placeholder="https://your-app-default-rtdb.firebaseio.com" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-bottom:8px;">'
+      + '<button class="btn-confirm" style="margin:0;" onclick="fvSyncConnectFromInput()">Connect cloud sync</button>';
+  }
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
