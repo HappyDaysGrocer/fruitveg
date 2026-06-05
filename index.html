@@ -1350,7 +1350,10 @@ var PRODUCTS = [
   ['LPG (Joey)',null,'0499551343','Mung Bean Sprouts (1 box)',null,null,null,null,false],
   ['LPG (Joey)',null,'0499551343','Peashoots (1 box)',null,null,null,null,false],
   ['LPG (Joey)',null,'0499551343','Beansprouts (1 box)',null,null,null,null,false],
-  ['LPG (Joey)',null,'0499551343','Alfalfa Sprouts (1 box)',null,null,null,null,false]
+  ['LPG (Joey)',null,'0499551343','Alfalfa Sprouts (1 box)',null,null,null,null,false],
+  // Hygiene Packers Wholesalers — Epping VIC (market pickup) — invoice HPW00177908, 04/06/2026
+  // Golden Delicious 70s Premium $45.00/carton; ~$2.50/kg assuming a standard 18kg apple carton
+  ['Hygiene Packers Wholesalers',null,'0433 849 226','Golden kg',1,45,2.5,null,false]
 ];
 
 /* ─── STATE ─────────────────────────────────────────────────────────────── */
@@ -1484,7 +1487,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v25';
+var APP_BUILD = 'v26';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
