@@ -1248,6 +1248,7 @@
 
 <!-- Pre-loaded 90-day EPOS sales data (auto-cleaned) -->
 <script src="epos90.js"></script>
+<script src="shopProducts.js"></script>
 <script>
 /* ─── DATA ─────────────────────────────────────────────────────────────── */
 
@@ -1430,6 +1431,11 @@ var PRODUCTS = [
   ['Hygiene Packers Wholesalers',null,'0433 849 226','Golden kg',1,45,2.5,null,false]
 ];
 
+// Merge the EPOS shop catalogue (loaded from shopProducts.js) so every shop item is orderable too.
+if (typeof SHOP_PRODUCTS !== 'undefined' && SHOP_PRODUCTS.length) {
+  Array.prototype.push.apply(PRODUCTS, SHOP_PRODUCTS);
+}
+
 /* ─── STATE ─────────────────────────────────────────────────────────────── */
 
 var BASE_PRODUCT_COUNT = PRODUCTS.length;
@@ -1561,7 +1567,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v33';
+var APP_BUILD = 'v34';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
