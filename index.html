@@ -1290,6 +1290,7 @@
 <script src="epos90.js"></script>
 <script src="shopProducts.js"></script>
 <script src="invoices.js"></script>
+<script src="bankledger.js"></script>
 <script>
 /* ─── DATA ─────────────────────────────────────────────────────────────── */
 
@@ -1605,7 +1606,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v51';
+var APP_BUILD = 'v52';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4857,6 +4858,69 @@ function fvReviewToggle(id){
   fvReviewOpen();
 }
 
+/* ── Capital & bank: partner contributions + setup costs from the statement ── */
+function fvCapPaid_(party) {
+  var t = 0;
+  if (typeof CONTRIBUTIONS !== 'undefined') CONTRIBUTIONS.forEach(function (c) { if (c.party === party) t += c.amt; });
+  if (typeof CONTRIB_ADJ !== 'undefined') CONTRIB_ADJ.forEach(function (c) { if (c.party === party) t += c.amt; });
+  return t;
+}
+function fvCapPendingTotal_() {
+  if (typeof CAP_PARTIES === 'undefined') return 0;
+  var pend = 0;
+  CAP_PARTIES.forEach(function (pty) { var d = pty.members * CAP_SHARE - fvCapPaid_(pty.name); if (d > 0) pend += d; });
+  return pend;
+}
+function fvCapitalButtonHTML() {
+  if (typeof CAP_PARTIES === 'undefined') return '';
+  var pend = fvCapPendingTotal_();
+  var bg = pend > 0 ? '#fef3c7' : '#dcfce7', bd = pend > 0 ? '#f59e0b' : '#16a34a', col = pend > 0 ? '#92400e' : '#15803d';
+  var label = pend > 0 ? ('💰 Owner capital — $' + pend.toLocaleString() + ' still pending') : '💰 Owner capital — all paid in';
+  return '<button onclick="fvCapitalOpen()" style="width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px;border:1px solid ' + bd + ';background:' + bg + ';color:' + col + ';border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;text-align:left;">' + label + ' &rsaquo;</button>';
+}
+function fvCapitalClose() { var o = document.getElementById('fvCapitalOverlay'); if (o) o.remove(); }
+function fvCapitalOpen() {
+  var ov = document.getElementById('fvCapitalOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'fvCapitalOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:flex-end;justify-content:center;');
+  ov.onclick = function (e) { if (e.target === ov) fvCapitalClose(); };
+  var money = function (n) { return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var h = '';
+  h += '<div style="font-weight:800;color:#0d4420;font-size:15px;margin:2px 0 8px;">Partner contributions</div>';
+  var totExp = 0, totPaid = 0, anyAssumed = false;
+  (typeof CAP_PARTIES !== 'undefined' ? CAP_PARTIES : []).forEach(function (pty) {
+    var exp = pty.members * CAP_SHARE, paid = fvCapPaid_(pty.name), pend = exp - paid; totExp += exp; totPaid += paid;
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:9px;margin-bottom:6px;background:' + (pend <= 0 ? '#f0fdf4' : '#fffbeb') + ';">'
+      + '<span style="font-weight:700;color:#1c4587;">' + fvEsc(pty.name) + ' <span style="font-weight:400;color:#6b7280;font-size:11px;">(owes $' + exp.toLocaleString() + ')</span></span>'
+      + '<span style="text-align:right;font-size:12px;">paid <strong>$' + paid.toLocaleString() + '</strong>' + (pend > 0 ? '<br><span style="color:#b45309;font-weight:700;">$' + pend.toLocaleString() + ' pending</span>' : '<br><span style="color:#15803d;">✓ full</span>') + '</span></div>';
+  });
+  h += '<div style="font-size:12px;color:#374151;margin:4px 0 10px;">Total in: <strong>$' + totPaid.toLocaleString() + '</strong> of $' + totExp.toLocaleString() + '</div>';
+  h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:6px 0 4px;">Deposits</div>';
+  (typeof CONTRIBUTIONS !== 'undefined' ? CONTRIBUTIONS.slice().sort(function (a, b) { return a.d < b.d ? -1 : 1; }) : []).forEach(function (c) {
+    if (c.conf === 'assumed') anyAssumed = true;
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + c.d + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + (c.conf === 'assumed' ? ' <em style="color:#b45309;">(assumed)</em>' : '') + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
+  });
+  (typeof CONTRIB_ADJ !== 'undefined' ? CONTRIB_ADJ : []).forEach(function (c) {
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#b91c1c;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + c.d + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
+  });
+  if (anyAssumed) h += '<div style="font-size:10px;color:#b45309;margin-top:5px;">(assumed) = deposit had no name; attributed to make the totals balance. Please confirm.</div>';
+  var cats = {}, totEx = 0;
+  (typeof STMT_EXPENSES !== 'undefined' ? STMT_EXPENSES : []).forEach(function (e) { if (e.c === 'Transfer') return; cats[e.c] = (cats[e.c] || 0) + e.a; totEx += e.a; });
+  h += '<div style="font-weight:800;color:#0d4420;font-size:15px;margin:16px 0 8px;">Setup &amp; running costs (from bank) — ' + money(totEx) + '</div>';
+  Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).forEach(function (k) {
+    h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>' + fvEsc(k) + '</span><span style="font-weight:700;">' + money(cats[k]) + '</span></div>';
+  });
+  h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:10px 0 4px;">Every expense (' + (typeof STMT_EXPENSES !== 'undefined' ? STMT_EXPENSES.length : 0) + ') — tap nothing, this is your record</div>';
+  (typeof STMT_EXPENSES !== 'undefined' ? STMT_EXPENSES : []).forEach(function (e, i) {
+    var ref = e.r ? e.r : ('BNK-' + ('000' + (i + 1)).slice(-3));
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + e.d + ' · <strong>' + fvEsc(e.p) + '</strong> · ' + fvEsc(e.n) + ' <span style="color:#9ca3af;">[' + fvEsc(ref) + ']</span></span><span style="font-weight:700;white-space:nowrap;">$' + e.a.toFixed(2) + '</span></div>';
+  });
+  ov.innerHTML = '<div style="background:#fff;width:100%;max-width:600px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:0;background:#fff;"><strong style="font-size:17px;color:#0d4420;">💰 Capital &amp; bank</strong>'
+    + '<button onclick="fvCapitalClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>'
+    + h + '</div>';
+}
+
 function buildSpendView() {
   var v = document.getElementById('viewSpend'); if (!v) return;
   if (typeof SHOP_INVOICES === 'undefined') { v.innerHTML = '<div class="manage-card">No invoice data yet.</div>'; return; }
@@ -4894,6 +4958,7 @@ function buildSpendView() {
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;border-top:1px solid rgba(255,255,255,.25);padding-top:8px;"><span style="font-size:13px;">Rough net</span><strong style="font-size:18px;color:' + (net >= 0 ? '#86efac' : '#fca5a5') + ';">' + (net >= 0 ? '+' : '−') + '$' + Math.abs(net).toFixed(2) + '</strong></div>'
     + '<div style="font-size:10px;color:#9ca3af;margin-top:5px;">Income = last-90-day shop sales; invoices span Jan–Jun, so this net is indicative, not an exact P&amp;L.</div></div>';
   html += fvReviewButtonHTML();
+  html += fvCapitalButtonHTML();
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
