@@ -402,6 +402,14 @@
     .assist-thinking span:nth-child(2) { animation-delay: .15s; }
     .assist-thinking span:nth-child(3) { animation-delay: .3s; }
     @keyframes fvdot { 0%,80%,100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
+    /* invoice review card in the assistant */
+    .invoice-card { background: #fff; border: 1px solid #e5e7eb; width: 100%; box-sizing: border-box; color: #111827; }
+    .inv-head { font-size: 13px; margin-bottom: 4px; }
+    .inv-head small { color: #6b7280; font-weight: 600; }
+    .inv-items { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+    .inv-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #374151; border-bottom: 1px dashed #eef2f7; padding: 2px 0; }
+    .inv-empty { font-size: 12px; color: #6b7280; }
+    .inv-add-btn { margin-top: 8px; width: 100%; background: #15662f; color: #fff; border: none; border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; cursor: pointer; }
 
     /* ── SMS Import ── */
     .dest-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
@@ -1142,11 +1150,13 @@
     <div class="assist-messages" id="assistMessages"></div>
     <div class="assist-chips" id="assistChips"></div>
     <div class="assist-input-row">
-      <input class="assist-input" id="assistInput" type="text" placeholder="Ask or tap 🎤 to talk…" autocomplete="off"
+      <input class="assist-input" id="assistInput" type="text" placeholder="Ask · 🎤 talk · 📷 scan…" autocomplete="off"
              onkeydown="if(event.key==='Enter')assistSend()">
+      <button class="assist-mic" id="assistCam" onclick="assistPhoto()" title="Scan an invoice">📷</button>
       <button class="assist-mic" id="assistMic" onclick="assistVoice()" title="Tap to talk">🎤</button>
       <button class="assist-send" onclick="assistSend()">➤</button>
     </div>
+    <input type="file" id="invoiceFile" accept="image/*" capture="environment" style="display:none" onchange="assistPhotoPicked(this)">
   </div>
 </div>
 
@@ -1506,7 +1516,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v27';
+var APP_BUILD = 'v28';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4864,9 +4874,9 @@ function assistSend() {
   // No AI key → use the built-in rule-based brain.
   if (!fvGetKey()) { assistHandleRuleBased(q, viaVoice); return; }
 
-  // AI brain: let Claude work out intent + extract any order, then act.
+  // AI brain: let the AI work out intent + extract any order, then act.
   var thinking = assistAddThinking();
-  fvAskClaude(q).then(function(res){
+  fvAskAI(q).then(function(res){
     assistRemoveThinking(thinking);
     if (res && res.intent === 'order' && res.items && res.items.length) {
       var dest = res.destination || 'shop';
@@ -4905,38 +4915,66 @@ function assistSend() {
   });
 }
 
-/* ─── SMART AI BRAIN (Claude, connected with the user's own key) ───────────
-   The key is stored only on this device (localStorage) and sent only to
-   api.anthropic.com over HTTPS. Never logged, never placed in a URL. */
-function fvGetKey()  { try { return localStorage.getItem('fvAIKey') || ''; } catch(e){ return ''; } }
-function fvClearKey(){ try { localStorage.removeItem('fvAIKey'); localStorage.removeItem('fvAIModel'); } catch(e){} }
+/* ─── SMART AI BRAIN ───────────────────────────────────────────────────────
+   Works with a FREE Google Gemini key (default) or a paid Anthropic Claude key.
+   The key is stored only on this device (localStorage) and sent only to the AI
+   provider over HTTPS. Never logged, never placed in a URL (Gemini uses the
+   x-goog-api-key header, not a query string). */
+function fvGetKey()   { try { return localStorage.getItem('fvAIKey')      || ''; } catch(e){ return ''; } }
+function fvProvider() { try { return localStorage.getItem('fvAIProvider') || ''; } catch(e){ return ''; } }
+function fvModel()    { try { return localStorage.getItem('fvAIModel')    || ''; } catch(e){ return ''; } }
+function fvClearKey() { try { localStorage.removeItem('fvAIKey'); localStorage.removeItem('fvAIModel'); localStorage.removeItem('fvAIProvider'); } catch(e){} }
+function fvStore(provider, key, model) { try { localStorage.setItem('fvAIProvider', provider); localStorage.setItem('fvAIKey', key); localStorage.setItem('fvAIModel', model); } catch(e){} }
 
-function fvPickModel(ids) {
-  var prefs = [/haiku/i, /sonnet/i];
+// Anthropic keys start with sk-ant-; treat anything else as a Google Gemini key.
+function fvDetectProvider(key) { return /^sk-ant/i.test(key) ? 'anthropic' : 'gemini'; }
+
+function fvPickModel(ids, provider) {
+  var prefs = (provider === 'gemini')
+    ? [/2\.5-flash/i, /2\.0-flash/i, /1\.5-flash/i, /flash/i]
+    : [/haiku/i, /sonnet/i];
+  // First pass: prefer stable models (skip experimental/thinking/vision-only variants).
   for (var p = 0; p < prefs.length; p++)
     for (var i = 0; i < ids.length; i++)
-      if (prefs[p].test(ids[i])) return ids[i];
-  return ids[0] || 'claude-3-5-haiku-latest';
+      if (prefs[p].test(ids[i]) && !/exp|thinking|vision/i.test(ids[i])) return ids[i];
+  // Second pass: take any match.
+  for (var p2 = 0; p2 < prefs.length; p2++)
+    for (var j = 0; j < ids.length; j++)
+      if (prefs[p2].test(ids[j])) return ids[j];
+  return ids[0] || (provider === 'gemini' ? 'gemini-2.0-flash' : 'claude-3-5-haiku-latest');
 }
 
-// Validate the key by listing models, then remember the cheapest good one.
+// Validate the key against the right provider, then remember the best free/cheap model.
 function fvSaveKey(k) {
   k = (k || '').trim();
   if (!k) return Promise.reject(new Error('paste your key first'));
-  return fetch('https://api.anthropic.com/v1/models?limit=100', {
-    headers: {
-      'x-api-key': k,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    }
+  var provider = fvDetectProvider(k);
+  if (provider === 'anthropic') {
+    return fetch('https://api.anthropic.com/v1/models?limit=100', {
+      headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }
+    }).then(function(r){
+      if (!r.ok) throw new Error('key rejected (' + r.status + ')');
+      return r.json();
+    }).then(function(d){
+      var ids = (d && d.data) ? d.data.map(function(m){ return m.id; }) : [];
+      var model = fvPickModel(ids, 'anthropic');
+      fvStore('anthropic', k, model);
+      return { provider: 'anthropic', model: model };
+    });
+  }
+  // Google Gemini (free tier) — list models with the API key in the header (not the URL).
+  return fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+    headers: { 'x-goog-api-key': k }
   }).then(function(r){
     if (!r.ok) throw new Error('key rejected (' + r.status + ')');
     return r.json();
   }).then(function(d){
-    var ids = (d && d.data) ? d.data.map(function(m){ return m.id; }) : [];
-    var model = fvPickModel(ids);
-    try { localStorage.setItem('fvAIKey', k); localStorage.setItem('fvAIModel', model); } catch(e){}
-    return model;
+    var ids = (d && d.models) ? d.models.filter(function(m){
+      return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0;
+    }).map(function(m){ return (m.name || '').replace('models/', ''); }) : [];
+    var model = fvPickModel(ids, 'gemini');
+    fvStore('gemini', k, model);
+    return { provider: 'gemini', model: model };
   });
 }
 
@@ -4955,33 +4993,56 @@ function fvParseJSON(txt) {
   return JSON.parse((s >= 0 && e >= s) ? txt.slice(s, e + 1) : txt);
 }
 
-function fvAskClaude(userText) {
+// Low-level call to whichever provider is connected.
+// parts = [{text:'…'} | {image:{mediaType, base64}}]. Resolves to the response text.
+function fvAICall(systemPrompt, parts, maxTokens) {
   var key = fvGetKey();
   if (!key) return Promise.reject(new Error('no AI key'));
-  var model = '';
-  try { model = localStorage.getItem('fvAIModel') || ''; } catch(e){}
-  if (!model) model = 'claude-3-5-haiku-latest';
-  return fetch('https://api.anthropic.com/v1/messages', {
+  var provider = fvProvider() || fvDetectProvider(key);
+  var model = fvModel();
+  maxTokens = maxTokens || 700;
+
+  if (provider === 'anthropic') {
+    if (!model) model = 'claude-3-5-haiku-latest';
+    var content = parts.map(function(p){
+      return p.image
+        ? { type: 'image', source: { type: 'base64', media_type: p.image.mediaType, data: p.image.base64 } }
+        : { type: 'text', text: p.text || '' };
+    });
+    return fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: model, max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content: content }] })
+    }).then(function(r){
+      if (!r.ok) return r.text().then(function(){ throw new Error('AI ' + r.status); });
+      return r.json();
+    }).then(function(d){ return (d && d.content && d.content[0] && d.content[0].text) || ''; });
+  }
+
+  // Google Gemini (free) — responseMimeType json gives us clean JSON back.
+  if (!model) model = 'gemini-2.0-flash';
+  var gparts = parts.map(function(p){
+    return p.image ? { inline_data: { mime_type: p.image.mediaType, data: p.image.base64 } } : { text: p.text || '' };
+  });
+  return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json'
-    },
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      model: model,
-      max_tokens: 700,
-      system: FV_SYS,
-      messages: [{ role: 'user', content: userText }]
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: gparts }],
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.2, responseMimeType: 'application/json' }
     })
   }).then(function(r){
     if (!r.ok) return r.text().then(function(){ throw new Error('AI ' + r.status); });
     return r.json();
   }).then(function(d){
-    var txt = (d && d.content && d.content[0] && d.content[0].text) || '';
-    return fvParseJSON(txt);
+    var c = d && d.candidates && d.candidates[0];
+    return (c && c.content && c.content.parts && c.content.parts[0] && c.content.parts[0].text) || '';
   });
+}
+
+function fvAskAI(userText) {
+  return fvAICall(FV_SYS, [{ text: userText }], 700).then(function(txt){ return fvParseJSON(txt); });
 }
 
 // Turn AI-extracted items into the order pipeline; auto-save if all matched.
@@ -5012,19 +5073,19 @@ function fvFileOrder(dest, items) {
 function fvRenderAISetup() {
   var box = document.getElementById('assistAISetup'); if (!box) return;
   if (fvGetKey()) {
-    var model = '';
-    try { model = localStorage.getItem('fvAIModel') || ''; } catch(e){}
-    box.innerHTML = '<div class="ai-status">⚡ Smart AI connected'
-      + (model ? ' <small>(' + model + ')</small>' : '')
+    var prov = (fvProvider() === 'anthropic') ? 'Claude' : 'Gemini · free';
+    var model = fvModel();
+    box.innerHTML = '<div class="ai-status">⚡ Smart AI on · ' + prov
+      + (model ? ' <small>(' + fvEsc(model) + ')</small>' : '')
       + ' <button onclick="fvDisconnectAI()">change</button></div>';
   } else {
     box.innerHTML =
       '<div class="ai-setup">'
-      + '<div class="ai-setup-title">⚡ Make me smart</div>'
-      + '<div class="ai-setup-note">Paste your AI key to chat naturally and take orders by voice/text. It stays on this device only.</div>'
-      + '<input id="aiKeyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">'
+      + '<div class="ai-setup-title">⚡ Make me smart — free</div>'
+      + '<div class="ai-setup-note">Paste a <strong>free Google AI key</strong> and I\'ll understand you naturally, take orders, and read invoice photos. Stays on this device only. (A paid Claude key works too.)</div>'
+      + '<input id="aiKeyInput" type="password" placeholder="Paste key — AIza… (free) or sk-ant-…" autocomplete="off" spellcheck="false">'
       + '<button id="aiKeyBtn" onclick="fvConnectAI()">Connect</button>'
-      + '<div class="ai-setup-help"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key →</a></div>'
+      + '<div class="ai-setup-help"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Get a FREE key (Google AI Studio) →</a></div>'
       + '</div>';
   }
 }
@@ -5034,9 +5095,10 @@ function fvConnectAI() {
   var k = inp ? inp.value : '';
   if (!k.trim()) { alert('Paste your AI key first.'); return; }
   if (btn) { btn.textContent = 'Checking…'; btn.disabled = true; }
-  fvSaveKey(k).then(function(){
+  fvSaveKey(k).then(function(info){
     fvRenderAISetup();
-    assistAddMsg("⚡ Smart AI connected! Talk to me normally — give me an order, ask about prices, anything.", 'bot');
+    var prov = (info && info.provider === 'anthropic') ? 'Claude' : 'free Gemini';
+    assistAddMsg("⚡ Smart AI connected (" + prov + ")! Talk to me normally — give me an order, ask about prices, or tap 📷 to scan an invoice.", 'bot');
   }).catch(function(e){
     if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
     alert('Could not connect: ' + ((e && e.message) || 'check the key and try again') + '.');
@@ -5046,6 +5108,103 @@ function fvDisconnectAI() {
   if (confirm('Disconnect smart AI? You can reconnect anytime with your key.')) {
     fvClearKey(); fvRenderAISetup();
   }
+}
+
+/* ─── INVOICE PHOTOS → AI vision → into your products ──────────────────────── */
+var fvPendingInvoice = null;   // { dataUrl, mediaType, base64, data } — kept for the Drive step (Phase 2b)
+
+function fvEsc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function assistPhoto() {
+  if (!fvGetKey()) {
+    assistAddMsg("📷 To read invoice photos, connect the free smart AI first (the green box above).", 'bot');
+    return;
+  }
+  var f = document.getElementById('invoiceFile');
+  if (f) { f.value = ''; f.click(); }
+}
+
+function assistPhotoPicked(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var dataUrl = reader.result || '';
+    var m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/.exec(dataUrl);
+    if (!m) { assistAddMsg("Hmm, I couldn't read that image — try a JPG or PNG.", 'bot'); return; }
+    assistAddMsg("📷 Invoice photo", 'user');
+    var thinking = assistAddThinking();
+    fvVisionInvoice(m[1], m[2]).then(function(data){
+      assistRemoveThinking(thinking);
+      fvPendingInvoice = { dataUrl: dataUrl, mediaType: m[1], base64: m[2], data: data };
+      assistAddInvoiceCard(data);
+    }).catch(function(e){
+      assistRemoveThinking(thinking);
+      assistAddMsg("⚠️ Couldn't read the invoice (" + ((e && e.message) || 'error') + "). Try a clearer, straight-on photo.", 'bot');
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+var FV_INVOICE_SYS = `You read a produce/grocery supplier invoice from an image and output ONLY one JSON object, no markdown:
+{"supplier":{"name":string_or_null,"phone":string_or_null},"date":string_or_null,"items":[{"name":string,"qty":number_or_null,"unit":"kg|box|each|bag|bunch|tray|punnet|pack|null","unitPrice":number_or_null,"total":number_or_null}]}
+Use clean common produce names. "unitPrice" is the per-line price in dollars as a number. Read every line item. Never invent values you cannot see in the image.`;
+
+function fvVisionInvoice(mediaType, base64) {
+  return fvAICall(FV_INVOICE_SYS, [
+    { image: { mediaType: mediaType, base64: base64 } },
+    { text: 'Extract this invoice as JSON.' }
+  ], 1600).then(function(txt){ return fvParseJSON(txt); });
+}
+
+function assistAddInvoiceCard(data) {
+  var items = (data && data.items) || [];
+  var sup = (data && data.supplier) || {};
+  var box = document.getElementById('assistMessages');
+  var card = document.createElement('div');
+  card.className = 'assist-msg bot invoice-card';
+  var html = '<div class="inv-head">🧾 <strong>' + (sup.name ? fvEsc(sup.name) : 'Invoice') + '</strong>'
+           + (data && data.date ? ' <small>· ' + fvEsc(data.date) + '</small>' : '') + '</div>';
+  if (!items.length) {
+    html += '<div class="inv-empty">No line items found — try a clearer photo.</div>';
+    card.innerHTML = html; box.appendChild(card); box.scrollTop = box.scrollHeight; return;
+  }
+  html += '<div class="inv-items">';
+  items.forEach(function(it){
+    var price = (it.unitPrice != null) ? '$' + Number(it.unitPrice).toFixed(2)
+              : (it.total != null ? '$' + Number(it.total).toFixed(2) : '—');
+    html += '<div class="inv-row"><span>' + fvEsc(it.name || '?') + (it.qty ? ' ×' + fvEsc(it.qty) : '') + '</span><span>' + price + '</span></div>';
+  });
+  html += '</div>';
+  html += '<button class="inv-add-btn" onclick="fvAddInvoiceItems()">＋ Add ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' to my products</button>';
+  card.innerHTML = html;
+  box.appendChild(card); box.scrollTop = box.scrollHeight;
+}
+
+function fvAddInvoiceItems() {
+  if (!fvPendingInvoice || !fvPendingInvoice.data) return;
+  var data = fvPendingInvoice.data;
+  var sup = data.supplier || {};
+  var supName = (sup.name || 'Invoice supplier').trim();
+  var supPhone = sup.phone || null;
+  var items = data.items || [];
+  if (!items.length) { assistAddMsg("Nothing to add.", 'bot'); return; }
+  var customs = loadCustomProducts();
+  var added = 0;
+  items.forEach(function(it){
+    var name = (it.name || '').trim(); if (!name) return;
+    var price = (it.unitPrice != null) ? Number(it.unitPrice) : (it.total != null ? Number(it.total) : null);
+    if (price != null && isNaN(price)) price = null;
+    var qty = (it.qty != null) ? Number(it.qty) : null; if (qty != null && isNaN(qty)) qty = null;
+    // [supplier, stall, phone, product, defaultQty, boxPrice, perKg, sellPrice, mustCheck]
+    customs.push([supName, null, supPhone, name, qty, price, null, null, false]);
+    added++;
+  });
+  saveCustomProducts(customs);
+  if (typeof rebuildProducts === 'function') rebuildProducts();
+  if (typeof buildList === 'function') buildList();
+  assistAddMsg("✅ Added " + added + " item" + (added === 1 ? '' : 's') + " from " + fvEsc(supName) + " to your products (see 📋 List). Costs came straight off the invoice — set sell prices when you like.", 'bot');
+  fvPendingInvoice = null;
 }
 
 /* ─── VOICE: speech-to-text input + spoken answers (Web Speech API) ──────── */
