@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- Security hardening: lock down where the app may load/connect, block object & base-uri injection. Kept permissive on https so Firebase/fonts/AI keep working. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-src https:; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -1606,7 +1609,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v52';
+var APP_BUILD = 'v53';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6022,13 +6025,15 @@ function fvAddInvoiceItems() {
    as salted SHA-256 hashes so they are never readable in the source. To add a
    teammate: add a row to FV_USERS with their salted hash (ask me to generate). */
 var FV_SALT = 'fv:HD:grocer:2026';
+/* Passwords rotated to strong ones on 6 Jun 2026 (was all weak "name123").
+   Firebase Auth passwords rotated to match. Salted SHA-256 hashes below. */
 var FV_USERS = [
-  { user:'abhishek',  name:'Abhishek',  role:'owner', hash:'c281530dca8be9092f9ce7b1d853c4e217a1a569429c1d32c1bd31eade3d940b' },
-  { user:'ravinder',  name:'Ravinder',  role:'staff', hash:'38678b5833696f73cd0f42a75b191eff6ffa851fd4600e36cfc82de566f4dffc' },
-  { user:'kiran',     name:'Kiran',     role:'staff', hash:'4a48d5f7fdb3850693c36126b4c6d6639f8e8fdd4f20f7230daa85b36538cc6a' },
-  { user:'jaswinder', name:'Jaswinder', role:'staff', hash:'e0346cbae36e4649ddd232f5d71c4b85f69f22b9d13c400cb07032919b32301a' },
-  { user:'rajiv',     name:'Rajiv',     role:'staff', hash:'e82205234407dcb92e52d4bc3a694848906cb7e12a47586e7c880395245de036' },
-  { user:'nimmi',     name:'Nimmi',     role:'staff', hash:'df956728c4b382f999dc098796c46fdd39c161048ab255bfb46e52a55419265d' }
+  { user:'abhishek',  name:'Abhishek',  role:'owner', hash:'c1057107276cf831e5d2f106de59eacab9b79afcd3a93991acb9dec3c2070782' },
+  { user:'ravinder',  name:'Ravinder',  role:'staff', hash:'ae3cb7e13f7c945e9ef40897172ccd147ad8035ff507eae8f11c21b62d2001ff' },
+  { user:'kiran',     name:'Kiran',     role:'staff', hash:'c2c1eef0706d71366b93206c59edb29aeba00fa2c9b4afa1506953a2f2ec8242' },
+  { user:'jaswinder', name:'Jaswinder', role:'staff', hash:'b4bd7cfac716405fd286bcfc6264add5a4a63bcd3e680286271af1e189367f9a' },
+  { user:'rajiv',     name:'Rajiv',     role:'staff', hash:'8ce351cc7d317770c4b926b027ece64c91142a3c615ffa087bc856708cd69998' },
+  { user:'nimmi',     name:'Nimmi',     role:'staff', hash:'7c9acba4d61909179885e672074c1a092e6ebe101189bb54df1409669af1976a' }
 ];
 var fvSession = null;   // { user, name, role }
 
@@ -6065,13 +6070,25 @@ function fvLogin() {
   var btn = document.getElementById('loginBtn');
   if (err) err.textContent = '';
   if (!u || !p) { if (err) err.textContent = 'Enter your username and password.'; return; }
+  // brute-force throttle: lock the form for 30s after 5 wrong attempts
+  if (window._fvLockUntil && Date.now() < window._fvLockUntil) {
+    var _secs = Math.ceil((window._fvLockUntil - Date.now()) / 1000);
+    if (err) err.textContent = 'Too many attempts — wait ' + _secs + 's.';
+    return;
+  }
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
   fvHash(p).then(function(h){
     var found = null;
     for (var i = 0; i < FV_USERS.length; i++)
       if (FV_USERS[i].user === u && FV_USERS[i].hash === h) { found = FV_USERS[i]; break; }
     if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
-    if (!found) { if (err) err.textContent = 'Wrong username or password.'; return; }
+    if (!found) {
+      window._fvFails = (window._fvFails || 0) + 1;
+      if (window._fvFails >= 5) { window._fvLockUntil = Date.now() + 30000; window._fvFails = 0; }
+      if (err) err.textContent = 'Wrong username or password.';
+      return;
+    }
+    window._fvFails = 0; window._fvLockUntil = 0;
     fvSession = { user: found.user, name: found.name, role: found.role };
     var js = JSON.stringify(fvSession);
     try {
