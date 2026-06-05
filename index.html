@@ -1595,7 +1595,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v40';
+var APP_BUILD = 'v41';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4800,6 +4800,10 @@ function fvStoreList() {
 
 function buildStoreView() {
   var v = document.getElementById('viewStore'); if (!v) return;
+  var cats = {}; fvStoreList().forEach(function(r){ if (r.cat) cats[r.cat] = 1; });
+  var catOpts = '<option value="">All categories / groups</option>'
+    + Object.keys(cats).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); })
+        .map(function(c){ var e = fvEsc(c).replace(/"/g,'&quot;'); return '<option value="' + e + '">' + fvEsc(c) + '</option>'; }).join('');
   v.innerHTML =
     '<div class="manage-card">'
     + '<div class="manage-title">🏬 Store — product lookup</div>'
@@ -4809,8 +4813,9 @@ function buildStoreView() {
     + '</div>'
     + '<div id="stockTakePanel" style="display:none;border:1px solid #ddd6fe;background:#faf5ff;border-radius:10px;padding:12px;margin:0 0 10px;"></div>'
     + '<div id="storeResult"></div>'
-    + '<input id="storeSearch" type="text" placeholder="Search by name or barcode…" oninput="renderStoreRows()" autocomplete="off" '
+    + '<input id="storeSearch" type="text" placeholder="Search name, brand or barcode…" oninput="renderStoreRows()" autocomplete="off" '
     +   'style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
+    + '<select id="storeCat" onchange="renderStoreRows()" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-top:8px;background:#fff;">' + catOpts + '</select>'
     + '<div id="storeCount" style="font-size:11px;color:#6b7280;margin:6px 0 8px;"></div>'
     + '<div class="pl-table-wrap"><table class="pl-table" id="storeTable"></table></div>'
     + '</div>';
@@ -4823,11 +4828,14 @@ function renderStoreRows() {
   var qel = document.getElementById('storeSearch');
   var q = (qel ? qel.value : '').trim().toLowerCase();
   var words = q.split(/\s+/).filter(Boolean);
+  var catEl = document.getElementById('storeCat');
+  var catSel = catEl ? catEl.value : '';
   var stock = loadStock();
   var rows = fvStoreList();
   var html = '<tr><th>Product</th><th class="right">Buy</th><th class="right">Sell</th><th class="right">Stock</th></tr>';
   var shown = 0;
   rows.forEach(function(r){
+    if (catSel && r.cat !== catSel) return;
     var text = (r.name + ' ' + r.cat + ' ' + (r.bc || '')).toLowerCase();
     if (words.length && !words.every(function(w){ return text.indexOf(w) >= 0; })) return;
     shown++;
@@ -4843,7 +4851,7 @@ function renderStoreRows() {
   if (!shown) html += '<tr><td colspan="4" style="color:#6b7280;padding:14px;">No products match.</td></tr>';
   t.innerHTML = html;
   var c = document.getElementById('storeCount');
-  if (c) c.textContent = shown + ' of ' + rows.length + ' products' + (q ? (' matching “' + q + '”') : '') + ' · tap a Stock cell to set stock on hand';
+  if (c) c.textContent = shown + ' of ' + rows.length + ' products' + (catSel ? (' in ' + catSel) : '') + (q ? (' matching “' + q + '”') : '') + ' · tap a Stock cell to set stock on hand';
 }
 
 function editStock(idx) {
