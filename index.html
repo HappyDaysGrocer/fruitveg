@@ -1605,7 +1605,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v50';
+var APP_BUILD = 'v51';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4897,7 +4897,7 @@ function buildSpendView() {
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
-  html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">📄 Tap a supplier, then tap any invoice to <strong>view</strong> it · ⬇️ to <strong>download</strong>. Opens in Google Drive (sign in with your shop Google account).</div>';
+  html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">📂 Tap a supplier to open it, then tap <strong>👁️ View</strong> or <strong>⬇️ Download</strong> on any invoice. Opens in Google Drive — sign in with your shop Google account on your phone.</div>';
   html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">“Income” is your total shop sales. Linking income to one supplier needs product→supplier tagging — ask me and I’ll set it up.</div>';
   v.innerHTML = html;
   window._spendSuppliers = supList;
@@ -4918,13 +4918,19 @@ function renderSpendRows() {
       + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
     g.items.slice().sort(function(a,b){ return a.d < b.d ? -1 : 1; }).forEach(function(iv){
       var fid = (typeof FV_INVOICE_FILES !== 'undefined') ? FV_INVOICE_FILES[iv.n] : null;
-      var left = iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
-      if (fid) left = '<a href="https://drive.google.com/file/d/' + fid + '/view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1c4587;text-decoration:none;font-weight:600;">' + left + ' 📄</a>';
+      var meta = iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
       var amt = (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2)));
-      if (fid) amt += ' <a href="https://drive.google.com/uc?export=download&id=' + fid + '" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Download" style="text-decoration:none;">⬇️</a>';
-      html += '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;color:#374151;border-top:1px solid #f0f0f0;padding:7px 0;">'
-        + '<span style="flex:1;min-width:0;">' + left + '</span>'
-        + '<span style="white-space:nowrap;">' + amt + '</span></div>';
+      html += '<div style="border-top:1px solid #eef0f2;padding:9px 0;">'
+        + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;"><span style="flex:1;min-width:0;">' + meta + '</span><span style="white-space:nowrap;font-weight:700;">' + amt + '</span></div>';
+      if (fid) {
+        html += '<div style="display:flex;gap:8px;margin-top:7px;">'
+          + '<a href="https://drive.google.com/file/d/' + fid + '/view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#eef2ff;color:#1c4587;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">👁️ View</a>'
+          + '<a href="https://drive.google.com/uc?export=download&id=' + fid + '" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#dcfce7;color:#15803d;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">⬇️ Download</a>'
+          + '</div>';
+      } else {
+        html += '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">No PDF linked yet</div>';
+      }
+      html += '</div>';
     });
     html += '</div></div>';
   });
