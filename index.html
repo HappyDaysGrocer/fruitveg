@@ -1605,7 +1605,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v47';
+var APP_BUILD = 'v48';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4806,6 +4806,10 @@ function fvSupplierForProduct(name) {
   return null;
 }
 
+// Suppliers that are running costs (not stock you resell).
+var FV_OVERHEAD = { 'Cameron Industrial':1, 'DSA Law':1, 'On Spot Hire':1, 'Wanless Waste':1, 'KLM Spatial':1, 'Frankston Council':1, 'Reza Tile':1, 'Newhand Equipment':1, 'SIHAO':1, 'Epos Now':1, 'MYCP':1 };
+function fvIsOverhead(s){ return !!FV_OVERHEAD[s]; }
+
 function buildSpendView() {
   var v = document.getElementById('viewSpend'); if (!v) return;
   if (typeof SHOP_INVOICES === 'undefined') { v.innerHTML = '<div class="manage-card">No invoice data yet.</div>'; return; }
@@ -4817,11 +4821,13 @@ function buildSpendView() {
     if (iv.ty === 'Statement') { g.stmtCount++; if (iv.t != null) g.spendStmt += iv.t; }
     else { g.invCount++; if (iv.t == null) { g.hasUnknown = true; unknownCount++; } else g.spendInv += iv.t; }
   });
-  var supList = [], totalPurch = 0;
+  var supList = [], totalPurch = 0, stockSpend = 0, ohSpend = 0;
   Object.keys(supp).forEach(function(k){
     var g = supp[k];
     g.spend = g.invCount > 0 ? g.spendInv : g.spendStmt;   // statements only count if no invoices (avoid double-count)
     g.count = g.invCount > 0 ? g.invCount : g.stmtCount;
+    g.overhead = fvIsOverhead(g.name);
+    if (g.overhead) ohSpend += g.spend; else stockSpend += g.spend;
     totalPurch += g.spend; supList.push(g);
   });
   supList.sort(function(a,b){ return b.spend - a.spend; });
@@ -4832,11 +4838,14 @@ function buildSpendView() {
   }); } catch(e){}
   supList.forEach(function(g){ g.income = supIncome[g.name] || 0; g.profit = g.income - g.spend; });
 
-  var html = '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;">'
-    + '<div class="grand-label" style="color:#bbf7d0;">SHOP SALES INCOME (last 90 days)</div>'
-    + '<div class="grand-amount" style="color:#fff;">$' + income.toFixed(2) + '</div>'
-    + '<div style="font-size:12px;color:#bbf7d0;margin-top:6px;">Paid to suppliers (these invoices): <strong style="color:#fff;">$' + totalPurch.toFixed(2) + '</strong>'
-    + (unknownCount ? ' (+' + unknownCount + ' to confirm)' : '') + '</div></div>';
+  var net = income - totalPurch;
+  var html = '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;text-align:left;padding:16px 18px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="color:#bbf7d0;font-size:13px;">💰 Money IN — shop sales (90d)</span><strong style="font-size:20px;">$' + income.toFixed(2) + '</strong></div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;color:#fde68a;"><span>💸 Money OUT — total</span><strong>−$' + totalPurch.toFixed(2) + (unknownCount ? ' +' : '') + '</strong></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:11px;color:#bbf7d0;margin-top:2px;padding-left:14px;"><span>Stock</span><span>$' + stockSpend.toFixed(2) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:11px;color:#bbf7d0;padding-left:14px;"><span>Overheads (rent, legal, waste…)</span><span>$' + ohSpend.toFixed(2) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;border-top:1px solid rgba(255,255,255,.25);padding-top:8px;"><span style="font-size:13px;">Rough net</span><strong style="font-size:18px;color:' + (net >= 0 ? '#86efac' : '#fca5a5') + ';">' + (net >= 0 ? '+' : '−') + '$' + Math.abs(net).toFixed(2) + '</strong></div>'
+    + '<div style="font-size:10px;color:#9ca3af;margin-top:5px;">Income = last-90-day shop sales; invoices span Jan–Jun, so this net is indicative, not an exact P&amp;L.</div></div>';
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
@@ -4854,7 +4863,7 @@ function renderSpendRows() {
   list.forEach(function(g, gi){
     html += '<div class="order-summary-card">'
       + '<div onclick="fvToggleSupp(' + gi + ')" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">'
-      + '<span style="font-weight:700;color:#1c4587;">' + fvEsc(g.name) + ' <span style="font-weight:400;color:#6b7280;font-size:11px;">(' + g.count + ' invoice' + (g.count === 1 ? '' : 's') + ')</span></span>'
+      + '<span style="font-weight:700;color:#1c4587;">' + fvEsc(g.name) + (g.overhead ? ' <span style="font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 5px;font-size:9px;vertical-align:middle;">OVERHEAD</span>' : '') + ' <span style="font-weight:400;color:#6b7280;font-size:11px;">(' + g.count + ' invoice' + (g.count === 1 ? '' : 's') + ')</span></span>'
       + '<span style="font-weight:800;">$' + g.spend.toFixed(2) + (g.hasUnknown ? ' +' : '') + '</span></div>'
       + (g.income > 0 ? '<div style="font-size:11px;color:#15803d;margin-top:3px;">📈 Their products sold ≈ $' + g.income.toFixed(2) + ' · profit ≈ $' + g.profit.toFixed(2) + ' <span style="color:#9ca3af;">(est.)</span></div>' : '')
       + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
