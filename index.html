@@ -1549,7 +1549,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v30';
+var APP_BUILD = 'v31';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5255,7 +5255,12 @@ function fvAddInvoiceItems() {
    teammate: add a row to FV_USERS with their salted hash (ask me to generate). */
 var FV_SALT = 'fv:HD:grocer:2026';
 var FV_USERS = [
-  { user:'abhishek', name:'Abhishek', role:'owner', hash:'c281530dca8be9092f9ce7b1d853c4e217a1a569429c1d32c1bd31eade3d940b' }
+  { user:'abhishek',  name:'Abhishek',  role:'owner', hash:'c281530dca8be9092f9ce7b1d853c4e217a1a569429c1d32c1bd31eade3d940b' },
+  { user:'ravinder',  name:'Ravinder',  role:'staff', hash:'38678b5833696f73cd0f42a75b191eff6ffa851fd4600e36cfc82de566f4dffc' },
+  { user:'kiran',     name:'Kiran',     role:'staff', hash:'4a48d5f7fdb3850693c36126b4c6d6639f8e8fdd4f20f7230daa85b36538cc6a' },
+  { user:'jaswinder', name:'Jaswinder', role:'staff', hash:'e0346cbae36e4649ddd232f5d71c4b85f69f22b9d13c400cb07032919b32301a' },
+  { user:'rajiv',     name:'Rajiv',     role:'staff', hash:'e82205234407dcb92e52d4bc3a694848906cb7e12a47586e7c880395245de036' },
+  { user:'nimmi',     name:'Nimmi',     role:'staff', hash:'df956728c4b382f999dc098796c46fdd39c161048ab255bfb46e52a55419265d' }
 ];
 var fvSession = null;   // { user, name, role }
 
