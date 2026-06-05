@@ -1605,7 +1605,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v49';
+var APP_BUILD = 'v50';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4897,6 +4897,7 @@ function buildSpendView() {
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
+  html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">📄 Tap a supplier, then tap any invoice to <strong>view</strong> it · ⬇️ to <strong>download</strong>. Opens in Google Drive (sign in with your shop Google account).</div>';
   html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">“Income” is your total shop sales. Linking income to one supplier needs product→supplier tagging — ask me and I’ll set it up.</div>';
   v.innerHTML = html;
   window._spendSuppliers = supList;
@@ -4916,9 +4917,14 @@ function renderSpendRows() {
       + (g.income > 0 ? '<div style="font-size:11px;color:#15803d;margin-top:3px;">📈 Their products sold ≈ $' + g.income.toFixed(2) + ' · profit ≈ $' + g.profit.toFixed(2) + ' <span style="color:#9ca3af;">(est.)</span></div>' : '')
       + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
     g.items.slice().sort(function(a,b){ return a.d < b.d ? -1 : 1; }).forEach(function(iv){
-      html += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;border-top:1px solid #f0f0f0;padding:4px 0;">'
-        + '<span>' + iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '') + '</span>'
-        + '<span>' + (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2))) + '</span></div>';
+      var fid = (typeof FV_INVOICE_FILES !== 'undefined') ? FV_INVOICE_FILES[iv.n] : null;
+      var left = iv.d + ' · ' + fvEsc(iv.n) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
+      if (fid) left = '<a href="https://drive.google.com/file/d/' + fid + '/view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:#1c4587;text-decoration:none;font-weight:600;">' + left + ' 📄</a>';
+      var amt = (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2)));
+      if (fid) amt += ' <a href="https://drive.google.com/uc?export=download&id=' + fid + '" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Download" style="text-decoration:none;">⬇️</a>';
+      html += '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;color:#374151;border-top:1px solid #f0f0f0;padding:7px 0;">'
+        + '<span style="flex:1;min-width:0;">' + left + '</span>'
+        + '<span style="white-space:nowrap;">' + amt + '</span></div>';
     });
     html += '</div></div>';
   });
