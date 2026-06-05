@@ -1428,7 +1428,7 @@ var PRODUCTS = [
   ['LPG (Joey)',null,'0499551343','Alfalfa Sprouts (1 box)',null,null,null,null,false],
   // Hygiene Packers Wholesalers — Epping VIC (market pickup) — invoice HPW00177908, 04/06/2026
   // Golden Delicious 70s Premium $45.00/carton; ~$2.50/kg assuming a standard 18kg apple carton
-  ['Hygiene Packers Wholesalers',null,'0433 849 226','Golden kg',1,45,2.5,null,false]
+  ['Hygiene Packers Wholesalers',null,'0433 849 226','Golden kg',1,45,2.5,5.5,false]
 ];
 
 // Merge the EPOS shop catalogue (loaded from shopProducts.js) so every shop item is orderable too.
@@ -1567,7 +1567,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v34';
+var APP_BUILD = 'v35';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4872,7 +4872,7 @@ function openAssistant() {
   fvRenderAISetup();
   setTimeout(function(){ document.getElementById('assistInput').focus(); }, 300);
 }
-function closeAssistant() { document.getElementById('assistOverlay').classList.remove('open'); }
+function closeAssistant() { document.getElementById('assistOverlay').classList.remove('open'); if (typeof fvStopVoice === 'function') fvStopVoice(); }
 function assistOverlayTap(e) { if (e.target === document.getElementById('assistOverlay')) closeAssistant(); }
 
 function renderAssistChips() {
@@ -5511,31 +5511,60 @@ function fvConfirmDanger(msg) {
 }
 
 /* ─── VOICE: speech-to-text input + spoken answers (Web Speech API) ──────── */
-var _recog = null, _recogOn = false;
+var _recog = null, _recogOn = false, _convoMode = false, _silent = 0, _fvVoice = null;
 
+// Pick the most natural English voice available (prefer en-AU, then en-GB).
+function fvPickVoice() {
+  try {
+    var vs = window.speechSynthesis.getVoices() || [];
+    if (!vs.length) return null;
+    function score(v) {
+      var s = 0, l = (v.lang || '').toLowerCase(), n = (v.name || '').toLowerCase();
+      if (l.indexOf('en-au') === 0) s += 40; else if (l.indexOf('en-gb') === 0) s += 30; else if (l.indexOf('en') === 0) s += 15;
+      if (/google/.test(n)) s += 10;
+      if (/natural|neural|online|enhanced/.test(n)) s += 8;
+      return s;
+    }
+    var best = null, bs = -1;
+    vs.forEach(function(v){ var sc = score(v); if (sc > bs) { bs = sc; best = v; } });
+    return best;
+  } catch(e) { return null; }
+}
+try { window.speechSynthesis.onvoiceschanged = function(){ _fvVoice = fvPickVoice(); }; } catch(e) {}
+
+// Mic button = hands-free conversation toggle. Tap to start; tap again to stop.
 function assistVoice() {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var mic = document.getElementById('assistMic');
-  var inp = document.getElementById('assistInput');
   if (!SR) {
     assistAddMsg("Voice input isn't supported in this browser. Try Chrome (Android/desktop) or Safari (iPhone) — or just type your question.", 'bot');
     return;
   }
-  // Tapping the mic again while it's listening stops it.
-  if (_recogOn && _recog) { try { _recog.stop(); } catch (e) {} return; }
+  if (_recogOn || _convoMode) {           // already going → stop everything
+    fvStopVoice();
+    return;
+  }
+  _convoMode = true; _silent = 0;
+  assistVoiceStart();
+}
 
+function fvStopVoice() {
+  _convoMode = false;
+  try { if (_recog) _recog.stop(); } catch(e) {}
+  try { window.speechSynthesis.cancel(); } catch(e) {}
+  var mic = document.getElementById('assistMic'); if (mic) mic.classList.remove('listening');
+  var inp = document.getElementById('assistInput'); if (inp) inp.placeholder = 'Ask or tap 🎤 to talk…';
+}
+
+function assistVoiceStart() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || !_convoMode) return;
+  var mic = document.getElementById('assistMic');
+  var inp = document.getElementById('assistInput');
+  try { window.speechSynthesis.cancel(); } catch(e) {}   // never listen to our own voice
   _recog = new SR();
-  _recog.lang = 'en-AU';
-  _recog.interimResults = true;
-  _recog.maxAlternatives = 1;
-  _recog.continuous = false;
-
+  _recog.lang = 'en-AU'; _recog.interimResults = true; _recog.maxAlternatives = 1; _recog.continuous = false;
   var finalText = '';
-  _recog.onstart = function () {
-    _recogOn = true;
-    if (mic) mic.classList.add('listening');
-    if (inp) inp.placeholder = 'Listening… speak now';
-  };
+  _recog.onstart = function () { _recogOn = true; if (mic) mic.classList.add('listening'); if (inp) inp.placeholder = 'Listening… talk now (tap 🎤 to stop)'; };
   _recog.onresult = function (e) {
     var interim = '';
     for (var i = e.resultIndex; i < e.results.length; i++) {
@@ -5545,33 +5574,39 @@ function assistVoice() {
     if (inp) inp.value = (finalText + interim).trim();
   };
   _recog.onerror = function (e) {
-    _recogOn = false;
-    if (mic) mic.classList.remove('listening');
-    if (inp) inp.placeholder = 'Ask or tap 🎤 to talk…';
+    _recogOn = false; if (mic) mic.classList.remove('listening');
     if (e && (e.error === 'not-allowed' || e.error === 'service-not-allowed')) {
+      _convoMode = false;
       assistAddMsg("I need microphone permission to hear you. Allow mic access for this page, then tap 🎤 again.", 'bot');
     }
   };
   _recog.onend = function () {
-    _recogOn = false;
-    if (mic) mic.classList.remove('listening');
+    _recogOn = false; if (mic) mic.classList.remove('listening');
     if (inp) inp.placeholder = 'Ask or tap 🎤 to talk…';
     var q = inp ? inp.value.trim() : '';
-    if (q) { _lastWasVoice = true; assistSend(); }   // auto-send what was heard
+    if (q) { _silent = 0; _lastWasVoice = true; assistSend(); }   // → AI → speaks → re-opens mic
+    else if (_convoMode) {                                        // heard nothing
+      _silent++;
+      if (_silent <= 2) setTimeout(assistVoiceStart, 500);        // keep waiting briefly
+      else fvStopVoice();                                         // give up after a couple of silences
+    }
   };
-  try { _recog.start(); } catch (e) { /* ignore double-start */ }
+  try { _recog.start(); } catch (e) {}
 }
 
 function assistSpeak(text) {
   try {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window)) { if (_convoMode) setTimeout(assistVoiceStart, 300); return; }
     var clean = String(text).replace(/\*\*/g, '').replace(/[#*_`>]/g, '').replace(/\s+/g, ' ').trim();
-    if (!clean) return;
+    if (!clean) { if (_convoMode) setTimeout(assistVoiceStart, 300); return; }
     var u = new SpeechSynthesisUtterance(clean);
+    if (!_fvVoice) _fvVoice = fvPickVoice();
+    if (_fvVoice) u.voice = _fvVoice;
     u.lang = 'en-AU'; u.rate = 1.0; u.pitch = 1.0;
+    u.onend = function () { if (_convoMode) setTimeout(assistVoiceStart, 250); };  // re-open mic after speaking
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
-  } catch (e) {}
+  } catch (e) { if (_convoMode) setTimeout(assistVoiceStart, 300); }
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────
