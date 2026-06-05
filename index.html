@@ -1549,7 +1549,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v29';
+var APP_BUILD = 'v30';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2024,6 +2024,7 @@ function buildTotals() {
 /* ─── MANAGE ────────────────────────────────────────────────────────────── */
 
 function confirmReset() {
+  if (!fvAllowed('resetRun','Reset for a new run')) return;
   if (confirm('Reset all ticks and quantities for a new run?\n\nThis cannot be undone.')) {
     state = {};
     saveState();
@@ -2329,7 +2330,7 @@ function buildOrdersView() {
       var del=document.createElement('button');
       del.className='parsed-remove';del.textContent='✕';
       del.addEventListener('click',(function(k){return function(){
-        if(!fvConfirmDanger('Remove this item from the order?')) return;
+        if(!fvAllowed('removeOrderItem','Remove this item from the order')) return;
         var o=loadOrders();delete o[k];saveOrders(o);buildOrdersView();refreshAllOrderChips();
       };})(x.key));
       row.appendChild(del);
@@ -2860,6 +2861,7 @@ function buildProductPicker(itemIdx, selectedProdIdx) {
 
 function confirmOrderImport(silent) {
   if (!parsedItems.length) { if(!silent) alert('No items to save.'); return 0; }
+  if (!silent && !fvAllowed('saveOrder','Save this order')) return 0;
 
   var saved = 0;
   var skipped = [];
@@ -3002,7 +3004,7 @@ function refreshOrderMini(idx) {
 
 // Orders summary view
 function clearAllOrders() {
-  if (fvConfirmDanger('Clear ALL order quantities?')) {
+  if (fvAllowed('clearAllOrders', 'Clear ALL order quantities')) {
     saveOrders({});
     buildOrdersView();
     refreshAllOrderChips();
@@ -3478,6 +3480,7 @@ function buildAddView() {
 function onSupSelectChange() {}
 
 function saveNewProduct() {
+  if (!fvAllowed('addProduct','Add a product')) return;
   var selVal = document.getElementById('addSupSelect').value;
   if (!selVal) { alert('Please select a supplier.'); return; }
 
@@ -3529,6 +3532,7 @@ function rebuildProducts() {
 }
 
 function saveNewSupplier() {
+  if (!fvAllowed('addSupplier','Add a supplier')) return;
   var supName  = document.getElementById('newSupName').value.trim();
   var supStall = document.getElementById('newSupStall').value.trim();
   var supPhone = document.getElementById('newSupPhone').value.trim();
@@ -3577,7 +3581,7 @@ function removeCustomProduct(idx) {
 }
 
 function clearCustomProducts() {
-  if (fvConfirmDanger('Remove ALL added products?')) {
+  if (fvAllowed('removeAllProducts', 'Remove ALL added products')) {
     saveCustomProducts([]);
     rebuildProducts();
     buildList();
@@ -5140,6 +5144,7 @@ function fvConnectAI() {
   });
 }
 function fvDisconnectAI() {
+  if (!fvAllowed('disconnectAI','Disconnect the AI')) return;
   if (confirm('Disconnect smart AI? You can reconnect anytime with your key.')) {
     fvClearKey(); fvRenderAISetup();
   }
@@ -5218,6 +5223,7 @@ function assistAddInvoiceCard(data) {
 
 function fvAddInvoiceItems() {
   if (!fvPendingInvoice || !fvPendingInvoice.data) return;
+  if (!fvAllowed('scanInvoiceAdd','Add these invoice items to products')) return;
   var data = fvPendingInvoice.data;
   var sup = data.supplier || {};
   var supName = (sup.name || 'Invoice supplier').trim();
@@ -5330,8 +5336,38 @@ function fvAuthGate() {
   fvRenderAccount();
 }
 
-/* Confirmation guard for destructive/bulk actions. Everyone gets a prompt;
-   staff get a sterner one (the owner's "are you sure" fail-safe for the team). */
+/* ─── STAFF PERMISSION RULES (on the back burner, ready to switch on) ───────
+   One place to control what staff can do. Flip a value to activate — no other
+   code changes needed. Owner is never blocked.
+     'allow'   = anyone, no prompt   (dormant / off)
+     'confirm' = ask "are you sure?"  (sterner prompt for staff)
+     'block'   = owner-only           (staff get a polite stop)
+   Wired actions honour these immediately. */
+var FV_RULES = {
+  // ── ON now — sensible accident guards on destructive actions ──
+  clearAllOrders:    'confirm',
+  removeAllProducts: 'confirm',
+  removeOrderItem:   'confirm',
+  // ── READY but dormant ('allow') — flip to 'confirm' or 'block' when needed ──
+  resetRun:          'allow',   // "Reset for New Run"
+  saveOrder:         'allow',   // tapping "Save Order" (manual; AI auto-save is exempt)
+  addProduct:        'allow',   // add a new product
+  addSupplier:       'allow',   // add a new supplier
+  scanInvoiceAdd:    'allow',   // add scanned-invoice items to products
+  disconnectAI:      'allow'    // disconnect / change the AI key
+};
+
+// Gate a significant action. Returns true if it may proceed.
+function fvAllowed(action, label) {
+  var rule = FV_RULES[action] || 'allow';
+  label = label || 'This action';
+  if (rule === 'allow') return true;
+  if (fvIsOwner()) return (rule === 'confirm') ? confirm(label + ' — are you sure?') : true;  // owner never blocked
+  if (rule === 'block') { alert('🔒 ' + label + ' is owner-only.\nPlease ask Abhishek to do this.'); return false; }
+  return confirm('⚠️ Careful — this can affect everyone.\n\n' + label + '\n\nAre you sure you want to do this?');
+}
+
+// Kept for any ad-hoc destructive prompt not covered by FV_RULES.
 function fvConfirmDanger(msg) {
   if (fvIsOwner()) return confirm(msg);
   return confirm('⚠️ Careful — this can affect everyone.\n\n' + msg + '\n\nAre you sure you want to do this?');
