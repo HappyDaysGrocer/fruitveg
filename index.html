@@ -1649,7 +1649,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v59';
+var APP_BUILD = 'v60';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5568,19 +5568,51 @@ function fvFinanceLoad(){
     return ok;
   }).catch(function(){ return false; });
 }
-// Owner one-tap migration: push the current finance data up to the secure cloud.
+// Owner: migrate finance data into the locked cloud. Uses in-app data if present;
+// after the public files were stripped it lets the owner pick the backup JSON file.
 function fvFinanceUpload(){
   if (!fvSession || fvSession.role !== 'owner'){ alert('Only the owner account can do this.'); return; }
   if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()){ alert('Please log in first (the secure cloud needs your login).'); return; }
   var payload = fvFinanceCollect_();
-  if (!Object.keys(payload).length){ alert('No finance data found to upload.'); return; }
+  var hasData = Object.keys(payload).some(function(k){ var v = payload[k]; return Array.isArray(v) ? v.length : (v && typeof v === 'object' ? Object.keys(v).length : (typeof v === 'number' ? false : !!v)); });
+  if (hasData) { fvFinancePush_(payload); return; }
+  fvFinancePickFile_();
+}
+function fvFinancePickFile_(){
+  var inp = document.getElementById('financeRestoreInput');
+  if (!inp){
+    inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.id = 'financeRestoreInput'; inp.style.display = 'none'; document.body.appendChild(inp);
+    inp.addEventListener('change', function(){
+      var f = inp.files && inp.files[0]; if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function(){ try { fvFinanceApply_(JSON.parse(rd.result)); fvFinancePush_(fvFinanceCollect_()); } catch(e){ alert('Could not read that backup file: ' + e.message); } inp.value = ''; };
+      rd.readAsText(f);
+    });
+  }
+  alert('Finance data has been moved out of the public files. Pick your backup file "_finance (import to Firebase).json" (Drive → Invoice → Bank Statements) to load it into the secure cloud.');
+  inp.click();
+}
+function fvFinancePush_(payload){
+  if (!payload || !Object.keys(payload).length){ alert('Nothing to upload.'); return; }
   if (!confirm('Upload your invoice & bank data to the secure cloud? Only your 6 accounts will be able to read it.')) return;
   fvFbToken().then(function(tok){
     return fetch(FV_FB.databaseURL + '/finance.json?auth=' + tok, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   }).then(function(r){
-    if (r && r.ok){ alert('✅ Done. Your finance data is now in the secure cloud. Tell Claude it is uploaded and the public copy will be removed.'); }
-    else { alert('Upload failed (' + (r ? r.status : 'no response') + '). Make sure you published the database rules first.'); }
+    if (r && r.ok){ alert('✅ Done. Your finance data is now in the secure cloud and showing in the app.'); var sv = document.getElementById('viewSpend'); if (sv && sv.classList.contains('active') && typeof buildSpendView === 'function') buildSpendView(); }
+    else { alert('Upload failed (' + (r ? r.status : 'no response') + '). Did you publish the Firebase rules first?'); }
   }).catch(function(e){ alert('Upload failed: ' + (e && e.message ? e.message : e)); });
+}
+// Owner self-test: confirm the database is locked (no-token read must be denied).
+function fvSecurityCheck(){
+  if (typeof FV_FB === 'undefined'){ alert('Config missing.'); return; }
+  var base = FV_FB.databaseURL;
+  function probe(path){ return fetch(base + '/' + path + '.json', { cache:'no-store' }).then(function(r){ return { p:path, s:r.status }; }).catch(function(){ return { p:path, s:'net' }; }); }
+  Promise.all([probe('finance'), probe('stock')]).then(function(res){
+    var lines = res.map(function(x){ var locked = (x.s === 401 || x.s === 403); return (locked ? '🔒 LOCKED' : '⚠️ OPEN (' + x.s + ')') + ' — /' + x.p; }).join('\n');
+    var allLocked = res.every(function(x){ return x.s === 401 || x.s === 403; });
+    alert((allLocked ? '✅ SAFE — strangers cannot read your data without a team login.' : '🚨 NOT LOCKED YET — publish the Firebase database rules now (steps are in the lockdown guide).') + '\n\n' + lines);
+  });
 }
 function fvFinanceButtonHTML(){
   if (!fvSession || fvSession.role !== 'owner') return '';
@@ -6421,6 +6453,7 @@ function fvRenderAccount() {
     + ' <span class="acct-role">' + fvEsc(fvSession.role) + '</span>'
     + '</div>'
     + '<div class="acct-row"><button onclick="fvChangePwOpen(false)" style="background:#eef2ff;color:#1c4587;border:1px solid #c7d2fe;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔑 Change my password</button></div>'
+    + (fvSession.role === 'owner' ? '<div class="acct-row" style="margin-top:6px;"><button onclick="fvSecurityCheck()" style="background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔒 Check my data is locked</button></div>' : '')
     + '<button onclick="fvLogout()" style="width:100%;box-sizing:border-box;margin-top:12px;padding:13px;background:#b91c1c;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">🚪 Log out</button>';
 }
 
