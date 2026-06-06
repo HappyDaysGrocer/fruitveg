@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <!-- Security hardening: lock down where the app may load/connect, block object & base-uri injection. Kept permissive on https so Firebase/fonts/AI keep working. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-src https:; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebasedatabase.app https://api.anthropic.com; object-src 'none'; base-uri 'self'; frame-src https:; form-action 'self'">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -1610,7 +1610,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v56';
+var APP_BUILD = 'v57';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5503,9 +5503,19 @@ function fvFinanceCollect_(){
   return o;
 }
 function fvFinanceApply_(d){
-  if (!d) return false;
+  if (!d || typeof d !== 'object') return false;
   var any = false;
-  FV_FINANCE_KEYS.forEach(function(k){ if (d[k] !== undefined && d[k] !== null){ window[k] = d[k]; any = true; } });
+  var NOT_ARRAY = { CAP_SHARE:1, FV_INVOICE_FILES:1, BANK_FEED_META:1, FV_INVOICE_FOLDER:1 };
+  FV_FINANCE_KEYS.forEach(function(k){
+    var v = d[k];
+    if (v === undefined || v === null) return;
+    // reject malformed payloads from a tampered /finance node (defence in depth)
+    if (!NOT_ARRAY[k] && !Array.isArray(v)) return;
+    if (k === 'FV_INVOICE_FILES' || k === 'BANK_FEED_META') { if (typeof v !== 'object' || Array.isArray(v)) return; }
+    if (k === 'FV_INVOICE_FOLDER') { if (typeof v !== 'string') return; }
+    if (k === 'CAP_SHARE') { if (typeof v !== 'number') return; }
+    window[k] = v; any = true;
+  });
   return any;
 }
 // After login: pull finance data from the cloud (overrides any local fallback copy).
