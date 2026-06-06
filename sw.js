@@ -21,6 +21,15 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   var req = e.request;
+  // SECURITY: never intercept or cache cross-origin, Firebase, or token-bearing
+  // requests — keeps auth tokens and private /finance & /stock data out of the
+  // on-device Cache API (matters on shared market devices).
+  try {
+    var _u = new URL(req.url);
+    if (_u.origin !== self.location.origin ||
+        /firebasedatabase\.app|googleapis\.com|identitytoolkit|securetoken/i.test(_u.host) ||
+        /[?&]auth=/.test(req.url)) return;
+  } catch (err) { return; }
 
   // Page loads + code/data files: pull straight from the server, ignoring the
   // browser's HTTP cache. Other assets (icons, etc.) use a normal network fetch.

@@ -1610,7 +1610,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v55';
+var APP_BUILD = 'v56';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2826,7 +2826,7 @@ function renderParsedList() {
     // ── Row 1: raw line + remove button ──────────────────────────────────
     var rawRow = document.createElement('div');
     rawRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-    rawRow.innerHTML = '<span style="font-size:11px;color:#6b7280;">From SMS: <em>' + item.rawLine + '</em></span>';
+    rawRow.innerHTML = '<span style="font-size:11px;color:#6b7280;">From SMS: <em>' + fvEsc(item.rawLine) + '</em></span>';
     var rmBtn = document.createElement('button');
     rmBtn.className = 'parsed-remove'; rmBtn.textContent = '✕';
     rmBtn.addEventListener('click', (function(idx){ return function(){ parsedItems.splice(idx,1); renderParsedList(); }; })(i));
@@ -4839,10 +4839,10 @@ function fvReviewOpen(){
   ov.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:flex-end;justify-content:center;');
   ov.onclick = function(e){ if (e.target === ov) fvReviewClose(); };
   var items = (typeof FV_REVIEW !== 'undefined' ? FV_REVIEW : []);
-  var rows = items.map(function(r){
+  var rows = items.map(function(r, _ri){
     var ck = !!done[r.id];
     return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:8px;background:' + (ck ? '#f0fdf4' : '#fff') + ';cursor:pointer;">'
-      + '<input type="checkbox" ' + (ck ? 'checked' : '') + ' onchange="fvReviewToggle(\'' + r.id + '\')" style="width:20px;height:20px;margin-top:2px;flex:none;">'
+      + '<input type="checkbox" ' + (ck ? 'checked' : '') + ' onchange="fvReviewToggle(' + _ri + ')" style="width:20px;height:20px;margin-top:2px;flex:none;">'
       + '<span style="flex:1;"><span style="font-weight:700;font-size:14px;' + (ck ? 'text-decoration:line-through;color:#6b7280;' : 'color:#1c4587;') + '">' + fvEsc(r.title) + '</span>'
       + '<span style="display:block;font-size:12px;color:#4b5563;margin-top:3px;line-height:1.45;">' + fvEsc(r.detail) + '</span></span></label>';
   }).join('');
@@ -4854,7 +4854,9 @@ function fvReviewOpen(){
     + '</div>';
 }
 function fvReviewClose(){ var ov = document.getElementById('fvReviewOverlay'); if (ov) ov.remove(); }
-function fvReviewToggle(id){
+function fvReviewToggle(i){
+  var id = (typeof FV_REVIEW !== 'undefined' && FV_REVIEW[i]) ? FV_REVIEW[i].id : null;
+  if (id == null) return;
   var done = fvReviewLoad();
   if (done[id]) delete done[id]; else done[id] = true;
   fvReviewSave(done);
@@ -4902,10 +4904,10 @@ function fvCapitalOpen() {
   h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:6px 0 4px;">Deposits</div>';
   (typeof CONTRIBUTIONS !== 'undefined' ? CONTRIBUTIONS.slice().sort(function (a, b) { return a.d < b.d ? -1 : 1; }) : []).forEach(function (c) {
     if (c.conf === 'assumed') anyAssumed = true;
-    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + c.d + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + (c.conf === 'assumed' ? ' <em style="color:#b45309;">(assumed)</em>' : '') + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + fvEsc(c.d) + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + (c.conf === 'assumed' ? ' <em style="color:#b45309;">(assumed)</em>' : '') + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
   });
   (typeof CONTRIB_ADJ !== 'undefined' ? CONTRIB_ADJ : []).forEach(function (c) {
-    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#b91c1c;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + c.d + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#b91c1c;border-top:1px solid #f0f0f0;padding:4px 0;"><span style="flex:1;min-width:0;">' + fvEsc(c.d) + ' · ' + fvEsc(c.party) + ' · ' + fvEsc(c.ref) + '</span><span style="font-weight:700;white-space:nowrap;">$' + c.amt.toLocaleString() + '</span></div>';
   });
   if (anyAssumed) h += '<div style="font-size:10px;color:#b45309;margin-top:5px;">(assumed) = deposit had no name; attributed to make the totals balance. Please confirm.</div>';
   var cats = {}, totEx = 0;
@@ -4917,7 +4919,7 @@ function fvCapitalOpen() {
   h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:10px 0 4px;">Every expense (' + (typeof STMT_EXPENSES !== 'undefined' ? STMT_EXPENSES.length : 0) + ') — tap nothing, this is your record</div>';
   (typeof STMT_EXPENSES !== 'undefined' ? STMT_EXPENSES : []).forEach(function (e, i) {
     var ref = e.r ? e.r : ('BNK-' + ('000' + (i + 1)).slice(-3));
-    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + e.d + ' · <strong>' + fvEsc(e.p) + '</strong> · ' + fvEsc(e.n) + ' <span style="color:#9ca3af;">[' + fvEsc(ref) + ']</span></span><span style="font-weight:700;white-space:nowrap;">$' + e.a.toFixed(2) + '</span></div>';
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#374151;border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + fvEsc(e.d) + ' · <strong>' + fvEsc(e.p) + '</strong> · ' + fvEsc(e.n) + ' <span style="color:#9ca3af;">[' + fvEsc(ref) + ']</span></span><span style="font-weight:700;white-space:nowrap;">$' + e.a.toFixed(2) + '</span></div>';
   });
 
   // ---- Recent live bank activity (actual cash-flow from the screenshots) ----
@@ -4926,7 +4928,7 @@ function fvCapitalOpen() {
     BANK_FEED.forEach(function (t) { if (t.dir === 'in') { bIn += t.a; if (/adyen/i.test(t.p)) adyen += t.a; } else bOut += t.a; });
     var bm = (typeof BANK_FEED_META !== 'undefined') ? BANK_FEED_META : { from: '', to: '' };
     var bnet = bIn - bOut;
-    h += '<div style="font-weight:800;color:#0d4420;font-size:15px;margin:18px 0 6px;">📲 Recent bank activity (' + bm.from + ' → ' + bm.to + ')</div>';
+    h += '<div style="font-weight:800;color:#0d4420;font-size:15px;margin:18px 0 6px;">📲 Recent bank activity (' + fvEsc(bm.from) + ' → ' + fvEsc(bm.to) + ')</div>';
     h += '<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">Actual money in/out from the live CommBank account, read from your screenshots. This is real cash-flow — kept separate from the invoice list and the Jan–Mar ledger above so nothing is double-counted.</div>';
     h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#15803d;padding:2px 0;"><span>💚 Money in <span style="color:#6b7280;">(incl. Adyen card takings ' + money(adyen) + ')</span></span><strong>' + money(bIn) + '</strong></div>';
     h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#b91c1c;padding:2px 0;"><span>💸 Money out</span><strong>' + money(bOut) + '</strong></div>';
@@ -4935,7 +4937,7 @@ function fvCapitalOpen() {
     BANK_FEED.forEach(function (t) {
       var col = t.dir === 'in' ? '#15803d' : '#374151';
       var sign = t.dir === 'in' ? '+' : '−';
-      h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:' + col + ';border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + t.d + ' · <strong>' + fvEsc(t.p) + '</strong>' + (t.pend ? ' <em style="color:#b45309;">(pending)</em>' : '') + (t.n ? (' <span style="color:#9ca3af;">' + fvEsc(t.n) + '</span>') : '') + '</span><span style="font-weight:700;white-space:nowrap;">' + sign + '$' + t.a.toFixed(2) + '</span></div>';
+      h += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:' + col + ';border-top:1px solid #f0f0f0;padding:5px 0;"><span style="flex:1;min-width:0;">' + fvEsc(t.d) + ' · <strong>' + fvEsc(t.p) + '</strong>' + (t.pend ? ' <em style="color:#b45309;">(pending)</em>' : '') + (t.n ? (' <span style="color:#9ca3af;">' + fvEsc(t.n) + '</span>') : '') + '</span><span style="font-weight:700;white-space:nowrap;">' + sign + '$' + t.a.toFixed(2) + '</span></div>';
     });
   }
 
@@ -5090,7 +5092,8 @@ function renderSpendRows() {
       + '<div id="supp' + gi + '" style="display:none;margin-top:6px;">';
     g.items.slice().sort(function(a,b){ return a.d < b.d ? -1 : 1; }).forEach(function(iv){
       var fid = (typeof FV_INVOICE_FILES !== 'undefined') ? FV_INVOICE_FILES[iv.n] : null;
-      var meta = fvEsc(fvInvName(iv)) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + iv.ty + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
+      if (fid && !/^[A-Za-z0-9_-]+$/.test(fid)) fid = null;
+      var meta = fvEsc(fvInvName(iv)) + (iv.ty !== 'Invoice' ? ' <em style="color:#92400e;">(' + fvEsc(iv.ty) + ')</em>' : '') + (iv.dup ? ' <em>(dup)</em>' : '');
       var amt = (iv.t == null ? '—' : ('$' + Number(iv.t).toFixed(2)));
       html += '<div style="border-top:1px solid #eef0f2;padding:9px 0;">'
         + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;"><span style="flex:1;min-width:0;">' + meta + '</span><span style="white-space:nowrap;font-weight:700;">' + amt + '</span></div>';
@@ -5493,7 +5496,7 @@ function fvRenderSync() {
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
        so only your 6 logged-in accounts can read it. ─────────────────────── */
-var FV_FINANCE_KEYS = ['BANK_TX','CONTRIBUTIONS','CONTRIB_ADJ','CAP_PARTIES','CAP_SHARE','STMT_EXPENSES','SHOP_INVOICES','FV_INVOICE_FILES','FV_REVIEW'];
+var FV_FINANCE_KEYS = ['BANK_TX','CONTRIBUTIONS','CONTRIB_ADJ','CAP_PARTIES','CAP_SHARE','STMT_EXPENSES','SHOP_INVOICES','FV_INVOICE_FILES','FV_REVIEW','BANK_FEED','BANK_FEED_META','FV_INVOICE_FOLDER'];
 function fvFinanceCollect_(){
   var o = {};
   FV_FINANCE_KEYS.forEach(function(k){ if (typeof window[k] !== 'undefined' && window[k] !== null) o[k] = window[k]; });
@@ -5688,7 +5691,7 @@ function renderAssistChips() {
 function assistAddMsg(text, who) {
   var m = document.createElement('div');
   m.className = 'assist-msg ' + who;
-  m.innerHTML = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  m.innerHTML = fvEsc(text).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
   var box = document.getElementById('assistMessages');
   box.appendChild(m);
   box.scrollTop = box.scrollHeight;
@@ -6354,6 +6357,8 @@ function fvLogout() {
   fvSession = null;
   try { sessionStorage.removeItem('fvAuth'); localStorage.removeItem('fvAuth'); } catch(e) {}
   if (typeof fvFbClear === 'function') fvFbClear();
+  if (typeof fvClearKey === 'function') fvClearKey();
+  try { if (window.caches && caches.keys) caches.keys().then(function(ks){ ks.forEach(function(k){ caches.delete(k); }); }); } catch(e){}
   if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
   fvShowLogin();
   fvRenderAccount();
