@@ -1610,7 +1610,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v54';
+var APP_BUILD = 'v55';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1639,7 +1639,7 @@ function init() {
   fvAuthGate();   // show the login gate unless already signed in on this device
   if (typeof fvRenderDrive === 'function') fvRenderDrive();
   if (typeof fvRenderSync === 'function') fvRenderSync();
-  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); fvStartSyncPolling(); }
+  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); fvStartSyncPolling(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }
   window.addEventListener('focus', function(){ if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) fvSyncPull(); });
 }
 
@@ -5065,6 +5065,7 @@ function buildSpendView() {
   html += fvReviewButtonHTML();
   html += fvCapitalButtonHTML();
   html += fvCashflowButtonHTML();
+  html += fvFinanceButtonHTML();
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
@@ -5488,6 +5489,50 @@ function fvRenderSync() {
   } else {
     el.innerHTML = '<div style="font-size:12px;color:#6b7280;">🔒 Live sync turns on automatically when you log in. It\'s locked to your team accounts only.</div>';
   }
+}
+
+/* ─── Finance data: kept OUT of the public files and loaded from Firebase,
+       so only your 6 logged-in accounts can read it. ─────────────────────── */
+var FV_FINANCE_KEYS = ['BANK_TX','CONTRIBUTIONS','CONTRIB_ADJ','CAP_PARTIES','CAP_SHARE','STMT_EXPENSES','SHOP_INVOICES','FV_INVOICE_FILES','FV_REVIEW'];
+function fvFinanceCollect_(){
+  var o = {};
+  FV_FINANCE_KEYS.forEach(function(k){ if (typeof window[k] !== 'undefined' && window[k] !== null) o[k] = window[k]; });
+  return o;
+}
+function fvFinanceApply_(d){
+  if (!d) return false;
+  var any = false;
+  FV_FINANCE_KEYS.forEach(function(k){ if (d[k] !== undefined && d[k] !== null){ window[k] = d[k]; any = true; } });
+  return any;
+}
+// After login: pull finance data from the cloud (overrides any local fallback copy).
+function fvFinanceLoad(){
+  if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()) return Promise.resolve(false);
+  return fvFbToken().then(function(tok){
+    return fetch(FV_FB.databaseURL + '/finance.json?auth=' + tok, { cache:'no-store' });
+  }).then(function(r){ return (r && r.ok) ? r.json() : null; }).then(function(d){
+    var ok = fvFinanceApply_(d);
+    if (ok){ var sv = document.getElementById('viewSpend'); if (sv && sv.classList.contains('active') && typeof buildSpendView === 'function') buildSpendView(); }
+    return ok;
+  }).catch(function(){ return false; });
+}
+// Owner one-tap migration: push the current finance data up to the secure cloud.
+function fvFinanceUpload(){
+  if (!fvSession || fvSession.role !== 'owner'){ alert('Only the owner account can do this.'); return; }
+  if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()){ alert('Please log in first (the secure cloud needs your login).'); return; }
+  var payload = fvFinanceCollect_();
+  if (!Object.keys(payload).length){ alert('No finance data found to upload.'); return; }
+  if (!confirm('Upload your invoice & bank data to the secure cloud? Only your 6 accounts will be able to read it.')) return;
+  fvFbToken().then(function(tok){
+    return fetch(FV_FB.databaseURL + '/finance.json?auth=' + tok, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }).then(function(r){
+    if (r && r.ok){ alert('✅ Done. Your finance data is now in the secure cloud. Tell Claude it is uploaded and the public copy will be removed.'); }
+    else { alert('Upload failed (' + (r ? r.status : 'no response') + '). Make sure you published the database rules first.'); }
+  }).catch(function(e){ alert('Upload failed: ' + (e && e.message ? e.message : e)); });
+}
+function fvFinanceButtonHTML(){
+  if (!fvSession || fvSession.role !== 'owner') return '';
+  return '<button onclick="fvFinanceUpload()" style="width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px;border:1px solid #1c4587;background:#eef2ff;color:#1c4587;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">☁️ Move finance data to secure cloud (owner)</button>';
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
@@ -6204,7 +6249,7 @@ function fvLogin() {
     // Also sign in to Firebase so live stock sync works, secured by your login.
     // Best-effort: if it fails, the app still works fully (just no sync this session).
     if (typeof fvFirebaseSignIn === 'function') {
-      fvFirebaseSignIn(found.user, p).then(function(){ if (typeof fvSyncStart === 'function') fvSyncStart(); }).catch(function(){});
+      fvFirebaseSignIn(found.user, p).then(function(){ if (typeof fvSyncStart === 'function') fvSyncStart(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }).catch(function(){});
     }
   }).catch(function(){
     if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
