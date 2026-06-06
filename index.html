@@ -6210,6 +6210,97 @@ function fvShowLogin() {
 }
 function fvHideLogin() { var o = document.getElementById('loginOverlay'); if (o) o.classList.add('hidden'); }
 
+/* ── Self-service password change (first-login prompt + anytime) ─────────────
+   New password must have a CAPITAL letter, a number and a symbol.
+   Changing updates BOTH the real Firebase Auth password and a local gate-hash
+   override (so the old admin-set password stops working on this device, and the
+   new one works on every device via the Firebase fallback in fvLogin). */
+function fvPwValid(p){ return typeof p === 'string' && p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p); }
+function fvPwOvLoad(){ try { return JSON.parse(localStorage.getItem('fvPwOverride') || '{}'); } catch(e){ return {}; } }
+function fvPwOvSet(user, hash){ var o = fvPwOvLoad(); o[user] = hash; try { localStorage.setItem('fvPwOverride', JSON.stringify(o)); } catch(e){} }
+function fvOwnPwSet(user){ try { return localStorage.getItem('fvOwnPw_' + user) === '1'; } catch(e){ return false; } }
+function fvMarkOwnPw(user){ try { localStorage.setItem('fvOwnPw_' + user, '1'); } catch(e){} }
+
+// Change the Firebase Auth password using the current signed-in session token.
+function fvFbChangePassword(newPw){
+  return fvFbToken().then(function(tok){
+    return fetch('https://identitytoolkit.googleapis.com/v1/accounts:update?key=' + FV_FB.apiKey, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ idToken: tok, password: newPw, returnSecureToken: true })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (d.error) throw new Error(d.error.message || 'change failed');
+      if (d.idToken && fvFbAuth) {
+        fvFbAuth.idToken = d.idToken;
+        if (d.refreshToken) fvFbAuth.refreshToken = d.refreshToken;
+        fvFbAuth.expiresAt = Date.now() + ((parseInt(d.expiresIn, 10) || 3600) * 1000) - 60000;
+        fvFbSave();
+      }
+      return true;
+    });
+  });
+}
+
+function fvChangePwClose(){ var o = document.getElementById('fvPwOverlay'); if (o) o.remove(); }
+function fvChangePwOpen(firstTime){
+  if (!fvSession) return;
+  var ov = document.getElementById('fvPwOverlay');
+  if (!ov){ ov = document.createElement('div'); ov.id = 'fvPwOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:18px;');
+  ov.innerHTML = '<div style="background:#fff;width:100%;max-width:380px;border-radius:16px;padding:18px;">'
+    + '<div style="font-size:17px;font-weight:800;color:#0d4420;margin-bottom:4px;">' + (firstTime ? '👋 Set your own password' : '🔑 Change password') + '</div>'
+    + '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;">' + (firstTime ? 'You’re signed in with a temporary password. Please set your own private one now.' : 'Pick a new password for your account.') + '</div>'
+    + '<input id="fvPwNew" type="password" placeholder="New password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:8px;">'
+    + '<input id="fvPwNew2" type="password" placeholder="Type it again" autocomplete="new-password" onkeydown="if(event.key===\'Enter\')fvChangePwSubmit()" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:8px;">'
+    + '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Must include a <strong>CAPITAL</strong> letter, a <strong>number</strong>, and a <strong>symbol</strong> (like ! @ # $) — at least 8 characters.</div>'
+    + '<div id="fvPwErr" style="font-size:12px;color:#b91c1c;margin-bottom:8px;"></div>'
+    + '<button id="fvPwBtn" onclick="fvChangePwSubmit()" style="width:100%;padding:12px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;">Save new password</button>'
+    + '<button onclick="fvChangePwClose()" style="width:100%;padding:10px;background:none;color:#6b7280;border:none;font-size:13px;margin-top:6px;cursor:pointer;">' + (firstTime ? 'Maybe later' : 'Cancel') + '</button>'
+    + '</div>';
+  var f = document.getElementById('fvPwNew'); if (f) setTimeout(function(){ f.focus(); }, 150);
+}
+function fvChangePwSubmit(){
+  var p1 = (document.getElementById('fvPwNew') || {}).value || '';
+  var p2 = (document.getElementById('fvPwNew2') || {}).value || '';
+  var err = document.getElementById('fvPwErr'); var btn = document.getElementById('fvPwBtn');
+  if (err) err.textContent = '';
+  if (p1 !== p2) { if (err) err.textContent = 'The two passwords don’t match.'; return; }
+  if (!fvPwValid(p1)) { if (err) err.textContent = 'Needs a CAPITAL letter, a number, a symbol, and 8+ characters.'; return; }
+  if (!fvSession) { if (err) err.textContent = 'Please log in again.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var user = fvSession.user;
+  fvFbChangePassword(p1).then(function(){
+    return fvHash(p1).then(function(h){ fvPwOvSet(user, h); });
+  }).then(function(){
+    fvMarkOwnPw(user);
+    fvChangePwClose();
+    alert('✅ Password changed. Use your new password from now on (on every device).');
+  }).catch(function(e){
+    if (btn) { btn.disabled = false; btn.textContent = 'Save new password'; }
+    if (err) err.textContent = 'Couldn’t save (' + ((e && e.message) || 'error') + '). You need internet to change your password.';
+  });
+}
+
+function fvLoginSuccess(found, p, rem, fbAlready){
+  window._fvFails = 0; window._fvLockUntil = 0;
+  fvSession = { user: found.user, name: found.name, role: found.role };
+  var js = JSON.stringify(fvSession);
+  try {
+    sessionStorage.setItem('fvAuth', js);
+    if (rem) localStorage.setItem('fvAuth', js); else localStorage.removeItem('fvAuth');
+  } catch(e) {}
+  var pin = document.getElementById('loginPass'); if (pin) pin.value = '';
+  fvHideLogin();
+  fvRenderAccount();
+  if (!fbAlready && typeof fvFirebaseSignIn === 'function') {
+    fvFirebaseSignIn(found.user, p).then(function(){ if (typeof fvSyncStart === 'function') fvSyncStart(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }).catch(function(){});
+  } else {
+    if (typeof fvSyncStart === 'function') fvSyncStart();
+    if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
+  }
+  // first login on this device: nudge them to set their own password
+  if (!fvOwnPwSet(found.user)) setTimeout(function(){ fvChangePwOpen(true); }, 700);
+}
+
 function fvLogin() {
   var u   = (document.getElementById('loginUser').value || '').trim().toLowerCase();
   var p   = document.getElementById('loginPass').value || '';
@@ -6218,39 +6309,40 @@ function fvLogin() {
   var btn = document.getElementById('loginBtn');
   if (err) err.textContent = '';
   if (!u || !p) { if (err) err.textContent = 'Enter your username and password.'; return; }
-  // brute-force throttle: lock the form for 30s after 5 wrong attempts
   if (window._fvLockUntil && Date.now() < window._fvLockUntil) {
     var _secs = Math.ceil((window._fvLockUntil - Date.now()) / 1000);
     if (err) err.textContent = 'Too many attempts — wait ' + _secs + 's.';
     return;
   }
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
-  fvHash(p).then(function(h){
-    var found = null;
-    for (var i = 0; i < FV_USERS.length; i++)
-      if (FV_USERS[i].user === u && FV_USERS[i].hash === h) { found = FV_USERS[i]; break; }
+  function fail(){
     if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
-    if (!found) {
-      window._fvFails = (window._fvFails || 0) + 1;
-      if (window._fvFails >= 5) { window._fvLockUntil = Date.now() + 30000; window._fvFails = 0; }
-      if (err) err.textContent = 'Wrong username or password.';
+    window._fvFails = (window._fvFails || 0) + 1;
+    if (window._fvFails >= 5) { window._fvLockUntil = Date.now() + 30000; window._fvFails = 0; }
+    if (err) err.textContent = 'Wrong username or password.';
+  }
+  fvHash(p).then(function(h){
+    var cand = null;
+    for (var i = 0; i < FV_USERS.length; i++) if (FV_USERS[i].user === u) { cand = FV_USERS[i]; break; }
+    var ov = fvPwOvLoad();
+    // once a personal password is set on this device, the old baked one stops working
+    var gateHash = (cand && ov[u] !== undefined) ? ov[u] : (cand ? cand.hash : null);
+    if (cand && gateHash !== null && gateHash === h) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+      fvLoginSuccess(cand, p, rem, false);
       return;
     }
-    window._fvFails = 0; window._fvLockUntil = 0;
-    fvSession = { user: found.user, name: found.name, role: found.role };
-    var js = JSON.stringify(fvSession);
-    try {
-      sessionStorage.setItem('fvAuth', js);
-      if (rem) localStorage.setItem('fvAuth', js); else localStorage.removeItem('fvAuth');
-    } catch(e) {}
-    document.getElementById('loginPass').value = '';
-    fvHideLogin();
-    fvRenderAccount();
-    // Also sign in to Firebase so live stock sync works, secured by your login.
-    // Best-effort: if it fails, the app still works fully (just no sync this session).
-    if (typeof fvFirebaseSignIn === 'function') {
-      fvFirebaseSignIn(found.user, p).then(function(){ if (typeof fvSyncStart === 'function') fvSyncStart(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }).catch(function(){});
+    // local check failed — the password may have been changed on another device: ask Firebase
+    if (cand && typeof fvFirebaseSignIn === 'function') {
+      fvFirebaseSignIn(u, p).then(function(){
+        if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
+        fvPwOvSet(u, h);      // cache new hash so it works offline here too
+        fvMarkOwnPw(u);       // they're using their own (changed) password
+        fvLoginSuccess(cand, p, rem, true);
+      }).catch(function(){ fail(); });
+      return;
     }
+    fail();
   }).catch(function(){
     if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
     if (err) err.textContent = 'Could not sign in — try again.';
@@ -6273,7 +6365,8 @@ function fvRenderAccount() {
   if (!fvSession) { el.innerHTML = '<div class="acct-row">Not signed in</div>'; return; }
   el.innerHTML = '<div class="acct-row">👤 <strong>' + fvEsc(fvSession.name) + '</strong>'
     + ' <span class="acct-role">' + fvEsc(fvSession.role) + '</span>'
-    + ' <button class="acct-logout" onclick="fvLogout()">Log out</button></div>';
+    + ' <button class="acct-logout" onclick="fvLogout()">Log out</button></div>'
+    + '<div class="acct-row"><button onclick="fvChangePwOpen(false)" style="background:#eef2ff;color:#1c4587;border:1px solid #c7d2fe;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔑 Change my password</button></div>';
 }
 
 function fvAuthGate() {
