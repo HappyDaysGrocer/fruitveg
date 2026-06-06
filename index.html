@@ -1610,7 +1610,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v57';
+var APP_BUILD = 'v58';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6380,8 +6380,9 @@ function fvRenderAccount() {
   if (!fvSession) { el.innerHTML = '<div class="acct-row">Not signed in</div>'; return; }
   el.innerHTML = '<div class="acct-row">👤 <strong>' + fvEsc(fvSession.name) + '</strong>'
     + ' <span class="acct-role">' + fvEsc(fvSession.role) + '</span>'
-    + ' <button class="acct-logout" onclick="fvLogout()">Log out</button></div>'
-    + '<div class="acct-row"><button onclick="fvChangePwOpen(false)" style="background:#eef2ff;color:#1c4587;border:1px solid #c7d2fe;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔑 Change my password</button></div>';
+    + '</div>'
+    + '<div class="acct-row"><button onclick="fvChangePwOpen(false)" style="background:#eef2ff;color:#1c4587;border:1px solid #c7d2fe;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔑 Change my password</button></div>'
+    + '<button onclick="fvLogout()" style="width:100%;box-sizing:border-box;margin-top:12px;padding:13px;background:#b91c1c;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">🚪 Log out</button>';
 }
 
 function fvAuthGate() {
