@@ -1657,7 +1657,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v75';
+var APP_BUILD = 'v76';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6667,17 +6667,51 @@ function fvCurrentRole() { return (fvSession && fvSession.role) || 'guest'; }
 function fvIsOwner()     { return fvCurrentRole() === 'owner'; }
 
 /* ── Who can see company money (Expenses / P&L / Capital & Bank) ──────────────
-   For now Rajiv and Jaswinder don't see any financials — their views stay blank
-   and the menu buttons are hidden. Flip a name to 0 (or remove it) to grant it. */
-var FV_NO_FINANCE = { rajiv: 1, jaswinder: 1 };
-function fvCanSeeFinance() { return !(fvSession && FV_NO_FINANCE[fvSession.user]); }
+   Listed accounts can't see financials yet — their views show "coming soon" and
+   the menu buttons are hidden. The value is WHEN they get access (ms, UTC):
+     • a date  → unlocks automatically at that moment
+     • Infinity → still building, no date set yet
+   Remove a name entirely to give immediate, permanent access.
+   Jaswinder ("Rinku") unlocks Tue 9 Jun 2026 2:00am Melbourne (AEST = 8 Jun 16:00 UTC). */
+var FV_FINANCE_UNLOCK = {
+  jaswinder: Date.UTC(2026, 5, 8, 16, 0, 0),   // Tue 2:00am Melbourne
+  rajiv:     Number.POSITIVE_INFINITY           // still building — no date yet
+};
+function fvCanSeeFinance() {
+  if (!fvSession) return true;
+  var t = FV_FINANCE_UNLOCK[fvSession.user];
+  if (t === undefined) return true;             // not restricted
+  return Date.now() >= t;                        // unlocked once the time passes
+}
 function fvBlankFinance(viewId) {
   var v = document.getElementById(viewId);
-  if (v) v.innerHTML = '<div class="manage-card" style="text-align:center;color:#6b7280;padding:42px 18px;font-size:14px;line-height:1.5;">🔒 The money &amp; reports section<br>isn’t available on your login.</div>';
+  if (v) v.innerHTML = '<div class="manage-card" style="text-align:center;color:#475569;padding:48px 18px;">' +
+    '<div style="font-size:30px;margin-bottom:10px;">🛠️</div>' +
+    '<div style="font-size:16px;font-weight:800;color:#0d4420;">We’re building this page</div>' +
+    '<div style="font-size:13px;color:#6b7280;margin-top:5px;">Coming soon.</div>' +
+    '</div>';
 }
 function fvApplyAccess() {
-  var hide = !fvCanSeeFinance();
-  ['navSpend','navPL'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = hide ? 'none' : ''; });
+  var canSee = fvCanSeeFinance();
+  ['navSpend','navPL'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = canSee ? '' : 'none'; });
+  // If locked now but an unlock time is coming up, auto-refresh when it arrives
+  // (so an open app flips on at 2am without needing a manual reload).
+  clearTimeout(window._fvAccessTimer);
+  if (!canSee && fvSession) {
+    var t = FV_FINANCE_UNLOCK[fvSession.user];
+    if (typeof t === 'number' && isFinite(t)) {
+      var ms = t - Date.now();
+      if (ms > 0 && ms < 26 * 60 * 60 * 1000) {   // within ~26h
+        window._fvAccessTimer = setTimeout(function(){
+          fvApplyAccess();
+          var sp = document.getElementById('viewSpend'), pl = document.getElementById('viewPL');
+          if (sp && sp.classList.contains('active')) showView('Spend');
+          else if (pl && pl.classList.contains('active')) showView('PL');
+          if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
+        }, ms + 1500);
+      }
+    }
+  }
 }
 
 function fvShowLogin() {
