@@ -1067,7 +1067,7 @@
 <div class="stats-bar"></div>
 
 <!-- Run sub-tabs (Buy List / Orders / Totals / Add) — pinned header, sits OUTSIDE the scroll area so it stays put while scrolling -->
-<div class="run-tabs" id="runTabs" style="display:none;">
+<div class="run-tabs" id="runTabs" style="display:flex;">
   <button class="run-tab" id="rtList"   onclick="showView('List')">📋 List</button>
   <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
   <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
@@ -1657,7 +1657,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v77';
+var APP_BUILD = 'v78';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1680,6 +1680,7 @@ function init() {
   document.getElementById('runDate').textContent = DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + '  ·  ' + APP_BUILD;
   buildList();
   refreshStats();
+  showView('List');   // set up the List tab + its top strip immediately (no wait)
   applyResponsive();
   // Re-measure once fonts/logo have settled
   setTimeout(applyResponsive, 400);
@@ -6784,8 +6785,8 @@ function fvIsOwner()     { return fvCurrentRole() === 'owner'; }
    Remove a name entirely to give immediate, permanent access.
    Jaswinder ("Rinku") unlocks Tue 9 Jun 2026 2:00am Melbourne (AEST = 8 Jun 16:00 UTC). */
 var FV_FINANCE_UNLOCK = {
-  jaswinder: Date.UTC(2026, 5, 8, 16, 0, 0),   // Tue 2:00am Melbourne
-  rajiv:     Number.POSITIVE_INFINITY           // still building — no date yet
+  jaswinder: Date.UTC(2026, 5, 8, 16, 0, 0),   // Tue 9 Jun 2:00am Melbourne
+  rajiv:     Date.UTC(2026, 5, 8, 16, 0, 0)     // Tue 9 Jun 2:00am Melbourne (same schedule)
 };
 function fvCanSeeFinance() {
   if (!fvSession) return true;
