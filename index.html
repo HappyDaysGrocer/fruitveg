@@ -1660,7 +1660,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v61';
+var APP_BUILD = 'v62';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1689,7 +1689,7 @@ function init() {
   fvAuthGate();   // show the login gate unless already signed in on this device
   if (typeof fvRenderDrive === 'function') fvRenderDrive();
   if (typeof fvRenderSync === 'function') fvRenderSync();
-  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); fvStartSyncPolling(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }
+  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); if (typeof fvBuySeed === 'function') fvBuySeed(); if (typeof fvBuyPull === 'function') setTimeout(fvBuyPull, 900); fvStartSyncPolling(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }
   window.addEventListener('focus', function(){ if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) fvSyncPull(); });
 }
 
@@ -1699,6 +1699,52 @@ function init() {
    Stored locally per device (mandiBuyList). Separate from the BUY/Totals flow
    so it can't break anything; the planned qty also pre-fills the BUY screen. */
 var mandiBuy = null;
+var mandiBuyBak = null;   // last-cleared list, for Undo
+function fvBuyBakLoad(){ if (mandiBuyBak === null){ try { mandiBuyBak = JSON.parse(localStorage.getItem('mandiBuyBak') || 'null'); } catch(e){ mandiBuyBak = null; } } return mandiBuyBak; }
+function fvBuyBakSet(m){ mandiBuyBak = m; try { if (m) localStorage.setItem('mandiBuyBak', JSON.stringify(m)); else localStorage.removeItem('mandiBuyBak'); } catch(e){} }
+
+/* Live team sync — rides on the same Firebase login; writes to /buylist.
+   Best-effort: if the database is read-only (write rules off) the list still
+   works locally per device and nothing is lost. */
+function fvBuySyncOn(){ return typeof fvSyncEnabled === 'function' && fvSyncEnabled(); }
+function fvBuyPush(idx, q){
+  if (!fvBuySyncOn()) return;
+  fvFbToken().then(function(tok){
+    var body = {}; body['p' + idx] = (q > 0 ? q : null);
+    fetch(FV_FB.databaseURL + '/buylist.json?auth=' + tok, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(function(){});
+  }).catch(function(){});
+}
+function fvBuySeed(){
+  if (!fvBuySyncOn()) return;
+  var m = fvBuyLoad(); var keys = Object.keys(m).filter(function(k){ return m[k] > 0; });
+  if (!keys.length) return;
+  fvFbToken().then(function(tok){
+    var body = {}; keys.forEach(function(k){ body['p' + k] = m[k]; });
+    fetch(FV_FB.databaseURL + '/buylist.json?auth=' + tok, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(function(){});
+  }).catch(function(){});
+}
+function fvBuyPull(){
+  if (!fvBuySyncOn()) return Promise.resolve();
+  return fvFbToken().then(function(tok){
+    return fetch(FV_FB.databaseURL + '/buylist.json?auth=' + tok, { cache:'no-store' });
+  }).then(function(r){ return (r && r.ok) ? r.json() : null; }).then(function(d){
+    if (d == null) return;            // nothing on the server yet — keep the local list intact
+    var m = {};
+    Object.keys(d).forEach(function(k){ if (k.charAt(0) === 'p'){ var q = d[k]; if (q > 0) m[k.slice(1)] = q; } });
+    mandiBuy = m; fvBuySave();
+    fvBuyRerender();
+  }).catch(function(){});
+}
+function fvBuyRerender(){
+  var spans = document.querySelectorAll('[id^="buyq"]');
+  for (var i = 0; i < spans.length; i++){
+    var idx = spans[i].id.slice(4); var q = fvBuyGet(idx);
+    spans[i].textContent = q;
+    var step = document.getElementById('buystep' + idx); if (step) step.classList.toggle('on', q > 0);
+    var row = document.getElementById('row' + idx); if (row) row.classList.toggle('onlist', q > 0);
+  }
+  fvBuyRenderSummary();
+}
 function fvBuyLoad(){ if (!mandiBuy){ try { mandiBuy = JSON.parse(localStorage.getItem('mandiBuyList') || '{}'); } catch(e){ mandiBuy = {}; } } return mandiBuy; }
 function fvBuySave(){ try { localStorage.setItem('mandiBuyList', JSON.stringify(fvBuyLoad())); } catch(e){} }
 function fvBuyGet(idx){ var m = fvBuyLoad(); return m[idx] || 0; }
@@ -1711,12 +1757,21 @@ function buyListAdj(idx, delta, e){
   var span = document.getElementById('buyq' + idx); if (span) span.textContent = q;
   var step = document.getElementById('buystep' + idx); if (step) step.classList.toggle('on', q > 0);
   var row = document.getElementById('row' + idx); if (row) row.classList.toggle('onlist', q > 0);
+  if (q > 0 && fvBuyBakLoad()) fvBuyBakSet(null);   // starting a fresh list clears the Undo state
+  fvBuyPush(idx, q);                                  // share the change with the team
   fvBuyRenderSummary();
 }
 function fvBuyRenderSummary(){
   var bar = document.getElementById('buyListBar'); if (!bar) return;
   var m = fvBuyLoad(); var idxs = Object.keys(m).filter(function(k){ return m[k] > 0; });
-  if (!idxs.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  if (!idxs.length) {
+    var bak = fvBuyBakLoad();
+    if (bak && Object.keys(bak).length) {
+      bar.style.display = 'block';
+      bar.innerHTML = '<div class="buylist-bar" style="background:#b45309;">🗑️ Buy list cleared<span style="flex:1;"></span><button class="buylist-act" onclick="fvBuyUndo()">↩ Undo</button></div>';
+    } else { bar.style.display = 'none'; bar.innerHTML = ''; }
+    return;
+  }
   var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
   bar.style.display = 'block';
   bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' on the buy list · <strong>' + boxes + '</strong> to buy'
@@ -1735,9 +1790,28 @@ function fvBuyCopy(){
   } else { prompt('Copy your buy list:', text); }
 }
 function fvBuyClear(){
-  if (!confirm('Clear the whole buy list?')) return;
+  var m = fvBuyLoad(); var keys = Object.keys(m).filter(function(k){ return m[k] > 0; });
+  if (!keys.length) return;
+  var ok = (typeof fvConfirmDanger === 'function')
+    ? fvConfirmDanger('Clear the WHOLE buy list' + (fvBuySyncOn() ? ' for everyone' : '') + '?\n\nYou can tap Undo straight after.')
+    : confirm('Clear the whole buy list? You can Undo straight after.');
+  if (!ok) return;
+  fvBuyBakSet(JSON.parse(JSON.stringify(m)));   // keep a backup so it can be undone
+  if (fvBuySyncOn()) {                            // tell the team to clear too
+    fvFbToken().then(function(tok){
+      var body = { _cleared: Date.now() }; keys.forEach(function(k){ body['p' + k] = null; });
+      fetch(FV_FB.databaseURL + '/buylist.json?auth=' + tok, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(function(){});
+    }).catch(function(){});
+  }
   mandiBuy = {}; fvBuySave();
-  if (typeof buildList === 'function') buildList();
+  if (typeof buildList === 'function') buildList(); else fvBuyRerender();
+}
+function fvBuyUndo(){
+  var bak = fvBuyBakLoad(); if (!bak || !Object.keys(bak).length) return;
+  mandiBuy = JSON.parse(JSON.stringify(bak)); fvBuySave();
+  fvBuyBakSet(null);
+  fvBuySeed();   // re-share the restored list with the team
+  if (typeof buildList === 'function') buildList(); else fvBuyRerender();
 }
 
 function buildList() {
@@ -5581,13 +5655,15 @@ function fvSyncSeed() {
 
 function fvStartSyncPolling() {
   if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
-  if (fvSyncEnabled()) fvSyncTimer = setInterval(fvSyncPull, 15000);
+  if (fvSyncEnabled()) fvSyncTimer = setInterval(function(){ fvSyncPull(); if (typeof fvBuyPull === 'function') fvBuyPull(); }, 15000);
 }
 
 function fvSyncStart() {
   if (!fvSyncEnabled()) return;
   fvSyncSeed();
+  if (typeof fvBuySeed === 'function') fvBuySeed();
   setTimeout(fvSyncPull, 700);
+  if (typeof fvBuyPull === 'function') setTimeout(fvBuyPull, 900);
   fvStartSyncPolling();
   fvRenderSync();
 }
