@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v80';
+var APP_BUILD = 'v81';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5529,7 +5529,9 @@ function fvJanSummaryHTML(){
   var inventory   = stockJM + inventoryTrading;
   var runningTrading = bankOut - inventoryTrading;        // trading running costs (inventory removed)
   var totalIn = capital + bankIn;
-  var totalOut = build + rentJM + inventory + runningTrading + otherJM;   // bond NOT included (refundable)
+  // The bond IS money that has left the account (so it counts in money-out and
+  // lowers your real cash position) — it's just flagged as refundable.
+  var totalOut = build + rentJM + bondPaid + inventory + runningTrading + otherJM;
   var net = totalIn - totalOut;
   function r(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;padding-left:10px;"><span>'+lbl+'</span><span style="font-weight:700;">'+money(val)+'</span></div>'; }
   function tot(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;border-top:1px solid #eee;padding:5px 0 2px;"><span>'+lbl+'</span><span>'+money(val)+'</span></div>'; }
@@ -5543,15 +5545,14 @@ function fvJanSummaryHTML(){
     + '<div style="font-weight:800;font-size:11px;color:#b91c1c;margin:10px 0 1px;">MONEY OUT</div>'
     + r('🏗️ Shop build &amp; fit-out (one-off)', build)
     + (rentJM ? r('🏪 Rent &amp; property (setup)', rentJM) : '')
+    + (bondPaid ? r('🏦 Rental bond (refundable — comes back)', bondPaid) : '')
     + (inventory ? r('📦 Inventory (produce &amp; stock to sell)', inventory) : '')
     + (runningTrading ? r('🚚 Running costs (Apr–Jun)', runningTrading) : '')
     + (otherJM ? r('💡 Other (utilities, legal, bank)', otherJM) : '')
     + tot('Total out', totalOut)
-    + (bondPaid ? '<div style="font-weight:800;font-size:11px;color:#1c4587;margin:12px 0 1px;">HELD — REFUNDABLE (not a cost)</div>'
-        + r('🏦 Rental bond — you get this back', bondPaid) : '')
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;"><span style="font-weight:800;">Net position</span><strong style="font-size:18px;color:'+(net>=0?'#15803d':'#b91c1c')+';">'+(net>=0?'':'−')+money(Math.abs(net))+'</strong></div>'
     + '<div style="font-size:10px;color:#9ca3af;margin-top:8px;line-height:1.5;">'
-      + (bondPaid ? 'The rental bond (' + money(bondPaid) + ', ~4 months’ rent) is held separately because it’s <strong>refundable</strong> — you get it back, so it’s not counted as a cost. ' : '')
+      + (bondPaid ? 'The rental bond (' + money(bondPaid) + ', ~4 months’ rent) <strong>is</strong> counted in money out because the cash has left your account — but it’s <strong>refundable</strong>, so you’ll get it back when the lease ends. ' : '')
       + '💵 “Shop sales” here is card + wholesale from the bank — it does <strong>not</strong> include cash takings yet, so real sales are higher. Full takings (incl. cash) will come from the EPOS Now till once it’s connected. '
       + 'Indicative allocation: “Build &amp; fit-out” = one-off construction; trading costs are Apr–Jun. Full detail in the Capital &amp; bank view below.</div>'
     + '</div>';
