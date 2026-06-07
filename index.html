@@ -1319,7 +1319,7 @@
 <div class="bottom-nav">
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
   <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store</button>
-  <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Spend</button>
+  <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Expenses</button>
   <button class="nav-btn"        id="navSell"    onclick="showView('Sell')"><span class="nav-icon">💲</span>Sell</button>
   <button class="nav-btn"        id="navPL"      onclick="showView('PL')"><span class="nav-icon">📊</span>P&amp;L</button>
   <button class="nav-btn"        id="navHistory" onclick="showView('History')"><span class="nav-icon">🕐</span>History</button>
@@ -1676,7 +1676,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v73';
+var APP_BUILD = 'v74';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3996,8 +3996,13 @@ function buildAddView() {
   sel.innerHTML = '<option value="">— Select supplier —</option>';
   var suppliers = [], seen = {};
   PRODUCTS.forEach(function(p) {
-    if (!seen[p[0]]) { seen[p[0]] = true; suppliers.push({name:p[0], stall:p[1], phone:p[2]}); }
+    if (seen[p[0]]) return;
+    seen[p[0]] = true;
+    // Mandi only for now — just the market-stall suppliers (skip the shop/random ones with no stall)
+    if (p[1] == null || String(p[1]).trim() === '') return;
+    suppliers.push({name:p[0], stall:p[1], phone:p[2]});
   });
+  suppliers.sort(function(a,b){ var sa=parseInt(a.stall), sb=parseInt(b.stall); var an=!isNaN(sa), bn=!isNaN(sb); if(an&&bn) return sa-sb; if(an&&!bn) return -1; if(!an&&bn) return 1; return String(a.name).localeCompare(String(b.name)); });
   suppliers.forEach(function(s) {
     var opt = document.createElement('option');
     opt.value = JSON.stringify({name:s.name, stall:s.stall, phone:s.phone});
@@ -4790,7 +4795,7 @@ function renderByDate(hist, dates, q, container) {
     hdr.className = 'hist-acc-header' + (isOpen ? ' open' : '');
     hdr.innerHTML =
       '<div class="hist-acc-left">' +
-        '<span class="hist-acc-date" onclick="fvOpenInvoiceForDate(\'' + date + '\',event)" style="cursor:pointer;text-decoration:underline;" title="Open this date\'s invoice photos in Drive">' + run.label + ' 📷</span>' +
+        '<a class="hist-acc-date" href="https://drive.google.com/drive/search?q=' + encodeURIComponent(String(date).replace(/-/g,'_')) + '" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:inherit;text-decoration:underline;cursor:pointer;" title="Open this date\'s invoice photos in Drive">' + run.label + ' 📷</a>' +
         '<span class="hist-acc-meta">' + items.length + ' items · ' + nSuppliers + ' suppliers · tap date 📷 for invoices</span>' +
       '</div>' +
       '<div class="hist-acc-right">' +
@@ -5414,6 +5419,43 @@ function fvCashflowOpen(){
     + h + '</div>';
 }
 
+/* Full money summary since January — capital in, one-off shop build, operating costs.
+   Accountant view: separates the one-off construction/fit-out from running costs. */
+function fvJanSummaryHTML(){
+  var money = function(n){ return '$' + Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var capital = 150000;   // initial owner investment
+  var cat = {};
+  if (typeof STMT_EXPENSES !== 'undefined' && STMT_EXPENSES) STMT_EXPENSES.forEach(function(e){ if (e.c==='Transfer') return; cat[e.c]=(cat[e.c]||0)+e.a; });
+  var build   = (cat['Equipment']||0) + (cat['Fit-out']||0) + (cat['Fees & legal']||0);  // one-off construction
+  var rentJM  = (cat['Property']||0);
+  var stockJM = (cat['Stock']||0);
+  var otherJM = (cat['Utilities']||0) + (cat['Marketing']||0) + (cat['Bank']||0) + (cat['Other']||0);
+  var bc = (typeof fvBankCompute==='function') ? fvBankCompute() : null;
+  var bankIn  = bc ? bc.inn : 0;
+  var bankOut = bc ? (bc.out - ((bc.byCat && bc.byCat.TRANSFER) ? bc.byCat.TRANSFER.out : 0)) : 0;
+  var totalIn = capital + bankIn;
+  var totalOut = build + rentJM + stockJM + otherJM + bankOut;
+  var net = totalIn - totalOut;
+  function r(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;padding-left:10px;"><span>'+lbl+'</span><span style="font-weight:700;">'+money(val)+'</span></div>'; }
+  function tot(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;border-top:1px solid #eee;padding:5px 0 2px;"><span>'+lbl+'</span><span>'+money(val)+'</span></div>'; }
+  return '<div class="grand-card" style="background:#fff;color:#111;text-align:left;padding:14px 16px;border:1px solid #e5e7eb;">'
+    + '<div style="font-weight:800;font-size:15px;color:#0d4420;margin-bottom:6px;">📊 Full summary — since January</div>'
+    + '<div style="font-weight:800;font-size:11px;color:#15803d;margin:6px 0 1px;">MONEY IN</div>'
+    + r('💰 Owner investment', capital)
+    + (bankIn ? r('📈 Shop sales (card takings)', bankIn) : '')
+    + tot('Total in', totalIn)
+    + '<div style="font-weight:800;font-size:11px;color:#b91c1c;margin:10px 0 1px;">MONEY OUT</div>'
+    + r('🏗️ Shop build &amp; fit-out (one-off)', build)
+    + (rentJM ? r('🏪 Rent &amp; property (setup)', rentJM) : '')
+    + (stockJM ? r('🛒 Opening stock &amp; supplies', stockJM) : '')
+    + (bankOut ? r('🚚 Trading costs (Apr–Jun)', bankOut) : '')
+    + (otherJM ? r('💡 Other (utilities, legal, bank)', otherJM) : '')
+    + tot('Total out', totalOut)
+    + '<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;"><span style="font-weight:800;">Net position</span><strong style="font-size:18px;color:'+(net>=0?'#15803d':'#b91c1c')+';">'+(net>=0?'':'−')+money(Math.abs(net))+'</strong></div>'
+    + '<div style="font-size:10px;color:#9ca3af;margin-top:8px;line-height:1.5;">Indicative allocation. “Build &amp; fit-out” = one-off shop construction (equipment, fit-out, permits) from the Jan–Mar bank statements; trading costs are from the Apr–Jun bank screenshots. Full detail in the Capital &amp; bank view below.</div>'
+    + '</div>';
+}
+
 function buildSpendView() {
   var v = document.getElementById('viewSpend'); if (!v) return;
   if (typeof SHOP_INVOICES === 'undefined') { v.innerHTML = '<div class="manage-card">No invoice data yet.</div>'; return; }
@@ -5443,7 +5485,8 @@ function buildSpendView() {
   supList.forEach(function(g){ g.income = supIncome[g.name] || 0; g.profit = g.income - g.spend; });
 
   var net = income - totalPurch;
-  var html = '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;text-align:left;padding:16px 18px;">'
+  var html = (typeof fvJanSummaryHTML === 'function' ? fvJanSummaryHTML() : '')
+    + '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;text-align:left;padding:16px 18px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="color:#bbf7d0;font-size:13px;">💰 Money IN — shop sales (90d)</span><strong style="font-size:20px;">$' + income.toFixed(2) + '</strong></div>'
     + '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;color:#fde68a;"><span>💸 Money OUT — total</span><strong>−$' + totalPurch.toFixed(2) + (unknownCount ? ' +' : '') + '</strong></div>'
     + '<div style="display:flex;justify-content:space-between;font-size:11px;color:#bbf7d0;margin-top:2px;padding-left:14px;"><span>Stock</span><span>$' + stockSpend.toFixed(2) + '</span></div>'
