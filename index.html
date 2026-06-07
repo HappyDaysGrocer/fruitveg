@@ -1673,7 +1673,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v67';
+var APP_BUILD = 'v68';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2975,7 +2975,21 @@ function fvFindProductByNameStall(name, stall){
   if (byNameStall>=0) return byNameStall;
   if (byName>=0) return byName;
   var s = strip(name);
+  // 2) exact match ignoring spaces/punctuation
   for (var j=0;j<PRODUCTS.length;j++){ if (strip(getProductName(j))===s) return j; }
+  // 3) fuzzy — forgive slight typos. Closest match wins if it's ≥85% similar
+  //    (preferring the same stall; a global match needs higher confidence).
+  if (typeof levenshtein === 'function' && s.length){
+    var bs = { i:-1, r:0 }, ba = { i:-1, r:0 };
+    for (var k=0;k<PRODUCTS.length;k++){
+      var cand = strip(getProductName(k)); if (!cand) continue;
+      var r = 1 - levenshtein(s, cand) / Math.max(s.length, cand.length);
+      if (r > ba.r) ba = { i:k, r:r };
+      if (stall && String(PRODUCTS[k][1]).toLowerCase() === String(stall).toLowerCase() && r > bs.r) bs = { i:k, r:r };
+    }
+    if (bs.i >= 0 && bs.r >= 0.85) return bs.i;   // same stall → 85%
+    if (ba.i >= 0 && ba.r >= 0.90) return ba.i;   // anywhere → 90%
+  }
   return -1;
 }
 function fvImportBuyList(text){
