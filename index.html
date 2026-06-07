@@ -1071,7 +1071,7 @@
   <button class="run-tab" id="rtList"   onclick="showView('List')">📋 List</button>
   <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
   <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
-  <button class="run-tab" id="rtAdd"    onclick="showView('Add')">➕ Add</button>
+  <button class="run-tab" id="rtAdd"    onclick="showView('Add')">🏪 More</button>
   <button class="run-tab" id="rtSell"   onclick="showView('Sell')">💲 Sell</button>
   <button class="run-tab run-sync" onclick="fvBuyForceSync()" title="Sync the buy list to the team">📤 Sync</button>
 </div>
@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v84';
+var APP_BUILD = 'v85';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2634,7 +2634,11 @@ function fvCObulk(){
       agg[l.key].qty+=(l.qty||0); agg[l.key].parts.push({name:(custs[ord.custId]&&custs[ord.custId].name)||'?',qty:l.qty||0}); });
   });
   Object.keys(agg).forEach(function(k){ var a=agg[k];
-    if(a.unit==='kg'){ var bk=fvCOboxKg(a.name,a.key); if(bk){ a.boxKg=bk; a.boxes=Math.ceil((a.qty/bk)*2)/2; } } });
+    if(a.unit==='kg'){ var bk=fvCOboxKg(a.name,a.key); if(bk){
+      a.boxKg=bk;
+      a.buyBoxes=Math.max(1,Math.ceil(a.qty/bk));               // PURCHASING: round up to whole boxes
+      a.spareKg=Math.round((a.buyBoxes*bk - a.qty)*10)/10;      // left over after the restaurants get theirs
+    } } });
   return agg;
 }
 /* Box size (kg per box). The product name usually carries it — e.g. "(15kg box)",
@@ -2677,6 +2681,20 @@ function fvCOsaveCustForm(){
 function fvCOdelCustConfirm(id){ var c=fvCOloadCust()[id]||{}; if(!confirm('Delete '+(c.name||'this customer')+'? Their past orders stay in history.'))return; fvCOcustDel(id); fvCOnav('list'); }
 function fvCOopenCust(id){ fvCOensureOpen(id); fvCOnav('order',id); }
 function fvCOprodPick(){ var sel=document.getElementById('coProdSel'),prEl=document.getElementById('coPrice'),lbl=document.getElementById('coUnitLbl'); if(!sel)return; var idx=parseInt(sel.value,10); if(isNaN(idx))return; var p=PRODUCTS[idx]; if(!p)return; if(prEl){ var price=fvCOpriceFor(fvCO.custId,orderKey(p)); prEl.value=(price===''?'':price); } if(lbl)lbl.textContent=fvCOunit(p[3]); }
+function fvCOprodSel(sel){ if(sel && sel.value==='__ADD__'){ sel.value=''; fvCOaddNewProductInline(); return; } fvCOprodPick(); }
+function fvCOaddNewProductInline(){
+  if(typeof fvAddProductOpen!=='function'){ alert('Add a product from the List tab’s + Add buttons.'); return; }
+  var q=document.getElementById('coQty'), pr=document.getElementById('coPrice');
+  window._fvAddReturn={ mode:'order', custId:fvCO.custId, qty:(q&&q.value)||'', price:(pr&&pr.value)||'' };
+  // attach to a sensible existing supplier (last line's supplier, else first product's), or "Other"
+  var ord=fvCOopenOrder(fvCO.custId), sup='', stall=null, phone=null;
+  if(ord&&ord.lines&&ord.lines.length){ sup=ord.lines[ord.lines.length-1].sup||''; }
+  if(!sup&&PRODUCTS.length){ sup=PRODUCTS[0][0]||''; }
+  if(!sup) sup='Other';
+  var reg=window._fvSupReg||{}; Object.keys(reg).forEach(function(k){ if(reg[k].name===sup){ stall=reg[k].stall; phone=reg[k].phone; } });
+  fvAddProductOpen(sup, stall, phone);
+}
+function fvCOnewSupplier(){ showView('Add'); setTimeout(function(){ var el=document.getElementById('newSupName'); if(el){ if(el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'start'}); el.focus(); } },120); }
 function fvCOaddItem(){
   var sel=document.getElementById('coProdSel'),qtyEl=document.getElementById('coQty'),prEl=document.getElementById('coPrice');
   if(!sel||sel.value===''){ alert('Pick a product first.'); return; }
@@ -2696,8 +2714,9 @@ function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(
 function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=l.price; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:l.price}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
   var agg=fvCObulk(),n=0,m=fvBuyLoad();
-  Object.keys(agg).forEach(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k); if(idx<0)return; var q=(a.boxes!=null&&a.boxes>0)?Math.ceil(a.boxes):Math.ceil(a.qty); if(q>0){ m[idx]=q; n++; if(typeof fvBuyPush==='function')fvBuyPush(idx,q); } });
-  if(n){ fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); alert('Added '+n+' item'+(n!==1?'s':'')+' to the Monday buy list (List tab).'); } else { alert('No open orders to add yet.'); }
+  // PURCHASING: whole boxes (round up) for kg products; for unit products use the count.
+  Object.keys(agg).forEach(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k); if(idx<0)return; var q=(a.buyBoxes!=null&&a.buyBoxes>0)?a.buyBoxes:Math.ceil(a.qty); if(q>0){ m[idx]=q; n++; if(typeof fvBuyPush==='function')fvBuyPush(idx,q); } });
+  if(n){ fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); alert('Added '+n+' item'+(n!==1?'s':'')+' to the Monday buy list (List tab) — as whole boxes.'); } else { alert('No open orders to add yet.'); }
 }
 
 /* ── renderers (all write into #viewOrders) ── */
@@ -2717,7 +2736,8 @@ function fvCOrenderList(){
   var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
   var h='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
-    +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button></div>';
+    +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button>'
+    +'<button onclick="fvCOnewSupplier()" style="flex:1;min-width:140px;padding:11px;background:#7a4f1d;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏪 New supplier</button></div>';
   if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one.</div>';
   ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
     var oc=open?(open.lines||[]).length:0;
@@ -2749,7 +2769,7 @@ function fvCOrenderOrder(){
   var id=fvCO.custId,c=fvCOloadCust()[id]; if(!c) return fvCOrenderList();
   var ord=fvCOopenOrder(id)||fvCOensureOpen(id);
   var groups={}; PRODUCTS.forEach(function(p,i){ if(!p[3])return; var s=p[0]||'Other'; (groups[s]=groups[s]||[]).push({i:i,p:p}); });
-  var opts='<option value="">— pick a product —</option>';
+  var opts='<option value="">— pick a product —</option><option value="__ADD__">➕ Add a product not listed…</option>';
   Object.keys(groups).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}).forEach(function(s){ var g=groups[s]; opts+='<optgroup label="'+fvEsc(s)+(g[0].p[1]?' (stall '+fvEsc(g[0].p[1])+')':'')+'">'; g.forEach(function(x){ opts+='<option value="'+x.i+'">'+fvEsc(x.p[3])+'</option>'; }); opts+='</optgroup>'; });
   var linesHtml='',total=0;
   (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt;
@@ -2766,7 +2786,7 @@ function fvCOrenderOrder(){
     +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
     +'<div style="font-size:11px;color:#9ca3af;margin-bottom:8px;">Order '+fvEsc(ord.date||'')+'</div>'
     +'<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-bottom:8px;">'
-    +'<select id="coProdSel" onchange="fvCOprodPick()" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">'+opts+'</select>'
+    +'<select id="coProdSel" onchange="fvCOprodSel(this)" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">'+opts+'</select>'
     +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
     +'<input id="coQty" type="number" inputmode="decimal" placeholder="Qty" style="flex:1;min-width:60px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;"><span id="coUnitLbl" style="font-size:12px;color:#6b7280;"></span>'
     +'<span style="font-size:12px;color:#6b7280;">$</span><input id="coPrice" type="number" inputmode="decimal" placeholder="Price" style="flex:1;min-width:60px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">'
@@ -2782,14 +2802,25 @@ function fvCOrenderOrder(){
 function fvCOrenderBulk(){
   var agg=fvCObulk(),keys=Object.keys(agg);
   keys.sort(function(a,b){ var s=String(agg[a].sup||'').localeCompare(String(agg[b].sup||'')); return s!==0?s:String(agg[a].name||'').localeCompare(String(agg[b].name||'')); });
-  var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">🛒 One bulk buy list (all open orders)</div>';
-  if(!keys.length) return h+'<div style="color:#9ca3af;font-size:13px;">No open orders yet.</div></div>';
+  var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">🛒 Purchasing — what to buy at the market</div>';
+  if(!keys.length){ h+='<div style="color:#9ca3af;font-size:13px;">No open restaurant orders yet.</div>'; }
   keys.forEach(function(k){ var a=agg[k],parts=a.parts.map(function(pt){return fvEsc(pt.name)+' '+pt.qty+fvEsc(a.unit||'');}).join(', ');
-    h+='<div style="border-top:1px solid #eef0f2;padding:9px 0;"><div style="display:flex;justify-content:space-between;"><span style="font-weight:700;font-size:14px;">'+fvEsc(a.name)+'</span><span style="font-weight:800;">'+a.qty+fvEsc(a.unit||'')+(a.boxes!=null?' · '+a.boxes+' box'+(a.boxes!==1?'es':''):'')+'</span></div><div style="font-size:11px;color:#6b7280;margin-top:2px;">'+parts+'</div></div>';
+    // PURCHASING figure (right): whole boxes for kg products, else the qty in its unit
+    var buyTxt = (a.buyBoxes!=null) ? ('buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'')) : (a.qty+fvEsc(a.unit||''));
+    var needTxt = a.qty+fvEsc(a.unit||'') + (a.boxKg?(' need'):'') ;
+    var spare = (a.buyBoxes!=null && a.spareKg>0) ? (' · '+a.spareKg+'kg spare') : '';
+    h+='<div style="border-top:1px solid #eef0f2;padding:9px 0;"><div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;font-size:14px;">'+fvEsc(a.name)+'</span><span style="font-weight:800;white-space:nowrap;color:#15662f;">'+buyTxt+'</span></div>'
+      +'<div style="font-size:11px;color:#6b7280;margin-top:2px;">'+(a.boxKg?('restaurants need '+a.qty+'kg ('+a.boxKg+'kg/box)'+spare+' · '):'')+parts+'</div></div>';
   });
-  h+='<button onclick="fvCOpushBulk()" style="width:100%;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px;">➕ Add all to Monday buy list</button>';
-  h+='<button onclick="fvCOnav(\'pick\')" style="width:100%;padding:10px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px;">📦 Split back per restaurant ›</button>';
-  h+='<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Adds up every restaurant’s open order so you buy once — no double-buying. Boxes shown where the pack size is known in the name.</div></div>';
+  // ① Shop's own buy-list (added on the List tab with +) shown here too, so this is the full picture
+  var shopItems=[]; if(typeof fvBuyLoad==='function'){ var m=fvBuyLoad(); Object.keys(m).forEach(function(idx){ if(m[idx]>0 && PRODUCTS[idx]){ shopItems.push({name:PRODUCTS[idx][3], q:m[idx]}); } }); }
+  if(shopItems.length){
+    h+='<div style="font-weight:700;color:#1c4587;font-size:12px;margin:14px 0 2px;">🏪 Also on your shop List (added with +)</div>';
+    shopItems.forEach(function(s){ h+='<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>'+fvEsc(s.name)+'</span><span style="font-weight:700;">'+s.q+' box'+(s.q!==1?'es':'')+'</span></div>'; });
+  }
+  if(keys.length) h+='<button onclick="fvCOpushBulk()" style="width:100%;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:12px;">➕ Add restaurant boxes to the List</button>';
+  h+='<button onclick="fvCOnav(\'pick\')" style="width:100%;padding:10px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px;">📦 Split back per restaurant (dispatch) ›</button>';
+  h+='<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.5;">Restaurants get their <strong>exact</strong> amount (see Split back / each order). For <strong>buying</strong> we round up to whole boxes so you don’t overthink it — any extra is shop spare. Your shop’s own List items are shown above so this is your complete Monday shop.</div></div>';
   return h;
 }
 function fvCOrenderPick(){
@@ -2924,7 +2955,7 @@ function buildOrdersView_OLD() {
   } else {
     var emp=document.createElement('div');
     emp.className='empty-state';
-    emp.innerHTML='No orders yet.<br><br>Go to ➕ Add → Import Order from SMS';
+    emp.innerHTML='No orders yet.<br><br>Go to 🏪 More → Import Order from SMS';
     ov.appendChild(emp);
   }
 }
@@ -3813,7 +3844,7 @@ function buildOrderSummaryPanel() {
   body.id = 'orderPanelBody';
 
   if (!hasAny) {
-    body.innerHTML = '<div class="order-panel-empty">No orders imported yet — use ➕ Add → Import Order from SMS</div>';
+    body.innerHTML = '<div class="order-panel-empty">No orders imported yet — use 🏪 More → Import Order from SMS</div>';
   } else {
     dests.forEach(function(d) {
       var dd = destData[d.key];
@@ -4259,7 +4290,7 @@ function fvAddProductOpen(sup, stall, phone) {
     '</div>';
   var f = document.getElementById('apName'); if (f) setTimeout(function(){ f.focus(); }, 120);
 }
-function fvAddProdClose() { var o = document.getElementById('fvAddProdOverlay'); if (o) o.remove(); }
+function fvAddProdClose() { window._fvAddReturn = null; var o = document.getElementById('fvAddProdOverlay'); if (o) o.remove(); }
 function fvAddProdSave() {
   var s = window._apSup || {};
   var nameEl = document.getElementById('apName');
@@ -4275,6 +4306,27 @@ function fvAddProdSave() {
   customs.push(newProd);
   saveCustomProducts(customs);
   rebuildProducts();
+  // If this add was launched from inside a restaurant order, drop the new
+  // product straight onto that order and return there (don't jump to the List).
+  if (window._fvAddReturn && window._fvAddReturn.mode === 'order') {
+    var r = window._fvAddReturn; window._fvAddReturn = null;
+    var key = newProd[0] + '||' + newProd[3];
+    var idx = (typeof fvCOprodIndexByKey === 'function') ? fvCOprodIndexByKey(key) : -1;
+    if (idx >= 0) {
+      var ord = fvCOensureOpen(r.custId);
+      var qv = parseFloat(r.qty); if (isNaN(qv)) qv = parseFloat(newProd[4]) || 0;
+      var pv = parseFloat(r.price); if (isNaN(pv)) pv = parseFloat(newProd[5]) || 0;
+      var found = null; (ord.lines||[]).forEach(function(l){ if (l.key === key) found = l; });
+      if (found) { found.qty = (found.qty||0) + qv; found.price = pv; }
+      else { ord.lines.push({ key:key, name:PRODUCTS[idx][3], sup:PRODUCTS[idx][0], unit:fvCOunit(PRODUCTS[idx][3]), qty:qv, price:pv }); }
+      fvCOordSave(ord);
+      var cust = fvCOloadCust()[r.custId]; if (cust) { if (!cust.prices) cust.prices = {}; cust.prices[key] = pv; fvCOcustSave(cust); }
+    }
+    fvAddProdClose();
+    if (typeof refreshCustomProductsList === 'function') refreshCustomProductsList();
+    if (typeof fvCORender === 'function') fvCORender();
+    return;
+  }
   fvAddProdClose();
   if (typeof buildList === 'function') buildList();
   if (typeof refreshCustomProductsList === 'function') refreshCustomProductsList();
@@ -6695,7 +6747,7 @@ function assistHandleRuleBased(q, viaVoice) {
       msg = "✅ Loaded " + routed.total + " item" + (routed.total === 1 ? '' : 's')
           + " as a " + label + " order"
           + (need > 0 ? " (" + need + " need" + (need === 1 ? 's' : '') + " a quick check)" : "")
-          + ". I've opened it on the ➕ Add tab — confirm the items and tap “✓ Save Order”.";
+          + ". I've opened it on the 🏪 More tab — confirm the items and tap “✓ Save Order”.";
       delay = 900;
     }
     assistAddMsg(msg, 'bot');
@@ -6749,7 +6801,7 @@ function assistSend() {
         msg = lead + "✅ Loaded " + r.total + " item" + (r.total === 1 ? '' : 's')
             + " as a " + label + " order"
             + (need > 0 ? " (" + need + " need a quick check)" : "")
-            + ". Open ➕ Add and tap “✓ Save Order”.";
+            + ". Open 🏪 More and tap “✓ Save Order”.";
       }
       assistAddMsg(msg, 'bot');
       if (viaVoice) assistSpeak(res.reply || ("Saved your " + label + " order."));
