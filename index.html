@@ -1673,7 +1673,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v66';
+var APP_BUILD = 'v67';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2955,9 +2955,62 @@ function fuzzyMatch(name) {
    With an AI key, messy voice-to-text is understood by the AI. Without one, a
    strong normaliser + regex still does a solid job. It never dead-ends — if the
    AI call fails, it falls back to the regex parser automatically. */
+/* Round-trip: the app's own buy-list export (the Copy / Email / Print text) can be
+   pasted back into this box and loaded straight into the buy list — matched
+   deterministically by product name + stall, no AI needed. */
+function fvIsBuyListText(text){
+  if (/MANDI BUY LIST/i.test(text)) return true;
+  if (/\(stall\s+[^)]+\)\s*:/i.test(text)) return true;
+  var m = text.match(/^\s*\d+\s*[×x]\s+\S/img);
+  return !!(m && m.length >= 3);
+}
+function fvFindProductByNameStall(name, stall){
+  function nrm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+  function strip(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  var nm = nrm(name), byNameStall = -1, byName = -1;
+  for (var i=0;i<PRODUCTS.length;i++){
+    var pn = nrm(getProductName(i));
+    if (pn === nm){ if (byName<0) byName=i; if (stall && String(PRODUCTS[i][1]).toLowerCase()===String(stall).toLowerCase()){ byNameStall=i; break; } }
+  }
+  if (byNameStall>=0) return byNameStall;
+  if (byName>=0) return byName;
+  var s = strip(name);
+  for (var j=0;j<PRODUCTS.length;j++){ if (strip(getProductName(j))===s) return j; }
+  return -1;
+}
+function fvImportBuyList(text){
+  var lines = String(text).split(/\r?\n/);
+  var stall = '', items = 0, matched = 0, missing = [], changes = {};
+  lines.forEach(function(line){
+    var hdr = line.match(/\(stall\s+([^)]+)\)\s*:\s*$/i);
+    if (hdr){ stall = hdr[1].trim(); return; }
+    if (/^[A-Za-z].*:\s*$/.test(line) && !/[×x]/.test(line)){ stall = ''; return; }   // header without a stall
+    var it = line.match(/^\s*(\d+)\s*[×x]\s*(.+?)\s*$/);
+    if (it){
+      items++;
+      var qty = parseInt(it[1],10) || 0; if (qty<=0) return;
+      var idx = fvFindProductByNameStall(it[2].trim(), stall);
+      if (idx>=0) { changes[idx] = qty; matched++; } else missing.push(it[2].trim());
+    }
+  });
+  if (!items) return false;
+  var m = fvBuyLoad();
+  Object.keys(changes).forEach(function(idx){ m[idx] = changes[idx]; });
+  fvBuySave();
+  Object.keys(changes).forEach(function(idx){ if (typeof fvBuyPush==='function') fvBuyPush(idx, changes[idx]); });
+  if (typeof showView==='function') showView('List');
+  if (typeof fvBuyRerender==='function') fvBuyRerender(); else if (typeof buildList==='function') buildList();
+  var msg = '✅ Loaded ' + matched + ' item' + (matched===1?'':'s') + ' into the buy list.';
+  if (missing.length) msg += '\n\n⚠️ Couldn’t match ' + missing.length + ' (not in your product list):\n• ' + missing.slice(0,10).join('\n• ') + (missing.length>10?'\n• …':'');
+  alert(msg);
+  return true;
+}
+
 function parseSMSInput() {
   var text = document.getElementById('smsInput').value.trim();
   if (!text) { alert('Type, paste, or tap 🎤 to speak your order first.'); return; }
+  // The app's own buy-list export pasted back in → load it into the buy list.
+  if (fvIsBuyListText(text) && fvImportBuyList(text)) { document.getElementById('smsInput').value = ''; return; }
 
   if (fvGetKey()) {
     fvSetParseBusy(true);
