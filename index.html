@@ -100,6 +100,8 @@
     .supplier-left { display: flex; flex-direction: column; gap: 1px; }
     .supplier-phone { font-size: 10px; opacity: 0.7; font-weight: 400; }
     .supplier-subtotal { font-size: 13px; color: #93c5fd; font-weight: 800; white-space: nowrap; }
+    .sup-add-btn { background: rgba(255,255,255,0.92); color: #14532d; border: none; border-radius: 999px; font-size: 11px; font-weight: 800; padding: 3px 10px; cursor: pointer; line-height: 1.35; white-space: nowrap; }
+    .sup-add-btn:active { background: #ffffff; transform: scale(0.96); }
 
     /* ── Product rows ── */
     .product-list { background: white; border-radius: 0 0 6px 6px; overflow: hidden; }
@@ -1111,35 +1113,14 @@
   <!-- Add Product / Supplier view -->
   <div class="view" id="viewAdd">
 
-    <!-- Add Product card -->
-    <div class="manage-card">
-      <div class="manage-title">➕ Add Product</div>
-
-      <div class="add-section-label">Supplier</div>
-      <select class="add-select" id="addSupSelect" onchange="onSupSelectChange()">
-        <option value="">— Select supplier —</option>
-      </select>
-
-      <div class="add-section-label" style="margin-top:14px;">Product Name &amp; Pack Size</div>
-      <input class="add-input" type="text" id="addProdName" placeholder="e.g. Watermelon Whole (each)">
-
-      <div style="display:flex;gap:10px;margin-top:10px;">
-        <div style="flex:1;">
-          <div class="add-section-label">Ref Qty</div>
-          <input class="add-input" type="number" id="addProdQty" placeholder="e.g. 2" inputmode="decimal" min="0" step="0.5">
-        </div>
-        <div style="flex:1;">
-          <div class="add-section-label">Ref Price ($)</div>
-          <input class="add-input" type="number" id="addProdPrice" placeholder="e.g. 25.00" inputmode="decimal" min="0" step="0.50">
-        </div>
+    <!-- Add a product now lives on each supplier's row in the List tab (+ Add) -->
+    <div class="manage-card" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+      <div class="manage-title">➕ Add a product</div>
+      <div style="font-size:13px;color:#374151;line-height:1.55;">
+        To add a product, go to the <strong>List</strong> tab and tap the
+        <span style="display:inline-block;background:#14532d;color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:2px 9px;">+ Add</span>
+        button next to the supplier’s name. Fill in the product and it’s added straight to that supplier.
       </div>
-
-      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
-        <input type="checkbox" id="addMustCheck" style="width:20px;height:20px;">
-        <label for="addMustCheck" style="font-size:13px;font-weight:600;color:#374151;">Must-check item (amber highlight)</label>
-      </div>
-
-      <button class="btn-confirm" style="margin-top:20px;" onclick="saveNewProduct()">Add Product to List</button>
     </div>
 
     <!-- Add New Supplier card -->
@@ -1676,7 +1657,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v74';
+var APP_BUILD = 'v75';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1955,12 +1936,16 @@ function buildList() {
       ? '<span class="stall-badge">' + stall + '</span>'
       : (stall ? '<span class="stall-badge stall-text">' + stall + '</span>' : '');
 
+    window._fvSupReg = window._fvSupReg || {};
+    window._fvSupReg[supId] = { name: sup, stall: stall, phone: phone };
+
     var hdr = document.createElement('div');
     hdr.className = 'supplier-header';
     hdr.innerHTML =
       '<div class="supplier-left">' +
-        '<div style="display:flex;align-items:center;gap:8px;">' + stallBadge +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' + stallBadge +
           '<span>' + sup.toUpperCase() + '</span>' +
+          '<button class="sup-add-btn" onclick="fvAddProductOpenById(\'' + supId + '\',event)">+ Add</button>' +
         '</div>' +
         (phone ? '<div class="supplier-phone">' + fmtPhone(phone) + '</div>' : '') +
       '</div>' +
@@ -2262,10 +2247,10 @@ function showView(name) {
   if (name === 'Add')     buildAddView();
   if (name === 'Orders')  buildOrdersView();
   if (name === 'Sell')    buildSellView();
-  if (name === 'PL')      buildPLView();
+  if (name === 'PL')      { if (fvCanSeeFinance()) buildPLView();    else fvBlankFinance('viewPL'); }
   if (name === 'History') buildHistoryView();
   if (name === 'Store')   buildStoreView();
-  if (name === 'Spend')   buildSpendView();
+  if (name === 'Spend')   { if (fvCanSeeFinance()) buildSpendView(); else fvBlankFinance('viewSpend'); }
   if (typeof applyResponsive === 'function') applyResponsive();
 }
 
@@ -3991,92 +3976,78 @@ function saveCustomProducts(list) {
 }
 
 function buildAddView() {
-  // Populate supplier dropdown
-  var sel = document.getElementById('addSupSelect');
-  sel.innerHTML = '<option value="">— Select supplier —</option>';
-  var suppliers = [], seen = {};
-  PRODUCTS.forEach(function(p) {
-    if (seen[p[0]]) return;
-    seen[p[0]] = true;
-    // Mandi only for now — just the market-stall suppliers (skip the shop/random ones with no stall)
-    if (p[1] == null || String(p[1]).trim() === '') return;
-    suppliers.push({name:p[0], stall:p[1], phone:p[2]});
+  // (Adding a product now happens on each supplier's row in the List tab.)
+  // Reset the "Add new supplier" fields if that card is present.
+  ['newSupName','newSupStall','newSupPhone','newSupProdName'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
   });
-  suppliers.sort(function(a,b){ var sa=parseInt(a.stall), sb=parseInt(b.stall); var an=!isNaN(sa), bn=!isNaN(sb); if(an&&bn) return sa-sb; if(an&&!bn) return -1; if(!an&&bn) return 1; return String(a.name).localeCompare(String(b.name)); });
-  suppliers.forEach(function(s) {
-    var opt = document.createElement('option');
-    opt.value = JSON.stringify({name:s.name, stall:s.stall, phone:s.phone});
-    opt.textContent = (s.stall ? 'Stall ' + s.stall + ' — ' : '') + s.name;
-    sel.appendChild(opt);
-  });
-
-  // Reset product fields
-  document.getElementById('addProdName').value = '';
-  document.getElementById('addProdQty').value = '';
-  document.getElementById('addProdPrice').value = '';
-  document.getElementById('addMustCheck').checked = false;
-
-  // Reset new supplier fields
-  document.getElementById('newSupName').value = '';
-  document.getElementById('newSupStall').value = '';
-  document.getElementById('newSupPhone').value = '';
-  document.getElementById('newSupProdName').value = '';
-
-  refreshCustomProductsList();
+  if (typeof refreshCustomProductsList === 'function') refreshCustomProductsList();
 }
 
 function onSupSelectChange() {}
-
-function saveNewProduct() {
-  if (!fvAllowed('addProduct','Add a product')) return;
-  var selVal = document.getElementById('addSupSelect').value;
-  if (!selVal) { alert('Please select a supplier.'); return; }
-
-  var supName, supStall, supPhone;
-  if (selVal === '__new__') {
-    supName  = document.getElementById('newSupName').value.trim();
-    supStall = document.getElementById('newSupStall').value.trim();
-    supPhone = document.getElementById('newSupPhone').value.trim();
-    if (!supName) { alert('Please enter the supplier name.'); return; }
-  } else {
-    var sup = JSON.parse(selVal);
-    supName = sup.name; supStall = sup.stall; supPhone = sup.phone;
-  }
-
-  var prodName = document.getElementById('addProdName').value.trim();
-  if (!prodName) { alert('Please enter the product name.'); return; }
-
-  var qty   = parseFloat(document.getElementById('addProdQty').value)   || null;
-  var price = parseFloat(document.getElementById('addProdPrice').value) || null;
-  var must  = document.getElementById('addMustCheck').checked;
-
-  // [supplier, stall, phone, product, defaultQty, defaultPrice, pricePerKg, sellPrice, mustCheck]
-  var newProd = [supName, supStall || null, supPhone || null, prodName, qty, price, null, null, must];
-
-  var customs = loadCustomProducts();
-  customs.push(newProd);
-  saveCustomProducts(customs);
-
-  // Rebuild the full product list and UI
-  rebuildProducts();
-  buildList();
-
-  alert('"' + prodName + '" added to ' + supName + '!');
-
-  // Reset form
-  document.getElementById('addSupSelect').value = '';
-  document.getElementById('newSupFields').style.display = 'none';
-  document.getElementById('addProdName').value = '';
-  document.getElementById('addProdQty').value = '';
-  document.getElementById('addProdPrice').value = '';
-  document.getElementById('addMustCheck').checked = false;
-  refreshCustomProductsList();
-}
+// (saveNewProduct was replaced by the per-supplier "+ Add" popup — fvAddProduct* above.)
 
 function rebuildProducts() {
   // Reset to base products then append custom ones
   while (PRODUCTS.length > BASE_PRODUCT_COUNT) PRODUCTS.pop();
   loadCustomProducts().forEach(function(p) { PRODUCTS.push(p); });
+}
+
+/* ── Per-supplier "+ Add" popup (opened from the List supplier headers) ────── */
+function fvAddProductOpenById(id, e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  var r = (window._fvSupReg || {})[id];
+  if (r) fvAddProductOpen(r.name, r.stall, r.phone);
+}
+function fvAddProductOpen(sup, stall, phone) {
+  if (typeof fvAllowed === 'function' && !fvAllowed('addProduct','Add a product')) return;
+  window._apSup = { name: sup, stall: stall || null, phone: phone || null };
+  var ov = document.getElementById('fvAddProdOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'fvAddProdOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style', 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;');
+  ov.onclick = function(ev) { if (ev.target === ov) fvAddProdClose(); };
+  var sub = fvEsc(sup) + (stall ? (' · Stall ' + fvEsc(String(stall))) : '');
+  ov.innerHTML =
+    '<div style="background:#fff;width:100%;max-width:400px;border-radius:16px;padding:18px;max-height:90vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.35);">' +
+      '<div style="font-size:18px;font-weight:800;color:#0d4420;">➕ Add a product</div>' +
+      '<div style="font-size:12px;color:#6b7280;margin:2px 0 14px;">to <strong>' + sub + '</strong></div>' +
+      '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Product name &amp; pack size</div>' +
+      '<input id="apName" type="text" placeholder="e.g. Watermelon Whole (each)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;">' +
+      '<div style="display:flex;gap:10px;margin-top:10px;">' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Ref qty</div>' +
+          '<input id="apQty" type="number" inputmode="decimal" min="0" step="0.5" placeholder="e.g. 2" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;"></div>' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Ref price ($)</div>' +
+          '<input id="apPrice" type="number" inputmode="decimal" min="0" step="0.5" placeholder="e.g. 25.00" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;"></div>' +
+      '</div>' +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:#374151;margin:14px 0;"><input id="apMust" type="checkbox" style="width:20px;height:20px;"> Must-check item (price varies)</label>' +
+      '<div id="apErr" style="font-size:12px;color:#b91c1c;margin-bottom:8px;min-height:14px;"></div>' +
+      '<button onclick="fvAddProdSave()" style="width:100%;padding:13px;background:#15662f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">Add to list</button>' +
+      '<button onclick="fvAddProdClose()" style="width:100%;padding:10px;background:none;color:#6b7280;border:none;font-size:13px;margin-top:6px;cursor:pointer;">Cancel</button>' +
+    '</div>';
+  var f = document.getElementById('apName'); if (f) setTimeout(function(){ f.focus(); }, 120);
+}
+function fvAddProdClose() { var o = document.getElementById('fvAddProdOverlay'); if (o) o.remove(); }
+function fvAddProdSave() {
+  var s = window._apSup || {};
+  var nameEl = document.getElementById('apName');
+  var name = (nameEl && nameEl.value || '').trim();
+  var err = document.getElementById('apErr');
+  if (!name) { if (err) err.textContent = 'Please enter the product name.'; if (nameEl) nameEl.focus(); return; }
+  var qty   = parseFloat((document.getElementById('apQty')   || {}).value) || null;
+  var price = parseFloat((document.getElementById('apPrice') || {}).value) || null;
+  var must  = !!(document.getElementById('apMust') || {}).checked;
+  // [supplier, stall, phone, product, defaultQty, defaultPrice, pricePerKg, sellPrice, mustCheck]
+  var newProd = [s.name, s.stall || null, s.phone || null, name, qty, price, null, null, must];
+  var customs = loadCustomProducts();
+  customs.push(newProd);
+  saveCustomProducts(customs);
+  rebuildProducts();
+  fvAddProdClose();
+  if (typeof buildList === 'function') buildList();
+  if (typeof refreshCustomProductsList === 'function') refreshCustomProductsList();
+  // jump to the supplier so they can see the new product
+  var supId = String(s.name || '').replace(/[^a-z0-9]/gi,'');
+  setTimeout(function(){ var el = document.getElementById('sup-' + supId); if (el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60);
 }
 
 function saveNewSupplier() {
@@ -5277,6 +5248,7 @@ function fvCapitalButtonHTML() {
 }
 function fvCapitalClose() { var o = document.getElementById('fvCapitalOverlay'); if (o) o.remove(); }
 function fvCapitalOpen() {
+  if (typeof fvCanSeeFinance === 'function' && !fvCanSeeFinance()) return;
   var ov = document.getElementById('fvCapitalOverlay');
   if (!ov) { ov = document.createElement('div'); ov.id = 'fvCapitalOverlay'; document.body.appendChild(ov); }
   ov.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:flex-end;justify-content:center;');
@@ -5386,6 +5358,7 @@ function fvCashflowButtonHTML(){
 }
 function fvCashflowClose(){ var o=document.getElementById('fvCashflowOverlay'); if(o) o.remove(); }
 function fvCashflowOpen(){
+  if (typeof fvCanSeeFinance === 'function' && !fvCanSeeFinance()) return;
   var c = fvBankCompute(); if (!c) return;
   var ov = document.getElementById('fvCashflowOverlay');
   if (!ov){ ov=document.createElement('div'); ov.id='fvCashflowOverlay'; document.body.appendChild(ov); }
@@ -5963,6 +5936,7 @@ function fvFinanceApply_(d){
 }
 // After login: pull finance data from the cloud (overrides any local fallback copy).
 function fvFinanceLoad(){
+  if (typeof fvCanSeeFinance === 'function' && !fvCanSeeFinance()) return Promise.resolve(false);
   if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()) return Promise.resolve(false);
   return fvFbToken().then(function(tok){
     return fetch(FV_FB.databaseURL + '/finance.json?auth=' + tok, { cache:'no-store' });
@@ -6692,6 +6666,20 @@ function fvLoadSession() {
 function fvCurrentRole() { return (fvSession && fvSession.role) || 'guest'; }
 function fvIsOwner()     { return fvCurrentRole() === 'owner'; }
 
+/* ── Who can see company money (Expenses / P&L / Capital & Bank) ──────────────
+   For now Rajiv and Jaswinder don't see any financials — their views stay blank
+   and the menu buttons are hidden. Flip a name to 0 (or remove it) to grant it. */
+var FV_NO_FINANCE = { rajiv: 1, jaswinder: 1 };
+function fvCanSeeFinance() { return !(fvSession && FV_NO_FINANCE[fvSession.user]); }
+function fvBlankFinance(viewId) {
+  var v = document.getElementById(viewId);
+  if (v) v.innerHTML = '<div class="manage-card" style="text-align:center;color:#6b7280;padding:42px 18px;font-size:14px;line-height:1.5;">🔒 The money &amp; reports section<br>isn’t available on your login.</div>';
+}
+function fvApplyAccess() {
+  var hide = !fvCanSeeFinance();
+  ['navSpend','navPL'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = hide ? 'none' : ''; });
+}
+
 function fvShowLogin() {
   var o = document.getElementById('loginOverlay'); if (o) o.classList.remove('hidden');
   var u = document.getElementById('loginUser'); if (u) setTimeout(function(){ u.focus(); }, 200);
@@ -6779,6 +6767,7 @@ function fvLoginSuccess(found, p, rem, fbAlready){
   var pin = document.getElementById('loginPass'); if (pin) pin.value = '';
   fvHideLogin();
   fvRenderAccount();
+  if (typeof fvApplyAccess === 'function') fvApplyAccess();
   if (!fbAlready && typeof fvFirebaseSignIn === 'function') {
     fvFirebaseSignIn(found.user, p).then(function(){
       window._fvSyncBroken = false;
@@ -6853,6 +6842,7 @@ function fvLogout() {
   if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
   fvShowLogin();
   fvRenderAccount();
+  if (typeof fvApplyAccess === 'function') fvApplyAccess();
   if (typeof fvRenderSync === 'function') fvRenderSync();
 }
 
@@ -6871,6 +6861,7 @@ function fvAuthGate() {
   fvLoadSession();
   if (fvSession) { fvHideLogin(); } else { fvShowLogin(); }
   fvRenderAccount();
+  if (typeof fvApplyAccess === 'function') fvApplyAccess();
 }
 
 /* ─── STAFF PERMISSION RULES (on the back burner, ready to switch on) ───────
