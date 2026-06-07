@@ -124,6 +124,10 @@
     .buylist-bar { display:flex; align-items:center; gap:8px; background:#15662f; color:#fff; padding:10px 14px; border-radius:10px; margin:8px 0; font-size:14px; }
     .buylist-act { background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:7px; padding:6px 12px; font-size:13px; font-weight:700; cursor:pointer; }
     .buylist-act.clear { background:rgba(255,255,255,.1); }
+    .buylist-foot { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px; margin:16px 0 4px; }
+    .buylist-foot-btns { display:flex; gap:8px; }
+    .buylist-fbtn { flex:1; padding:12px 6px; background:#15662f; color:#fff; border:none; border-radius:9px; font-size:14px; font-weight:700; cursor:pointer; }
+    .buylist-fbtn:active { background:#0d4420; }
 
     .product-info { flex: 1; min-width: 0; }
     .product-name {
@@ -1660,7 +1664,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v62';
+var APP_BUILD = 'v63';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1762,32 +1766,67 @@ function buyListAdj(idx, delta, e){
   fvBuyRenderSummary();
 }
 function fvBuyRenderSummary(){
-  var bar = document.getElementById('buyListBar'); if (!bar) return;
   var m = fvBuyLoad(); var idxs = Object.keys(m).filter(function(k){ return m[k] > 0; });
+  var bar = document.getElementById('buyListBar');
+  var foot = document.getElementById('buyListFooter');
   if (!idxs.length) {
     var bak = fvBuyBakLoad();
-    if (bak && Object.keys(bak).length) {
-      bar.style.display = 'block';
-      bar.innerHTML = '<div class="buylist-bar" style="background:#b45309;">🗑️ Buy list cleared<span style="flex:1;"></span><button class="buylist-act" onclick="fvBuyUndo()">↩ Undo</button></div>';
-    } else { bar.style.display = 'none'; bar.innerHTML = ''; }
+    if (bar) {
+      if (bak && Object.keys(bak).length) {
+        bar.style.display = 'block';
+        bar.innerHTML = '<div class="buylist-bar" style="background:#b45309;">🗑️ Buy list cleared<span style="flex:1;"></span><button class="buylist-act" onclick="fvBuyUndo()">↩ Undo</button></div>';
+      } else { bar.style.display = 'none'; bar.innerHTML = ''; }
+    }
+    if (foot) { foot.style.display = 'none'; foot.innerHTML = ''; }
     return;
   }
   var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
-  bar.style.display = 'block';
-  bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' on the buy list · <strong>' + boxes + '</strong> to buy'
-    + '<span style="flex:1;"></span>'
-    + '<button class="buylist-act" onclick="fvBuyCopy()">Copy</button>'
-    + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>';
+  if (bar) {
+    bar.style.display = 'block';
+    bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' on the buy list · <strong>' + boxes + '</strong> to buy'
+      + '<span style="flex:1;"></span>'
+      + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>';
+  }
+  if (foot) {
+    foot.style.display = 'block';
+    foot.innerHTML = '<div class="buylist-foot"><div style="font-weight:700;color:#0d4420;margin-bottom:10px;">🛒 Buy list — ' + idxs.length + ' item' + (idxs.length === 1 ? '' : 's') + ', ' + boxes + ' to buy</div>'
+      + '<div class="buylist-foot-btns">'
+      + '<button class="buylist-fbtn" onclick="fvBuyCopy()">📋 Copy</button>'
+      + '<button class="buylist-fbtn" onclick="fvBuyEmail()">📧 Email</button>'
+      + '<button class="buylist-fbtn" onclick="fvBuyPrint()">🖨️ Print</button>'
+      + '</div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-top:9px;">Tip: tap <strong>Copy</strong>, then paste into the “Import from SMS” box to load the whole list in one go.</div></div>';
+  }
 }
-function fvBuyCopy(){
+function fvBuyText(){
   var m = fvBuyLoad(); var bySup = {};
   PRODUCTS.forEach(function(p, i){ if (m[i] > 0){ var k = p[0] + (p[1] ? ' (stall ' + p[1] + ')' : ''); (bySup[k] = bySup[k] || []).push('  ' + m[i] + ' × ' + getProductName(i)); } });
   var lines = ['HAPPY DAYS — MANDI BUY LIST', new Date().toDateString(), ''];
   Object.keys(bySup).forEach(function(k){ lines.push(k + ':'); bySup[k].forEach(function(l){ lines.push(l); }); lines.push(''); });
-  var text = lines.join('\n');
+  return lines.join('\n');
+}
+function fvBuyCopy(){
+  var text = fvBuyText();
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(function(){ alert('🛒 Buy list copied — paste it into a message.'); }, function(){ prompt('Copy your buy list:', text); });
+    navigator.clipboard.writeText(text).then(function(){ alert('🛒 Buy list copied — paste it into a message or the SMS import.'); }, function(){ prompt('Copy your buy list:', text); });
   } else { prompt('Copy your buy list:', text); }
+}
+function fvBuyEmail(){
+  var text = fvBuyText();
+  window.location.href = 'mailto:?subject=' + encodeURIComponent('Mango buy list — ' + new Date().toDateString()) + '&body=' + encodeURIComponent(text);
+}
+function fvBuyPrint(){
+  var m = fvBuyLoad(); var bySup = {};
+  PRODUCTS.forEach(function(p, i){ if (m[i] > 0){ var k = p[0] + (p[1] ? ' (stall ' + p[1] + ')' : ''); (bySup[k] = bySup[k] || []).push({ q: m[i], n: getProductName(i) }); } });
+  var html = '<html><head><title>Mango Buy List</title><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<style>body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#111;}h1{font-size:19px;margin:0 0 2px;}h2{font-size:14px;margin:18px 0 4px;color:#15662f;border-bottom:1px solid #ccc;padding-bottom:3px;}.it{display:flex;justify-content:space-between;font-size:15px;padding:5px 0;border-bottom:1px dotted #ddd;}.q{font-weight:700;}small{color:#666;}</style></head><body>';
+  html += '<h1>🛒 Happy Days — Mandi Buy List</h1><small>' + new Date().toDateString() + '</small>';
+  Object.keys(bySup).forEach(function(k){ html += '<h2>' + fvEsc(k) + '</h2>'; bySup[k].forEach(function(it){ html += '<div class="it"><span>☐ ' + fvEsc(it.n) + '</span><span class="q">' + it.q + '</span></div>'; }); });
+  html += '</body></html>';
+  var w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups to print, or use Copy/Email instead.'); return; }
+  w.document.write(html); w.document.close();
+  setTimeout(function(){ try { w.focus(); w.print(); } catch(e){} }, 350);
 }
 function fvBuyClear(){
   var m = fvBuyLoad(); var keys = Object.keys(m).filter(function(k){ return m[k] > 0; });
@@ -1893,6 +1932,9 @@ function buildList() {
     block.appendChild(list);
     container.appendChild(block);
   });
+
+  var blFoot = document.createElement('div'); blFoot.id = 'buyListFooter'; blFoot.style.display = 'none';
+  container.appendChild(blFoot);
 
   refreshAllRows();
   fvBuyRenderSummary();
