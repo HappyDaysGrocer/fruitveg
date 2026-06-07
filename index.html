@@ -1657,7 +1657,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v76';
+var APP_BUILD = 'v77';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4971,6 +4971,109 @@ function importEPOSCSV(csvText, fileName) {
 }
 
 // ── P&L view ─────────────────────────────────────────────────────────────────
+/* ─── REALISTIC P&L — money in − stock − running costs = net profit ──────────
+   Period view from the bank feed (the only continuous record of BOTH sales and
+   every running cost over the same dates). Kept SEPARATE from the per-day EPOS
+   cards so cost-of-goods is never counted twice. One-off fit-out/transfers
+   excluded. Designed via judged accountant review (see workflow pl-opex-design). */
+var FV_OPEX = [
+  ['RENT','Rent'], ['WAGES','Wages'], ['UTILITIES','Electricity & utilities'],
+  ['OUTGOINGS','Water, rates & outgoings'], ['WASTE','Rubbish removal'],
+  ['HIRE','Equipment & sign hire'], ['PETROL','Fuel'], ['PACKAGING','Packaging & cleaning'],
+  ['SECURITY','Security & pest'], ['FREIGHT','Freight'], ['COMPLIANCE','Council & compliance'],
+  ['LEGAL','Legal'], ['REIMBURSE','Staff reimbursements'], ['POS_SOFTWARE','POS & software'],
+  ['INSURANCE','Insurance']
+];
+// Bank totals by category for a chosen month ('YYYY-MM' or null = whole feed).
+// Period bounds exclude internal transfers and one-off fit-out so capital
+// doesn't stretch the window. Skips unread rows (matches fvBankCompute).
+function fvBankByCat(monthFilter){
+  if (typeof BANK_TX === 'undefined' || !BANK_TX) return null;
+  var byCat = {}, minD = null, maxD = null;
+  BANK_TX.forEach(function(t){
+    if (t.u) return;
+    var mo = (t.d || '').slice(0,7);
+    if (monthFilter && mo !== monthFilter) return;
+    if (t.c !== 'TRANSFER' && t.c !== 'FITOUT' && t.d){ if (!minD || t.d < minD) minD = t.d; if (!maxD || t.d > maxD) maxD = t.d; }
+    byCat[t.c] = byCat[t.c] || { inn:0, out:0, n:0 }; byCat[t.c].n++;
+    if (t.a >= 0) byCat[t.c].inn += t.a; else byCat[t.c].out += -t.a;
+  });
+  return { byCat:byCat, periodStart:minD, periodEnd:maxD };
+}
+function fvPLNet(selMonth){
+  var b = fvBankByCat(selMonth || null);
+  if (!b) return null;
+  var bc = b.byCat;
+  var g = function(code, fld){ return (bc[code] && bc[code][fld]) ? bc[code][fld] : 0; };
+  var revenue = g('SALES','inn') + g('B2B','inn');
+  var goods   = g('PRODUCE','out') + g('STOCK_OTHER','out');
+  var items = [], running = 0;
+  FV_OPEX.forEach(function(p){ var v = g(p[0],'out'); if (v > 0){ items.push({ label:p[1], amt:v }); running += v; } });
+  // Safety net: count any money-out in a category we didn't explicitly classify
+  // (not goods, not one-off capital, not transfers, not income) so net profit is
+  // never flattered by an unexpected code silently dropping out.
+  var classified = { SALES:1, B2B:1, PRODUCE:1, STOCK_OTHER:1, TRANSFER:1, FITOUT:1 };
+  FV_OPEX.forEach(function(p){ classified[p[0]] = 1; });
+  var other = 0;
+  Object.keys(bc).forEach(function(code){ if (!classified[code]) other += (bc[code].out || 0); });
+  if (other > 0){ items.push({ label:'Other running costs', amt:other }); running += other; }
+  items.sort(function(a,b){ return b.amt - a.amt; });
+  var gross = revenue - goods, net = gross - running, days = 0;
+  if (b.periodStart && b.periodEnd){ days = Math.round((new Date(b.periodEnd + 'T00:00:00') - new Date(b.periodStart + 'T00:00:00')) / 86400000) + 1; }
+  return { revenue:revenue, goods:goods, gross:gross, running:running, net:net, items:items, start:b.periodStart, end:b.periodEnd, days:days };
+}
+function fvFmtDshort(d){ if (!d) return ''; return new Date(d + 'T00:00:00').toLocaleDateString('en-AU',{ day:'numeric', month:'short' }); }
+function fvPLNetBtnStyle(active){
+  return 'border:1px solid ' + (active ? '#15662f' : '#cbd5e1') + ';background:' + (active ? '#15662f' : '#fff') + ';color:' + (active ? '#fff' : '#374151') + ';border-radius:999px;font-size:12px;font-weight:700;padding:4px 12px;cursor:pointer;';
+}
+function fvPLNetSetMonth(m){ window._plNetMonth = (m === 'all') ? null : m; fvPLNetRender(); }
+function fvPLNetRender(){ var el = document.getElementById('plNetPanel'); if (el) el.innerHTML = fvPLNetPanelHTML(window._plNetMonth || null); }
+function fvPLNetPanelHTML(selMonth){
+  var d = fvPLNet(selMonth);
+  var placeholder = '<div class="manage-card" style="color:#6b7280;font-size:13px;padding:16px;">📊 Your full profit picture (sales minus stock, rent, wages and all running costs) will appear here once your bank feed loads.</div>';
+  if (!d) return placeholder;
+  if (!selMonth && d.revenue === 0 && d.goods === 0 && d.running === 0) return placeholder;
+  var money = function(n){ return '$' + Number(n||0).toLocaleString(undefined,{ minimumFractionDigits:2, maximumFractionDigits:2 }); };
+  var bc = (typeof fvBankCompute === 'function') ? fvBankCompute() : null;
+  var months = (bc && bc.byMonth) ? Object.keys(bc.byMonth).sort() : [];
+  var MLAB = { '2026-03':'Mar', '2026-04':'Apr', '2026-05':'May', '2026-06':'Jun', '2026-07':'Jul', '2026-08':'Aug', '2026-09':'Sep' };
+  var toggle = '';
+  if (months.length > 1){
+    toggle = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;">' +
+      '<button onclick="fvPLNetSetMonth(\'all\')" style="' + fvPLNetBtnStyle(!selMonth) + '">Whole period</button>';
+    months.forEach(function(m){ toggle += '<button onclick="fvPLNetSetMonth(\'' + m + '\')" style="' + fvPLNetBtnStyle(selMonth === m) + '">' + (MLAB[m] || m) + '</button>'; });
+    toggle += '</div>';
+  }
+  var periodLabel = d.start ? (fvFmtDshort(d.start) + ' – ' + fvFmtDshort(d.end) + ' ' + String(d.end).slice(0,4)) : '';
+  var netPos = d.net >= 0;
+  var h = '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;">' +
+    '<div style="font-weight:800;font-size:15px;color:#0d4420;">💷 Running costs &amp; net profit</div>' +
+    '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + (periodLabel ? periodLabel + ' · ' : '') + 'based on your bank feed</div>' +
+    toggle +
+    '<div class="pl-summary" style="margin:10px 0 8px;">' +
+      '<div class="pl-sum-card"><div class="pl-sum-label">Money in (sales)</div><div class="pl-sum-val" style="color:#93c5fd;">' + money(d.revenue) + '</div></div>' +
+      '<div class="pl-sum-card"><div class="pl-sum-label">Stock &amp; produce bought</div><div class="pl-sum-val" style="color:#fbbf24;">' + money(d.goods) + '</div></div>' +
+      '<div class="pl-sum-card"><div class="pl-sum-label">Running costs</div><div class="pl-sum-val" style="color:#f87171;">' + money(d.running) + '</div></div>' +
+      '<div class="pl-sum-card"><div class="pl-sum-label">Gross profit (after stock)</div><div class="pl-sum-val" style="color:' + (d.gross>=0?'#4ade80':'#f87171') + ';">' + money(d.gross) + '</div></div>' +
+    '</div>' +
+    '<div style="background:' + (netPos ? '#f0fdf4' : '#fef2f2') + ';border:1px solid ' + (netPos ? '#bbf7d0' : '#fecaca') + ';border-radius:12px;padding:14px 16px;margin-bottom:6px;">' +
+      '<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">Net profit after running costs</div>' +
+      '<div style="font-size:26px;font-weight:900;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">' + (netPos ? '' : '−') + money(Math.abs(d.net)) + '</div>' +
+      '<div style="font-size:11px;color:#6b7280;margin-top:2px;">What’s left after stock, rent, wages and all bills' + (periodLabel ? ', for ' + periodLabel : '') + '</div>' +
+    '</div>';
+  if (d.items.length){
+    h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:12px 0 2px;">Where the running costs went</div>';
+    d.items.forEach(function(it){
+      var pct = d.running > 0 ? (it.amt / d.running * 100) : 0;
+      h += '<div style="display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span>' + it.label + ' <span style="color:#9ca3af;font-size:11px;">' + pct.toFixed(0) + '%</span></span><span style="font-weight:700;">' + money(it.amt) + '</span></div>';
+    });
+    if (d.days > 0) h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Average running cost per trading day ≈ ' + money(d.running / d.days) + ' <span style="color:#cbd5e1;">(indicative only — real bills are monthly/quarterly)</span></div>';
+  }
+  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. “Money in” is settled card takings + wholesale, so it can differ a little from the till totals below.</div>' +
+    '</div>';
+  return h;
+}
+
 function buildPLView() {
   var pv = document.getElementById('viewPL');
   pv.innerHTML = '';
@@ -4998,6 +5101,12 @@ function buildPLView() {
     importBar.appendChild(sel);
   }
   pv.appendChild(importBar);
+
+  // Realistic P&L panel (money in − stock − running costs = net profit) — bank-fed,
+  // independent of which EPOS day is picked, and shown even before any EPOS import.
+  var netDiv = document.createElement('div'); netDiv.id = 'plNetPanel'; netDiv.style.marginTop = '8px';
+  pv.appendChild(netDiv);
+  if (typeof fvPLNetRender === 'function') fvPLNetRender();
 
   // Bank-statement money in/out from the uploaded screenshots (BANK_TX) — tap for the full breakdown
   if (typeof fvCashflowButtonHTML === 'function') {
@@ -5087,17 +5196,18 @@ function renderPLDay(date) {
     '<div class="pl-sum-card"><div class="pl-sum-label">Revenue</div>' +
       '<div class="pl-sum-val" style="color:#93c5fd;">$' + fRev.toFixed(2) + '</div>' +
       '<div class="pl-sum-sub">' + fQty + ' items sold</div></div>' +
-    '<div class="pl-sum-card"><div class="pl-sum-label">Cost</div>' +
+    '<div class="pl-sum-card"><div class="pl-sum-label">Cost of goods</div>' +
       '<div class="pl-sum-val" style="color:#f87171;">$' + fCost.toFixed(2) + '</div>' +
       '<div class="pl-sum-sub">' + (fRev > 0 ? (fCost/fRev*100).toFixed(0) : 0) + '% of revenue</div></div>' +
-    '<div class="pl-sum-card"><div class="pl-sum-label">Gross Profit</div>' +
+    '<div class="pl-sum-card"><div class="pl-sum-label">Gross profit</div>' +
       '<div class="pl-sum-val" style="color:#4ade80;">$' + fMargin.toFixed(2) + '</div>' +
-      (plFilter === 'all' && day.summary.discount > 0 ?
-        '<div class="pl-sum-sub">After $' + day.summary.discount.toFixed(2) + ' discounts</div>' : '') +
-    '</div>' +
+      '<div class="pl-sum-sub">' + (plFilter === 'all' && day.summary.discount > 0 ?
+        'After $' + day.summary.discount.toFixed(2) + ' discounts' : 'before running costs') +
+    '</div></div>' +
     '<div class="pl-sum-card"><div class="pl-sum-label">Margin</div>' +
       '<div class="pl-sum-val" style="color:' + marginCol + ';">' + (fMarginPerc*100).toFixed(1) + '%</div>' +
-      '<div class="pl-sum-sub">' + (plFilter === 'all' ? s.itemCount + ' products' : items.length + ' products') + '</div></div>';
+      '<div class="pl-sum-sub">' + (plFilter === 'all' ? s.itemCount + ' products' : items.length + ' products') + '</div></div>' +
+    '<div style="grid-column:1/-1;font-size:11px;color:#9ca3af;line-height:1.5;margin-top:2px;">This is one day’s sales vs the cost of those goods only. It doesn’t include rent, wages or electricity — see “Running costs &amp; net profit” above for the full business picture.</div>';
 
   // ── Product table ──
   var tableDiv = document.getElementById('plTable');
