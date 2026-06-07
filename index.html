@@ -132,6 +132,7 @@
     .run-tabs { display:flex; gap:6px; padding:8px 0 6px; position:sticky; top:0; background:#f7f8fa; z-index:5; }
     .run-tab { flex:1; padding:9px 4px; border:1px solid #cbd5e1; background:#fff; color:#374151; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
     .run-tab.active { background:#15662f; color:#fff; border-color:#15662f; }
+    .sync-warn { background:#b45309; color:#fff; padding:11px 14px; border-radius:10px; margin:8px 0; font-size:13px; font-weight:700; cursor:pointer; text-align:center; }
 
     .product-info { flex: 1; min-width: 0; }
     .product-name {
@@ -1672,7 +1673,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v64';
+var APP_BUILD = 'v65';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1864,6 +1865,11 @@ function fvBuyUndo(){
 function buildList() {
   var container = document.getElementById('viewList');
   container.innerHTML = '';
+
+  // Reconnect prompt (only shows if logged in but Firebase sync went stale)
+  var warnSlot = document.createElement('div'); warnSlot.id = 'syncWarnSlot';
+  warnSlot.innerHTML = (typeof fvSyncBannerHTML === 'function' ? fvSyncBannerHTML() : '');
+  container.appendChild(warnSlot);
 
   // Order summary panel at top
   container.appendChild(buildOrderSummaryPanel());
@@ -5672,7 +5678,13 @@ function fvFbToken() {
     method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(fvFbAuth.refreshToken)
   }).then(function(r){ return r.json(); }).then(function(d){
-    if (!d.id_token) throw new Error('refresh failed');
+    if (!d.id_token) {
+      // refresh token is dead (e.g. passwords were changed) — purge it so the app
+      // shows a "reconnect" prompt instead of silently failing to sync.
+      if (d.error) { fvFbClear(); window._fvSyncBroken = true; if (typeof fvSyncBannerRefresh === 'function') fvSyncBannerRefresh(); }
+      throw new Error('refresh failed');
+    }
+    window._fvSyncBroken = false;
     fvFbAuth.idToken = d.id_token;
     fvFbAuth.refreshToken = d.refresh_token || fvFbAuth.refreshToken;
     fvFbAuth.expiresAt = Date.now() + ((parseInt(d.expires_in, 10) || 3600) * 1000) - 60000;
@@ -5681,6 +5693,12 @@ function fvFbToken() {
 }
 
 function fvSyncEnabled() { return !!(fvSession && fvFbLoad()); }
+/* When logged into the app but Firebase isn't connected (e.g. saved sign-in went
+   stale after a password change), show a one-tap reconnect prompt on the List. */
+function fvSyncNeedsReconnect(){ return !!(fvSession && (!fvFbLoad() || window._fvSyncBroken)); }
+function fvReconnectSync(){ if (typeof fvShowLogin === 'function') fvShowLogin(); }
+function fvSyncBannerHTML(){ return fvSyncNeedsReconnect() ? '<div class="sync-warn" onclick="fvReconnectSync()">⚠️ Live sync is off — tap to sign in again &amp; reconnect the team list</div>' : ''; }
+function fvSyncBannerRefresh(){ var c = document.getElementById('syncWarnSlot'); if (c) c.innerHTML = fvSyncBannerHTML(); }
 function fvSafeKey(s) {
   try { return btoa(unescape(encodeURIComponent(String(s)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
   catch(e){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
@@ -6584,7 +6602,13 @@ function fvLoginSuccess(found, p, rem, fbAlready){
   fvHideLogin();
   fvRenderAccount();
   if (!fbAlready && typeof fvFirebaseSignIn === 'function') {
-    fvFirebaseSignIn(found.user, p).then(function(){ if (typeof fvSyncStart === 'function') fvSyncStart(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }).catch(function(){});
+    fvFirebaseSignIn(found.user, p).then(function(){
+      window._fvSyncBroken = false;
+      if (typeof fvSyncStart === 'function') fvSyncStart();
+      if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
+      if (typeof fvSyncBannerRefresh === 'function') fvSyncBannerRefresh();
+      var lv = document.getElementById('viewList'); if (lv && lv.classList.contains('active') && typeof buildList === 'function') buildList();
+    }).catch(function(){});
   } else {
     if (typeof fvSyncStart === 'function') fvSyncStart();
     if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
