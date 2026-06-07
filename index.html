@@ -1676,7 +1676,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v72';
+var APP_BUILD = 'v73';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2039,7 +2039,7 @@ function makeRow(p, idx) {
   var buyBtn = document.createElement('button');
   buyBtn.className = 'btn-buy';
   buyBtn.id = 'bbuy' + idx;
-  buyBtn.textContent = 'BUY';
+  buyBtn.textContent = 'Done';
   buyBtn.addEventListener('click', (function(i){ return function(){ openModal(i); }; })(idx));
 
   var skipBtn = document.createElement('button');
@@ -2077,7 +2077,7 @@ function refreshRow(idx) {
   det.className = 'product-detail';
 
   if (!s) {
-    buy.textContent = 'BUY';
+    buy.textContent = 'Done';
     det.textContent = p[5] ? 'Ref: $' + p[5].toFixed(2) + '/box' : '';
     refreshOrderChips(idx);
     return;
@@ -2087,7 +2087,7 @@ function refreshRow(idx) {
     skp.classList.add('active');
     nm.classList.add('crossed');
     det.textContent = 'Skipped';
-    buy.textContent = 'BUY';
+    buy.textContent = 'Done';
     refreshOrderChips(idx);
   } else if (s.status === 'bought') {
     row.classList.add('bought');
@@ -3709,13 +3709,16 @@ function buildSellView() {
     return a.localeCompare(b);
   });
 
+  var anySell = false;
   suppliers.forEach(function(sup) {
     var items = [];
     PRODUCTS.forEach(function(p,i){
-      if(p[0]===sup && (p[5]!=null || p[6]!=null)) // only show products with pricing info
-        items.push({p:p,i:i});
+      var onList = (typeof fvBuyGet === 'function' && fvBuyGet(i) > 0);
+      var bought = state[i] && state[i].status === 'bought';
+      if(p[0]===sup && (onList || bought)) items.push({p:p,i:i});   // only items we're buying
     });
     if(!items.length) return;
+    anySell = true;
 
     // Supplier header
     var supHdr = document.createElement('div');
@@ -3736,6 +3739,11 @@ function buildSellView() {
     sv.appendChild(group);
   });
 
+  if (!anySell) {
+    var emS = document.createElement('div'); emS.className = 'hist-empty';
+    emS.innerHTML = 'No items to price yet.<br><br>Add items to your <strong>buy list</strong> on the List tab (the −/+ buttons) and they’ll show here so you can set sell prices.<br>Items you mark <strong>Done</strong> light up green to review.';
+    sv.appendChild(emS);
+  }
   updateSellSummary(null, sell);
 }
 
@@ -3774,7 +3782,7 @@ function buildSellRow(item, sell) {
 
   var row = document.createElement('div');
   row.id = 'sellrow-' + i;
-  row.style.cssText = 'padding:8px 12px;' + (bought ? 'background:#f0fdf4;' : '');
+  row.style.cssText = 'padding:8px 12px;' + (bought ? 'background:#dcfce7;box-shadow:inset 5px 0 0 #16a34a;' : '');
 
   // Line 1: product name + bought badge
   var line1 = document.createElement('div');
@@ -3783,10 +3791,16 @@ function buildSellRow(item, sell) {
   nameSpan.style.cssText = 'font-size:13px;font-weight:700;color:#0d1b2a;flex:1;min-width:0;';
   nameSpan.textContent = getProductName(i);
   line1.appendChild(nameSpan);
+  if (p[7] != null) {   // current sell price in the shop
+    var shopSpan = document.createElement('span');
+    shopSpan.style.cssText = 'font-size:10px;font-weight:700;background:#eef2ff;color:#1c4587;padding:2px 7px;border-radius:10px;flex-shrink:0;';
+    shopSpan.textContent = '🏪 now $' + Number(p[7]).toFixed(2);
+    line1.appendChild(shopSpan);
+  }
   if (bought) {
     var boughtBadge = document.createElement('span');
     boughtBadge.style.cssText = 'font-size:10px;font-weight:700;background:#16a34a;color:white;padding:2px 7px;border-radius:10px;flex-shrink:0;';
-    boughtBadge.textContent = '✓ BOUGHT';
+    boughtBadge.textContent = '✓ BOUGHT · set price';
     line1.appendChild(boughtBadge);
   }
   row.appendChild(line1);
