@@ -128,6 +128,10 @@
     .buylist-foot-btns { display:flex; gap:8px; }
     .buylist-fbtn { flex:1; padding:12px 6px; background:#15662f; color:#fff; border:none; border-radius:9px; font-size:14px; font-weight:700; cursor:pointer; }
     .buylist-fbtn:active { background:#0d4420; }
+    /* Run sub-tabs (List/Orders/Totals/Add merged under the List tab) */
+    .run-tabs { display:flex; gap:6px; padding:8px 0 6px; position:sticky; top:0; background:#f7f8fa; z-index:5; }
+    .run-tab { flex:1; padding:9px 4px; border:1px solid #cbd5e1; background:#fff; color:#374151; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .run-tab.active { background:#15662f; color:#fff; border-color:#15662f; }
 
     .product-info { flex: 1; min-width: 0; }
     .product-name {
@@ -1068,6 +1072,13 @@
 
 <!-- Main content -->
 <div class="content" id="mainContent">
+  <!-- Run sub-tabs: Buy List / Orders / Totals / Add (merged in from the old bottom tabs) -->
+  <div class="run-tabs" id="runTabs" style="display:none;">
+    <button class="run-tab" id="rtList"   onclick="showView('List')">📋 Buy List</button>
+    <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
+    <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
+    <button class="run-tab" id="rtAdd"    onclick="showView('Add')">➕ Add</button>
+  </div>
   <!-- List view -->
   <div class="view active" id="viewList"></div>
 
@@ -1305,9 +1316,6 @@
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
   <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store</button>
   <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Spend</button>
-  <button class="nav-btn"        id="navOrders" onclick="showView('Orders')"><span class="nav-icon">📦</span>Orders</button>
-  <button class="nav-btn"        id="navTotals" onclick="showView('Totals')"><span class="nav-icon">💰</span>Totals</button>
-  <button class="nav-btn"        id="navAdd"    onclick="showView('Add')"><span class="nav-icon">➕</span>Add</button>
   <button class="nav-btn"        id="navSell"    onclick="showView('Sell')"><span class="nav-icon">💲</span>Sell</button>
   <button class="nav-btn"        id="navPL"      onclick="showView('PL')"><span class="nav-icon">📊</span>P&amp;L</button>
   <button class="nav-btn"        id="navHistory" onclick="showView('History')"><span class="nav-icon">🕐</span>History</button>
@@ -1664,7 +1672,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v63';
+var APP_BUILD = 'v64';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2192,10 +2200,22 @@ function toggleSkip(idx) {
 /* ─── VIEWS ─────────────────────────────────────────────────────────────── */
 
 function showView(name) {
+  var RUN = { List:1, Orders:1, Totals:1, Add:1 };   // these 4 now live under the List tab
   ['List','Store','Spend','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
-    document.getElementById('view' + v).classList.toggle('active', v === name);
-    document.getElementById('nav'  + v).classList.toggle('active', v === name);
+    var vc = document.getElementById('view' + v); if (vc) vc.classList.toggle('active', v === name);
   });
+  // bottom-nav highlight (Orders/Totals/Add buttons are gone — they map to the List button)
+  ['List','Store','Spend','Sell','PL','History','Manage'].forEach(function(v) {
+    var nb = document.getElementById('nav' + v); if (nb) nb.classList.toggle('active', (v === name) || (v === 'List' && RUN[name]));
+  });
+  // run sub-tab strip
+  var rt = document.getElementById('runTabs');
+  if (rt) {
+    rt.style.display = RUN[name] ? 'flex' : 'none';
+    [['rtList','List'],['rtOrders','Orders'],['rtTotals','Totals'],['rtAdd','Add']].forEach(function(p){
+      var b = document.getElementById(p[0]); if (b) b.classList.toggle('active', p[1] === name);
+    });
+  }
   var isList = name === 'List';
   document.getElementById('searchBar').style.display = isList ? 'block' : 'none';
   var mc = document.getElementById('mainContent');
