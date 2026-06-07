@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v86';
+var APP_BUILD = 'v87';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7394,7 +7394,7 @@ function fvLogout() {
    Signs the device out after FV_IDLE_HOURS of NO use (the timer resets every
    time the app is touched), so an active user is never kicked mid-task but a
    forgotten/lost phone logs itself out. Change the number to adjust. */
-var FV_IDLE_HOURS = 36;
+var FV_IDLE_HOURS = 24;
 function fvTouchActivity(){ try{ localStorage.setItem('fvLastActive', String(Date.now())); }catch(e){} }
 function fvAutoLogout(){
   fvSession = null;
