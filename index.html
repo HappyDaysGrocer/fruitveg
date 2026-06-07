@@ -1673,7 +1673,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v68';
+var APP_BUILD = 'v69';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1792,15 +1792,15 @@ function fvBuyRenderSummary(){
   var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
   if (bar) {
     bar.style.display = 'block';
-    bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' on the buy list · <strong>' + boxes + '</strong> to buy'
+    bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' · <strong>' + boxes + '</strong> to buy'
       + '<span style="flex:1;"></span>'
-      + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>';
+      + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>'
+      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '')
+      + '<button class="buylist-fbtn" style="width:100%;background:#1c4587;margin-top:2px;" onclick="fvBuyForceSync()">📤 Sync this list to the team now</button>';
   }
   if (foot) {
     foot.style.display = 'block';
-    foot.innerHTML = '<div class="buylist-foot"><div style="font-weight:700;color:#0d4420;margin-bottom:8px;">🛒 Buy list — ' + idxs.length + ' item' + (idxs.length === 1 ? '' : 's') + ', ' + boxes + ' to buy</div>'
-      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '')
-      + '<button class="buylist-fbtn" style="width:100%;background:#1c4587;margin-bottom:8px;" onclick="fvBuyForceSync()">📤 Sync this list to the team now</button>'
+    foot.innerHTML = '<div class="buylist-foot"><div style="font-weight:700;color:#0d4420;margin-bottom:10px;">🛒 Share or print this list</div>'
       + '<div class="buylist-foot-btns">'
       + '<button class="buylist-fbtn" onclick="fvBuyCopy()">📋 Copy</button>'
       + '<button class="buylist-fbtn" onclick="fvBuyEmail()">📧 Email</button>'
