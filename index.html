@@ -113,6 +113,17 @@
     .product-row.skipped { background: #fef9c3; opacity: 0.65; }
     .product-row.must    { background: #fef3c7; }
     .product-row.bought.must { background: #d1fae5; }
+    /* Mandi buy-list quick stepper */
+    .buy-step { display:inline-flex; align-items:center; gap:7px; margin-top:7px; }
+    .buy-step button { width:32px; height:32px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; color:#15662f; font-size:19px; font-weight:800; line-height:1; cursor:pointer; padding:0; }
+    .buy-step button:active { background:#eef7f0; }
+    .buy-step .bs-q { min-width:24px; text-align:center; font-weight:800; font-size:16px; color:#9ca3af; }
+    .buy-step.on .bs-q { color:#15662f; }
+    .buy-step .bs-lbl { font-size:11px; color:#9ca3af; }
+    .product-row.onlist { box-shadow: inset 4px 0 0 #15662f; }
+    .buylist-bar { display:flex; align-items:center; gap:8px; background:#15662f; color:#fff; padding:10px 14px; border-radius:10px; margin:8px 0; font-size:14px; }
+    .buylist-act { background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:7px; padding:6px 12px; font-size:13px; font-weight:700; cursor:pointer; }
+    .buylist-act.clear { background:rgba(255,255,255,.1); }
 
     .product-info { flex: 1; min-width: 0; }
     .product-name {
@@ -1649,7 +1660,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v60';
+var APP_BUILD = 'v61';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1684,12 +1695,59 @@ function init() {
 
 /* ─── BUILD LIST ────────────────────────────────────────────────────────── */
 
+/* ─── MANDI BUY LIST — quick +/- planner for the next run ───────────────────
+   Stored locally per device (mandiBuyList). Separate from the BUY/Totals flow
+   so it can't break anything; the planned qty also pre-fills the BUY screen. */
+var mandiBuy = null;
+function fvBuyLoad(){ if (!mandiBuy){ try { mandiBuy = JSON.parse(localStorage.getItem('mandiBuyList') || '{}'); } catch(e){ mandiBuy = {}; } } return mandiBuy; }
+function fvBuySave(){ try { localStorage.setItem('mandiBuyList', JSON.stringify(fvBuyLoad())); } catch(e){} }
+function fvBuyGet(idx){ var m = fvBuyLoad(); return m[idx] || 0; }
+function buyListAdj(idx, delta, e){
+  if (e && e.stopPropagation) e.stopPropagation();
+  var m = fvBuyLoad();
+  var q = Math.max(0, (m[idx] || 0) + delta);
+  if (q === 0) delete m[idx]; else m[idx] = q;
+  fvBuySave();
+  var span = document.getElementById('buyq' + idx); if (span) span.textContent = q;
+  var step = document.getElementById('buystep' + idx); if (step) step.classList.toggle('on', q > 0);
+  var row = document.getElementById('row' + idx); if (row) row.classList.toggle('onlist', q > 0);
+  fvBuyRenderSummary();
+}
+function fvBuyRenderSummary(){
+  var bar = document.getElementById('buyListBar'); if (!bar) return;
+  var m = fvBuyLoad(); var idxs = Object.keys(m).filter(function(k){ return m[k] > 0; });
+  if (!idxs.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
+  bar.style.display = 'block';
+  bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' on the buy list · <strong>' + boxes + '</strong> to buy'
+    + '<span style="flex:1;"></span>'
+    + '<button class="buylist-act" onclick="fvBuyCopy()">Copy</button>'
+    + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>';
+}
+function fvBuyCopy(){
+  var m = fvBuyLoad(); var bySup = {};
+  PRODUCTS.forEach(function(p, i){ if (m[i] > 0){ var k = p[0] + (p[1] ? ' (stall ' + p[1] + ')' : ''); (bySup[k] = bySup[k] || []).push('  ' + m[i] + ' × ' + getProductName(i)); } });
+  var lines = ['HAPPY DAYS — MANDI BUY LIST', new Date().toDateString(), ''];
+  Object.keys(bySup).forEach(function(k){ lines.push(k + ':'); bySup[k].forEach(function(l){ lines.push(l); }); lines.push(''); });
+  var text = lines.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function(){ alert('🛒 Buy list copied — paste it into a message.'); }, function(){ prompt('Copy your buy list:', text); });
+  } else { prompt('Copy your buy list:', text); }
+}
+function fvBuyClear(){
+  if (!confirm('Clear the whole buy list?')) return;
+  mandiBuy = {}; fvBuySave();
+  if (typeof buildList === 'function') buildList();
+}
+
 function buildList() {
   var container = document.getElementById('viewList');
   container.innerHTML = '';
 
   // Order summary panel at top
   container.appendChild(buildOrderSummaryPanel());
+  var blBar = document.createElement('div'); blBar.id = 'buyListBar'; blBar.style.display = 'none';
+  container.appendChild(blBar);
 
   // Build sorted supplier list — numeric stall first, then non-stall alphabetically
   var supMap = {};
@@ -1763,6 +1821,7 @@ function buildList() {
   });
 
   refreshAllRows();
+  fvBuyRenderSummary();
 }
 
 function makeRow(p, idx) {
@@ -1797,6 +1856,16 @@ function makeRow(p, idx) {
   info.appendChild(nameDiv);
   info.appendChild(detDiv);
   info.appendChild(orderMini);
+
+  // Quick +/- buy-list stepper for the next Mandi run
+  var step = document.createElement('div');
+  step.className = 'buy-step' + (fvBuyGet(idx) > 0 ? ' on' : '');
+  step.id = 'buystep' + idx;
+  step.innerHTML = '<button type="button" onclick="buyListAdj(' + idx + ',-1,event)">−</button>'
+    + '<span class="bs-q" id="buyq' + idx + '">' + fvBuyGet(idx) + '</span>'
+    + '<button type="button" onclick="buyListAdj(' + idx + ',1,event)">+</button>'
+    + '<span class="bs-lbl">to buy</span>';
+  info.appendChild(step);
 
   var actions = document.createElement('div');
   actions.className = 'row-actions';
@@ -1842,6 +1911,7 @@ function refreshRow(idx) {
 
   // Reset classes
   row.className = 'product-row' + (p[8] ? ' must' : '');
+  if (typeof fvBuyGet === 'function' && fvBuyGet(idx) > 0) row.classList.add('onlist');
   buy.className = 'btn-buy';
   skp.className = 'btn-skip';
   nm.className  = 'product-name';
@@ -1940,7 +2010,7 @@ function openModal(idx) {
     grid.appendChild(btn);
   });
 
-  document.getElementById('inputQty').value   = prev ? prev.qty   : (p[4] != null ? p[4] : '');
+  document.getElementById('inputQty').value   = prev ? prev.qty   : (fvBuyGet(idx) > 0 ? fvBuyGet(idx) : (p[4] != null ? p[4] : ''));
   document.getElementById('inputPrice').value = prev ? prev.price : (p[5] != null ? p[5] : '');
   document.getElementById('refHint').textContent = p[5] ? 'Reference: $' + p[5].toFixed(2) : '';
 
