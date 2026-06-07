@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v82';
+var APP_BUILD = 'v83';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2242,7 +2242,7 @@ function showView(name) {
   if (btt && !isList) btt.classList.remove('show');
   if (name === 'Totals')  buildTotals();
   if (name === 'Add')     buildAddView();
-  if (name === 'Orders')  buildOrdersView();
+  if (name === 'Orders')  { if (typeof fvCOpull === 'function') fvCOpull(); buildOrdersView(); }
   if (name === 'Sell')    buildSellView();
   if (name === 'PL')      { if (fvCanSeeFinance()) buildPLView();    else fvBlankFinance('viewPL'); }
   if (name === 'History') buildHistoryView();
@@ -2586,7 +2586,239 @@ function refreshOrderChips(idx) {
 
 // ── Orders view ──────────────────────────────────────────────────────────────
 
-function buildOrdersView() {
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESTAURANT / WHOLESALE ORDERS  (customer-based)  — fvCO*
+   Stage 1: customers + priced orders + copy/email/print export
+   Stage 2: roll-up to one bulk Monday buy list + split-back pick list
+   Stage 3: mark completed → per-customer order history + reuse a past order
+   Stored in mandiCustomers / mandiCustOrders, synced to Firebase
+   /customers and /custorders for the team. */
+var fvCO = { view:'list', custId:null, _draft:null };
+
+function fvCOtoday(){ var d=new Date(); function z(n){return (n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function fvCOid(pfx){ return pfx + Date.now().toString(36) + Math.floor(Math.random()*46656).toString(36); }
+function fvCOmoney(n){ return '$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fvCOloadCust(){ try{ return JSON.parse(localStorage.getItem('mandiCustomers')||'{}'); }catch(e){ return {}; } }
+function fvCOloadOrders(){ try{ return JSON.parse(localStorage.getItem('mandiCustOrders')||'{}'); }catch(e){ return {}; } }
+function fvCOsyncOn(){ return (typeof fvSyncEnabled==='function') && fvSyncEnabled() && typeof fvFbToken==='function'; }
+function fvCOpatch(node,id,rec){ if(!fvCOsyncOn()) return; fvFbToken().then(function(tok){ var b={}; b[id]=rec; fetch(FV_FB.databaseURL+'/'+node+'.json?auth='+tok,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).catch(function(){}); }).catch(function(){}); }
+function fvCOcustSave(c){ var o=fvCOloadCust(); o[c.id]=c; try{localStorage.setItem('mandiCustomers',JSON.stringify(o));}catch(e){} fvCOpatch('customers',c.id,c); }
+function fvCOcustDel(id){ var o=fvCOloadCust(); delete o[id]; try{localStorage.setItem('mandiCustomers',JSON.stringify(o));}catch(e){} fvCOpatch('customers',id,null); }
+function fvCOordSave(ord){ var o=fvCOloadOrders(); o[ord.id]=ord; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',ord.id,ord); }
+function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',id,null); }
+function fvCOpull(){
+  if(!fvCOsyncOn()) return Promise.resolve();
+  return fvFbToken().then(function(tok){
+    return Promise.all([
+      fetch(FV_FB.databaseURL+'/customers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
+      fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
+    ]).then(function(res){
+      var changed=false;
+      if(res[0]!==undefined && res[0]!==null){ try{localStorage.setItem('mandiCustomers',JSON.stringify(res[0]));changed=true;}catch(e){} }
+      if(res[1]!==undefined && res[1]!==null){ try{localStorage.setItem('mandiCustOrders',JSON.stringify(res[1]));changed=true;}catch(e){} }
+      var v=document.getElementById('viewOrders'); if(changed && v && v.classList.contains('active') && typeof fvCORender==='function') fvCORender();
+    });
+  }).catch(function(){});
+}
+
+function fvCOunit(name){ var pi=(typeof extractPackInfo==='function')?extractPackInfo(name):null; if(pi&&pi.unit==='kg')return 'kg'; if(pi&&pi.unit&&pi.unit!=='each')return pi.unit; return 'ea'; }
+function fvCOprodIndexByKey(key){ for(var i=0;i<PRODUCTS.length;i++){ if(orderKey(PRODUCTS[i])===key) return i; } return -1; }
+function fvCOpriceFor(custId,key){ var c=fvCOloadCust()[custId]; if(c&&c.prices&&c.prices[key]!=null) return c.prices[key]; var i=fvCOprodIndexByKey(key); if(i>=0 && PRODUCTS[i][7]!=null) return PRODUCTS[i][7]; return ''; }
+function fvCOorderTotal(ord){ var t=0; (ord.lines||[]).forEach(function(l){ t+=(l.qty||0)*(l.price||0); }); return t; }
+function fvCOopenOrder(custId){ var o=fvCOloadOrders(),k=Object.keys(o); for(var i=0;i<k.length;i++){ if(o[k[i]].custId===custId && o[k[i]].status==='open') return o[k[i]]; } return null; }
+function fvCOensureOpen(custId){ var ord=fvCOopenOrder(custId); if(!ord){ ord={id:fvCOid('o'),custId:custId,date:fvCOtoday(),status:'open',lines:[]}; fvCOordSave(ord); } return ord; }
+function fvCObulk(){
+  var orders=fvCOloadOrders(),custs=fvCOloadCust(),agg={};
+  Object.keys(orders).forEach(function(oid){ var ord=orders[oid]; if(ord.status!=='open')return;
+    (ord.lines||[]).forEach(function(l){ if(!l.key)return; if(!agg[l.key])agg[l.key]={key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:0,parts:[]};
+      agg[l.key].qty+=(l.qty||0); agg[l.key].parts.push({name:(custs[ord.custId]&&custs[ord.custId].name)||'?',qty:l.qty||0}); });
+  });
+  Object.keys(agg).forEach(function(k){ var a=agg[k]; var pi=(typeof extractPackInfo==='function')?extractPackInfo(a.name):null;
+    if(pi){ var f=convertToPackUnit(a.qty,(a.unit==='ea'?'each':a.unit),pi); a.boxes=(f!=null)?Math.ceil(f*2)/2:null; } });
+  return agg;
+}
+function fvCOexportText(ord){
+  var c=fvCOloadCust()[ord.custId]||{},L=[];
+  L.push('HAPPY DAYS FRUIT VEG & GROCER');
+  if(c.name)L.push(c.name);
+  L.push('Order: '+(ord.date||fvCOtoday()));
+  L.push('--------------------------------');
+  var t=0; (ord.lines||[]).forEach(function(l){ var lt=(l.qty||0)*(l.price||0); t+=lt; L.push((l.name||'')+'  '+(l.qty||0)+(l.unit||'')+' x '+fvCOmoney(l.price)+' = '+fvCOmoney(lt)); });
+  L.push('--------------------------------');
+  L.push('TOTAL  '+fvCOmoney(t));
+  return L.join('\n');
+}
+function fvCOcopy(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var text=fvCOexportText(ord); var nm=(fvCOloadCust()[ord.custId]||{}).name||'Order';
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(function(){ alert('📋 '+nm+' copied — paste into SMS, email or EPOS Now.'); },function(){ prompt('Copy this order:',text); }); } else { prompt('Copy this order:',text); } }
+function fvCOemail(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var c=fvCOloadCust()[ord.custId]||{}; window.location.href='mailto:'+(c.email||'')+'?subject='+encodeURIComponent('Order — '+(c.name||'')+' — '+(ord.date||''))+'&body='+encodeURIComponent(fvCOexportText(ord)); }
+function fvCOprint(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var c=fvCOloadCust()[ord.custId]||{}; var rows='',t=0;
+  (ord.lines||[]).forEach(function(l){ var lt=(l.qty||0)*(l.price||0); t+=lt; rows+='<tr><td>'+fvEsc(l.name)+'</td><td style="text-align:right;">'+(l.qty||0)+fvEsc(l.unit||'')+'</td><td style="text-align:right;">'+fvCOmoney(l.price)+'</td><td style="text-align:right;">'+fvCOmoney(lt)+'</td></tr>'; });
+  var html='<html><head><title>Order</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:Arial;padding:20px;color:#111;}h1{font-size:18px;margin:0;}table{width:100%;border-collapse:collapse;margin-top:12px;}td,th{padding:6px 4px;border-bottom:1px solid #ddd;font-size:14px;}tfoot td{font-weight:800;border-top:2px solid #333;}</style></head><body><h1>Happy Days Fruit Veg &amp; Grocer</h1><div>'+fvEsc(c.name||'')+(c.address?' · '+fvEsc(c.address):'')+'</div><div>'+(c.phone?fvEsc(c.phone):'')+(c.contact?' · '+fvEsc(c.contact):'')+'</div><div style="color:#666;">Order: '+fvEsc(ord.date||'')+'</div><table><tr><th style="text-align:left;">Item</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>'+rows+'<tfoot><tr><td colspan="3">TOTAL</td><td style="text-align:right;">'+fvCOmoney(t)+'</td></tr></tfoot></table></body></html>';
+  var w=window.open('','_blank'); if(!w){ alert('Allow pop-ups to print, or use Copy/Email.'); return; } w.document.write(html); w.document.close(); setTimeout(function(){ try{w.focus();w.print();}catch(e){} },350); }
+
+function fvCOnav(view,custId){ fvCO.view=view; if(custId!==undefined)fvCO.custId=custId; fvCORender(); var mc=document.getElementById('mainContent'); if(mc)mc.scrollTop=0; }
+function fvCOnewCust(){ var c={id:fvCOid('c'),name:'',address:'',phone:'',contact:'',prices:{}}; fvCO.custId=c.id; fvCO._draft=c; fvCO.view='cust'; fvCORender(); }
+function fvCOeditCust(id){ fvCO.custId=id; fvCO._draft=null; fvCO.view='cust'; fvCORender(); }
+function fvCOsaveCustForm(){
+  var name=((document.getElementById('coName')||{}).value||'').trim();
+  if(!name){ alert('Please enter the company name.'); return; }
+  var id=fvCO.custId, existing=fvCOloadCust()[id]||fvCO._draft||{id:id,prices:{}};
+  existing.name=name;
+  existing.address=((document.getElementById('coAddr')||{}).value||'').trim();
+  existing.phone=((document.getElementById('coPhone')||{}).value||'').trim();
+  existing.contact=((document.getElementById('coContact')||{}).value||'').trim();
+  if(!existing.prices)existing.prices={};
+  fvCOcustSave(existing); fvCO._draft=null; fvCOnav('order',id);
+}
+function fvCOdelCustConfirm(id){ var c=fvCOloadCust()[id]||{}; if(!confirm('Delete '+(c.name||'this customer')+'? Their past orders stay in history.'))return; fvCOcustDel(id); fvCOnav('list'); }
+function fvCOopenCust(id){ fvCOensureOpen(id); fvCOnav('order',id); }
+function fvCOprodPick(){ var sel=document.getElementById('coProdSel'),prEl=document.getElementById('coPrice'),lbl=document.getElementById('coUnitLbl'); if(!sel)return; var idx=parseInt(sel.value,10); if(isNaN(idx))return; var p=PRODUCTS[idx]; if(!p)return; if(prEl){ var price=fvCOpriceFor(fvCO.custId,orderKey(p)); prEl.value=(price===''?'':price); } if(lbl)lbl.textContent=fvCOunit(p[3]); }
+function fvCOaddItem(){
+  var sel=document.getElementById('coProdSel'),qtyEl=document.getElementById('coQty'),prEl=document.getElementById('coPrice');
+  if(!sel||sel.value===''){ alert('Pick a product first.'); return; }
+  var idx=parseInt(sel.value,10),p=PRODUCTS[idx]; if(!p)return;
+  var qty=parseFloat(qtyEl&&qtyEl.value)||0; if(qty<=0){ alert('Enter a quantity.'); return; }
+  var price=parseFloat(prEl&&prEl.value); if(isNaN(price))price=0;
+  var ord=fvCOensureOpen(fvCO.custId),key=orderKey(p),unit=fvCOunit(p[3]),found=null;
+  (ord.lines||[]).forEach(function(l){ if(l.key===key)found=l; });
+  if(found){ found.qty=(found.qty||0)+qty; found.price=price; } else { ord.lines.push({key:key,name:p[3],sup:p[0],unit:unit,qty:qty,price:price}); }
+  var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[key]=price; fvCOcustSave(c); }
+  fvCOordSave(ord); fvCORender();
+}
+function fvCOlineDel(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord)return; ord.lines.splice(i,1); fvCOordSave(ord); fvCORender(); }
+function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; ord.lines[i].qty=parseFloat(val)||0; fvCOordSave(ord); fvCORender(); }
+function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
+function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; ord.status='completed'; ord.completed=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
+function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=l.price; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:l.price}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
+function fvCOpushBulk(){
+  var agg=fvCObulk(),n=0,m=fvBuyLoad();
+  Object.keys(agg).forEach(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k); if(idx<0)return; var q=(a.boxes!=null&&a.boxes>0)?Math.ceil(a.boxes):Math.ceil(a.qty); if(q>0){ m[idx]=q; n++; if(typeof fvBuyPush==='function')fvBuyPush(idx,q); } });
+  if(n){ fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); alert('Added '+n+' item'+(n!==1?'s':'')+' to the Monday buy list (List tab).'); } else { alert('No open orders to add yet.'); }
+}
+
+/* ── renderers (all write into #viewOrders) ── */
+function fvCORender(){
+  var ov=document.getElementById('viewOrders'); if(!ov)return;
+  var v=fvCO.view||'list';
+  if(v==='cust') ov.innerHTML=fvCOrenderCust();
+  else if(v==='order') ov.innerHTML=fvCOrenderOrder();
+  else if(v==='bulk') ov.innerHTML=fvCOrenderBulk();
+  else if(v==='pick') ov.innerHTML=fvCOrenderPick();
+  else if(v==='history') ov.innerHTML=fvCOrenderHistory();
+  else ov.innerHTML=fvCOrenderList();
+}
+function fvCObackBtn(view,label,cust){ return '<div style="margin-bottom:8px;"><button onclick="fvCOnav(\''+view+'\''+(cust?',\''+cust+'\'':'')+')" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;padding:4px 0;">‹ '+label+'</button></div>'; }
+function fvCOrenderList(){
+  var custs=fvCOloadCust(),orders=fvCOloadOrders();
+  var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
+  var h='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
+    +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
+    +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button></div>';
+  if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one.</div>';
+  ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
+    var oc=open?(open.lines||[]).length:0;
+    h+='<div class="order-summary-card">'
+      +'<div onclick="fvCOopenCust(\''+id+'\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">'
+      +'<span style="font-weight:700;color:#1c4587;font-size:15px;">'+fvEsc(c.name||'(no name)')+'</span>'
+      +'<span style="font-size:12px;color:#15803d;font-weight:700;">'+(oc?oc+' item'+(oc!==1?'s':'')+' ›':'take order ›')+'</span></div>'
+      +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;margin-top:2px;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
+      +'<div style="display:flex;gap:8px;margin-top:8px;">'
+      +'<button onclick="fvCOeditCust(\''+id+'\')" style="flex:1;padding:7px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Details</button>'
+      +'<button onclick="fvCOnav(\'history\',\''+id+'\')" style="flex:1;padding:7px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🕐 History'+(hist?' ('+hist+')':'')+'</button></div></div>';
+  });
+  return h;
+}
+function fvCOrenderCust(){
+  var id=fvCO.custId,saved=fvCOloadCust()[id],c=saved||fvCO._draft||{id:id};
+  function f(lbl,fid,val,ph,type){ return '<div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;">'+lbl+'</div><input id="'+fid+'" type="'+(type||'text')+'" value="'+fvEsc(val||'').replace(/"/g,'&quot;')+'" placeholder="'+ph+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;"></div>'; }
+  return fvCObackBtn('list','All customers')
+    +'<div class="manage-card"><div class="manage-title">'+(saved?'✏️ Edit customer':'➕ New customer')+'</div>'
+    +f('Company name','coName',c.name,'e.g. Tony’s Pizza')
+    +f('Address','coAddr',c.address,'Street, suburb')
+    +f('Phone','coPhone',c.phone,'04xx xxx xxx','tel')
+    +f('Contact person','coContact',c.contact,'Who you deal with')
+    +'<button onclick="fvCOsaveCustForm()" style="width:100%;padding:12px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:800;cursor:pointer;margin-top:4px;">Save &amp; take order ›</button>'
+    +(saved?'<button onclick="fvCOdelCustConfirm(\''+id+'\')" style="width:100%;padding:9px;background:none;color:#b91c1c;border:none;font-size:12px;cursor:pointer;margin-top:6px;">Delete this customer</button>':'')
+    +'</div>';
+}
+function fvCOrenderOrder(){
+  var id=fvCO.custId,c=fvCOloadCust()[id]; if(!c) return fvCOrenderList();
+  var ord=fvCOopenOrder(id)||fvCOensureOpen(id);
+  var groups={}; PRODUCTS.forEach(function(p,i){ if(!p[3])return; var s=p[0]||'Other'; (groups[s]=groups[s]||[]).push({i:i,p:p}); });
+  var opts='<option value="">— pick a product —</option>';
+  Object.keys(groups).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}).forEach(function(s){ var g=groups[s]; opts+='<optgroup label="'+fvEsc(s)+(g[0].p[1]?' (stall '+fvEsc(g[0].p[1])+')':'')+'">'; g.forEach(function(x){ opts+='<option value="'+x.i+'">'+fvEsc(x.p[3])+'</option>'; }); opts+='</optgroup>'; });
+  var linesHtml='',total=0;
+  (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt;
+    linesHtml+='<div style="border-top:1px solid #eef0f2;padding:9px 0;">'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+fvEsc(l.name)+'</span>'
+      +'<button onclick="fvCOlineDel(\''+ord.id+'\','+i+')" style="background:none;border:none;color:#b91c1c;font-size:16px;cursor:pointer;">✕</button></div>'
+      +'<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">'
+      +'<input type="number" inputmode="decimal" value="'+(l.qty||0)+'" onchange="fvCOlineQty(\''+ord.id+'\','+i+',this.value)" style="width:62px;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;"><span style="font-size:12px;color:#6b7280;">'+fvEsc(l.unit||'')+'</span>'
+      +'<span style="font-size:12px;color:#6b7280;">× $</span><input type="number" inputmode="decimal" value="'+(l.price||0)+'" onchange="fvCOlinePrice(\''+ord.id+'\','+i+',this.value)" style="width:72px;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;">'
+      +'<span style="margin-left:auto;font-weight:700;font-size:14px;">'+fvCOmoney(lt)+'</span></div></div>';
+  });
+  return fvCObackBtn('list','All customers')
+    +'<div class="manage-card"><div style="font-weight:800;font-size:16px;color:#0d4420;">'+fvEsc(c.name)+'</div>'
+    +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
+    +'<div style="font-size:11px;color:#9ca3af;margin-bottom:8px;">Order '+fvEsc(ord.date||'')+'</div>'
+    +'<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-bottom:8px;">'
+    +'<select id="coProdSel" onchange="fvCOprodPick()" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">'+opts+'</select>'
+    +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
+    +'<input id="coQty" type="number" inputmode="decimal" placeholder="Qty" style="flex:1;min-width:60px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;"><span id="coUnitLbl" style="font-size:12px;color:#6b7280;"></span>'
+    +'<span style="font-size:12px;color:#6b7280;">$</span><input id="coPrice" type="number" inputmode="decimal" placeholder="Price" style="flex:1;min-width:60px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">'
+    +'<button onclick="fvCOaddItem()" style="padding:10px 16px;background:#15662f;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Add</button></div></div>'
+    +(linesHtml||'<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No items yet — add one above.</div>')
+    +'<div style="display:flex;justify-content:space-between;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;font-weight:800;"><span>TOTAL</span><span id="coOrdTotal">'+fvCOmoney(total)+'</span></div></div>'
+    +'<div class="buylist-foot"><div class="buylist-foot-btns">'
+    +'<button class="buylist-fbtn" onclick="fvCOcopy(\''+ord.id+'\')">📋 Copy</button>'
+    +'<button class="buylist-fbtn" onclick="fvCOemail(\''+ord.id+'\')">✉️ Email</button>'
+    +'<button class="buylist-fbtn" onclick="fvCOprint(\''+ord.id+'\')">🖨️ Print</button></div>'
+    +'<button onclick="fvCOcomplete(\''+ord.id+'\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">✓ Mark completed → history</button></div>';
+}
+function fvCOrenderBulk(){
+  var agg=fvCObulk(),keys=Object.keys(agg);
+  keys.sort(function(a,b){ var s=String(agg[a].sup||'').localeCompare(String(agg[b].sup||'')); return s!==0?s:String(agg[a].name||'').localeCompare(String(agg[b].name||'')); });
+  var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">🛒 One bulk buy list (all open orders)</div>';
+  if(!keys.length) return h+'<div style="color:#9ca3af;font-size:13px;">No open orders yet.</div></div>';
+  keys.forEach(function(k){ var a=agg[k],parts=a.parts.map(function(pt){return fvEsc(pt.name)+' '+pt.qty+fvEsc(a.unit||'');}).join(', ');
+    h+='<div style="border-top:1px solid #eef0f2;padding:9px 0;"><div style="display:flex;justify-content:space-between;"><span style="font-weight:700;font-size:14px;">'+fvEsc(a.name)+'</span><span style="font-weight:800;">'+a.qty+fvEsc(a.unit||'')+(a.boxes!=null?' · '+a.boxes+' box'+(a.boxes!==1?'es':''):'')+'</span></div><div style="font-size:11px;color:#6b7280;margin-top:2px;">'+parts+'</div></div>';
+  });
+  h+='<button onclick="fvCOpushBulk()" style="width:100%;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px;">➕ Add all to Monday buy list</button>';
+  h+='<button onclick="fvCOnav(\'pick\')" style="width:100%;padding:10px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px;">📦 Split back per restaurant ›</button>';
+  h+='<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Adds up every restaurant’s open order so you buy once — no double-buying. Boxes shown where the pack size is known in the name.</div></div>';
+  return h;
+}
+function fvCOrenderPick(){
+  var orders=fvCOloadOrders(),custs=fvCOloadCust();
+  var h=fvCObackBtn('bulk','Bulk list')+'<div class="manage-title" style="padding:0 2px 6px;">📦 Split back — what to set aside</div>';
+  var any=false;
+  Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.status!=='open'||!(o.lines&&o.lines.length))return; any=true; var c=custs[o.custId]||{};
+    h+='<div class="order-summary-card"><div style="font-weight:700;color:#1c4587;font-size:14px;margin-bottom:4px;">'+fvEsc(c.name||'?')+'</div>';
+    o.lines.forEach(function(l){ h+='<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:#374151;"><input type="checkbox" style="width:18px;height:18px;"><span>'+fvEsc(l.name)+'</span><span style="margin-left:auto;font-weight:700;">'+l.qty+fvEsc(l.unit||'')+'</span></label>'; });
+    h+='</div>';
+  });
+  if(!any) h+='<div class="empty-state">No open orders to split.</div>';
+  return h;
+}
+function fvCOrenderHistory(){
+  var id=fvCO.custId,c=fvCOloadCust()[id]||{},orders=fvCOloadOrders(),hist=[];
+  Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId===id&&o.status==='completed')hist.push(o); });
+  hist.sort(function(a,b){ return String(b.completed||b.date).localeCompare(String(a.completed||a.date)); });
+  var h=fvCObackBtn('list','All customers')+'<div class="manage-title" style="padding:0 2px 6px;">🕐 '+fvEsc(c.name||'')+' — order history</div>';
+  if(!hist.length) return h+'<div class="empty-state">No completed orders yet.</div>';
+  var buy={}; hist.forEach(function(o){ (o.lines||[]).forEach(function(l){ buy[l.name]=(buy[l.name]||0)+(l.qty||0); }); });
+  var top=Object.keys(buy).sort(function(a,b){return buy[b]-buy[a];}).slice(0,8);
+  if(top.length){ h+='<div class="order-summary-card"><div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">What they usually buy</div>'; top.forEach(function(n){ h+='<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:2px 0;"><span>'+fvEsc(n)+'</span><span style="font-weight:700;">'+buy[n]+'</span></div>'; }); h+='</div>'; }
+  hist.forEach(function(o){ var tot=fvCOorderTotal(o);
+    h+='<div class="order-summary-card"><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#1c4587;">'+fvEsc(o.completed||o.date||'')+'</span><span style="font-weight:800;">'+fvCOmoney(tot)+'</span></div>'
+      +'<div style="font-size:11px;color:#6b7280;margin-top:3px;">'+(o.lines||[]).map(function(l){return fvEsc(l.name)+' '+l.qty+fvEsc(l.unit||'');}).join(', ')+'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:8px;"><button onclick="fvCOreuse(\''+o.id+'\')" style="flex:1;padding:8px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">♻️ Reuse this order</button><button onclick="fvCOcopy(\''+o.id+'\')" style="flex:1;padding:8px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copy</button></div></div>';
+  });
+  return h;
+}
+
+function buildOrdersView(){ var ov=document.getElementById('viewOrders'); if(!ov)return; if(typeof fvCORender==='function') return fvCORender(); }
+function buildOrdersView_OLD() {
   var ov = document.getElementById('viewOrders');
   ov.innerHTML = '';
   var orders = loadOrders();
