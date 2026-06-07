@@ -132,6 +132,7 @@
     .run-tabs { display:flex; gap:6px; padding:8px 6px; background:#f0f2f5; flex:0 0 auto; box-shadow:0 1px 3px rgba(0,0,0,0.10); z-index:5; }
     .run-tab { flex:1; padding:9px 4px; border:1px solid #cbd5e1; background:#fff; color:#374151; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
     .run-tab.active { background:#15662f; color:#fff; border-color:#15662f; }
+    .run-tab.run-sync { background:#1c4587; color:#fff; border-color:#1c4587; }
     .sync-warn { background:#b45309; color:#fff; padding:11px 14px; border-radius:10px; margin:8px 0; font-size:13px; font-weight:700; cursor:pointer; text-align:center; }
 
     .product-info { flex: 1; min-width: 0; }
@@ -1065,10 +1066,11 @@
 
 <!-- Run sub-tabs (Buy List / Orders / Totals / Add) — pinned header, sits OUTSIDE the scroll area so it stays put while scrolling -->
 <div class="run-tabs" id="runTabs" style="display:none;">
-  <button class="run-tab" id="rtList"   onclick="showView('List')">📋 Buy List</button>
+  <button class="run-tab" id="rtList"   onclick="showView('List')">📋 List</button>
   <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
   <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
   <button class="run-tab" id="rtAdd"    onclick="showView('Add')">➕ Add</button>
+  <button class="run-tab run-sync" onclick="fvBuyForceSync()" title="Sync the buy list to the team">📤 Sync</button>
 </div>
 
 <!-- Search bar -->
@@ -1674,7 +1676,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v70';
+var APP_BUILD = 'v71';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1796,8 +1798,7 @@ function fvBuyRenderSummary(){
     bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' · <strong>' + boxes + '</strong> to buy'
       + '<span style="flex:1;"></span>'
       + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>'
-      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '')
-      + '<button class="buylist-fbtn" style="width:100%;background:#1c4587;margin-top:2px;" onclick="fvBuyForceSync()">📤 Sync this list to the team now</button>';
+      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '');
   }
   if (foot) {
     foot.style.display = 'block';
@@ -4987,6 +4988,12 @@ function buildPLView() {
     importBar.appendChild(sel);
   }
   pv.appendChild(importBar);
+
+  // Bank-statement money in/out from the uploaded screenshots (BANK_TX) — tap for the full breakdown
+  if (typeof fvCashflowButtonHTML === 'function') {
+    var cfHTML = fvCashflowButtonHTML();
+    if (cfHTML) { var cfWrap = document.createElement('div'); cfWrap.style.marginTop = '8px'; cfWrap.innerHTML = cfHTML; pv.appendChild(cfWrap); }
+  }
 
   // File input handler
   document.getElementById('plFileInput').addEventListener('change', function() {
