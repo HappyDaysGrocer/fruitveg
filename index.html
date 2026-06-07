@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v81';
+var APP_BUILD = 'v82';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5005,7 +5005,7 @@ function fvPLNet(selMonth){
   var revenue = g('SALES','inn') + g('B2B','inn');
   var goods   = g('PRODUCE','out') + g('STOCK_OTHER','out');
   var items = [], running = 0;
-  FV_OPEX.forEach(function(p){ var v = g(p[0],'out'); if (v > 0){ items.push({ label:p[1], amt:v }); running += v; } });
+  FV_OPEX.forEach(function(p){ var v = g(p[0],'out'); if (v > 0){ items.push({ label:p[1], amt:v, code:p[0] }); running += v; } });
   // Safety net: count any money-out in a category we didn't explicitly classify
   // (not goods, not one-off capital, not transfers, not income) so net profit is
   // never flattered by an unexpected code silently dropping out.
@@ -5013,7 +5013,7 @@ function fvPLNet(selMonth){
   FV_OPEX.forEach(function(p){ classified[p[0]] = 1; });
   var other = 0;
   Object.keys(bc).forEach(function(code){ if (!classified[code]) other += (bc[code].out || 0); });
-  if (other > 0){ items.push({ label:'Other running costs', amt:other }); running += other; }
+  if (other > 0){ items.push({ label:'Other running costs', amt:other, code:'__other' }); running += other; }
   items.sort(function(a,b){ return b.amt - a.amt; });
   var gross = revenue - goods, net = gross - running, days = 0;
   if (b.periodStart && b.periodEnd){ days = Math.round((new Date(b.periodEnd + 'T00:00:00') - new Date(b.periodStart + 'T00:00:00')) / 86400000) + 1; }
@@ -5048,9 +5048,9 @@ function fvPLNetPanelHTML(selMonth){
     '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + (periodLabel ? periodLabel + ' · ' : '') + 'based on your bank feed</div>' +
     toggle +
     '<div class="pl-summary" style="margin:10px 0 8px;">' +
-      '<div class="pl-sum-card"><div class="pl-sum-label">Money in (sales)</div><div class="pl-sum-val" style="color:#93c5fd;">' + money(d.revenue) + '</div></div>' +
-      '<div class="pl-sum-card"><div class="pl-sum-label">Stock &amp; produce bought</div><div class="pl-sum-val" style="color:#fbbf24;">' + money(d.goods) + '</div></div>' +
-      '<div class="pl-sum-card"><div class="pl-sum-label">Running costs</div><div class="pl-sum-val" style="color:#f87171;">' + money(d.running) + '</div></div>' +
+      '<div class="pl-sum-card" onclick="fvDrill(\'pl_in\')" style="cursor:pointer;"><div class="pl-sum-label">Money in (sales) ›</div><div class="pl-sum-val" style="color:#93c5fd;">' + money(d.revenue) + '</div></div>' +
+      '<div class="pl-sum-card" onclick="fvDrill(\'pl_goods\')" style="cursor:pointer;"><div class="pl-sum-label">Stock &amp; produce bought ›</div><div class="pl-sum-val" style="color:#fbbf24;">' + money(d.goods) + '</div></div>' +
+      '<div class="pl-sum-card" onclick="fvDrill(\'running\')" style="cursor:pointer;"><div class="pl-sum-label">Running costs ›</div><div class="pl-sum-val" style="color:#f87171;">' + money(d.running) + '</div></div>' +
       '<div class="pl-sum-card"><div class="pl-sum-label">Gross profit (after stock)</div><div class="pl-sum-val" style="color:' + (d.gross>=0?'#4ade80':'#f87171') + ';">' + money(d.gross) + '</div></div>' +
     '</div>' +
     '<div style="background:' + (netPos ? '#f0fdf4' : '#fef2f2') + ';border:1px solid ' + (netPos ? '#bbf7d0' : '#fecaca') + ';border-radius:12px;padding:14px 16px;margin-bottom:6px;">' +
@@ -5062,7 +5062,9 @@ function fvPLNetPanelHTML(selMonth){
     h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:12px 0 2px;">Where the running costs went</div>';
     d.items.forEach(function(it){
       var pct = d.running > 0 ? (it.amt / d.running * 100) : 0;
-      h += '<div style="display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span>' + it.label + ' <span style="color:#9ca3af;font-size:11px;">' + pct.toFixed(0) + '%</span></span><span style="font-weight:700;">' + money(it.amt) + '</span></div>';
+      var drillable = it.code && it.code !== '__other';
+      var attr = drillable ? ' onclick="fvDrill(\'cat:' + it.code + '\')" style="cursor:pointer;display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"' : ' style="display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"';
+      h += '<div' + attr + '><span>' + it.label + (drillable ? ' <span style="color:#1c4587;font-weight:700;">›</span>' : '') + ' <span style="color:#9ca3af;font-size:11px;">' + pct.toFixed(0) + '%</span></span><span style="font-weight:700;">' + money(it.amt) + '</span></div>';
     });
     if (d.days > 0) h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Average running cost per trading day ≈ ' + money(d.running / d.days) + ' <span style="color:#cbd5e1;">(indicative only — real bills are monthly/quarterly)</span></div>';
   }
@@ -5499,6 +5501,74 @@ function fvCashflowOpen(){
     + h + '</div>';
 }
 
+/* ─── COST DRILL-DOWN ───────────────────────────────────────────────────────
+   Tap any cost (Expenses or P&L) → see every transaction of that type with
+   dates → tap one to open its invoice photo (where one exists). */
+var FV_DRILL = {
+  build:     { title:'🏗️ Shop build & fit-out', stmt:['Equipment','Fit-out','Fees & legal'], note:'One-off construction — equipment, fit-out, permits & legal (Jan–Mar).' },
+  rent:      { title:'🏪 Rent & property', stmt:['Property'], note:'Property payments (includes the refundable bond).' },
+  bond:      { title:'🏦 Rental bond', stmt:['Property'], note:'The bond ≈ 4 months’ rent ($29,051) sits within these property payments — it’s refundable.' },
+  inventory: { title:'📦 Inventory — produce & stock', inv:'stock', note:'Stock & produce invoices — tap one to see the photo. Ongoing produce is also paid through the bank feed.' },
+  running:   { title:'🚚 Running costs', bank:['RENT','OUTGOINGS','UTILITIES','WASTE','HIRE','WAGES','PETROL','PACKAGING','SECURITY','FREIGHT','COMPLIANCE','LEGAL','REIMBURSE','POS_SOFTWARE','INSURANCE'] },
+  other:     { title:'💡 Other (utilities, legal, bank)', stmt:['Utilities','Marketing','Bank','Other'] },
+  owner:     { title:'💰 Owner investment', contrib:true, note:'Partner contributions paid in.' },
+  sales:     { title:'📈 Shop sales (card + wholesale)', bank:['SALES','B2B'], note:'Card settlements (Adyen) + wholesale. Cash takings aren’t here yet.' },
+  pl_in:     { title:'Money in (sales)', bank:['SALES','B2B'] },
+  pl_goods:  { title:'Stock & produce bought', bank:['PRODUCE','STOCK_OTHER'] }
+};
+function fvDrillClose(){ var o=document.getElementById('fvDrillOverlay'); if(o) o.remove(); }
+function fvDrill(key){
+  if (typeof fvCanSeeFinance==='function' && !fvCanSeeFinance()) return;
+  var spec;
+  if (key && key.indexOf('cat:')===0){ var code=key.slice(4); spec={ title:(typeof fvCatLabel_==='function'?fvCatLabel_(code):code), bank:[code] }; }
+  else spec = FV_DRILL[key];
+  if (!spec) return;
+  var rows = [];
+  if (spec.stmt && typeof STMT_EXPENSES!=='undefined' && STMT_EXPENSES)
+    STMT_EXPENSES.forEach(function(e){ if (spec.stmt.indexOf(e.c)>=0) rows.push({ d:e.d, who:(e.p||e.n||e.c), amt:Math.abs(e.a) }); });
+  if (spec.bank && typeof BANK_TX!=='undefined' && BANK_TX)
+    BANK_TX.forEach(function(t){ if (t.u) return; if (spec.bank.indexOf(t.c)>=0) rows.push({ d:t.d, who:(t.s||t.c), amt:Math.abs(t.a), inflow:(t.a>=0) }); });
+  if (spec.inv && typeof SHOP_INVOICES!=='undefined' && SHOP_INVOICES)
+    SHOP_INVOICES.forEach(function(iv){
+      if (iv.dup) return;
+      if (spec.inv==='stock' && typeof fvIsOverhead==='function' && fvIsOverhead(iv.s)) return;   // produce/stock only
+      var fid=(typeof FV_INVOICE_FILES!=='undefined')?FV_INVOICE_FILES[iv.n]:null; if (fid && !/^[A-Za-z0-9_-]+$/.test(fid)) fid=null;
+      rows.push({ d:iv.d, who:iv.s, amt:Math.abs(iv.t||0), fid:fid });
+    });
+  if (spec.contrib && typeof CONTRIBUTIONS!=='undefined' && CONTRIBUTIONS)
+    CONTRIBUTIONS.forEach(function(c){ rows.push({ d:(c.d||''), who:(c.party||c.name||'Contribution'), amt:Math.abs(c.amt||0), inflow:true }); });
+  rows.sort(function(a,b){ return (String(a.d) < String(b.d)) ? 1 : -1; });   // newest first
+  fvDrillRender(spec.title, rows, spec.note);
+}
+function fvDrillRender(title, rows, note){
+  var ov=document.getElementById('fvDrillOverlay'); if(!ov){ ov=document.createElement('div'); ov.id='fvDrillOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:flex-end;justify-content:center;');
+  ov.onclick=function(e){ if(e.target===ov) fvDrillClose(); };
+  var money=function(n){ return '$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var fmtD=function(d){ if(!d) return ''; var x=new Date(d+'T00:00:00'); return isNaN(x.getTime())? String(d) : x.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}); };
+  var total=0, withPhoto=0; rows.forEach(function(r){ total+=r.amt; if(r.fid) withPhoto++; });
+  var h='';
+  if(!rows.length) h+='<div style="color:#6b7280;font-size:13px;padding:12px 0;">No transactions recorded for this yet.</div>';
+  rows.forEach(function(r){
+    h+='<div style="border-top:1px solid #eef0f2;padding:10px 0;">'
+      +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#374151;"><span style="flex:1;min-width:0;"><strong>'+fvEsc(r.who||'')+'</strong><br><span style="color:#9ca3af;font-size:11px;">'+fmtD(r.d)+'</span></span>'
+      +'<span style="white-space:nowrap;font-weight:700;color:'+(r.inflow?'#15803d':'#111')+';">'+(r.inflow?'+':'')+money(r.amt)+'</span></div>';
+    if(r.fid) h+='<div style="display:flex;gap:8px;margin-top:7px;">'
+      +'<a href="https://drive.google.com/file/d/'+r.fid+'/view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#eef2ff;color:#1c4587;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">👁️ View invoice</a>'
+      +'<a href="https://drive.google.com/uc?export=download&amp;id='+r.fid+'" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#dcfce7;color:#15803d;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">⬇️ Download</a></div>';
+    h+='</div>';
+  });
+  var foot='<div style="font-size:11px;color:#9ca3af;margin-top:12px;line-height:1.5;">'
+    + (note? fvEsc(note)+' ' : '')
+    + (rows.length && !withPhoto ? 'These are bank payments — no invoice photo is attached to them. ' : '')
+    + '<a href="#" onclick="event.preventDefault();event.stopPropagation();try{window.open(FV_INVOICE_FOLDER,\'_blank\');}catch(e){}" style="color:#1c4587;font-weight:700;">Open the invoice folder in Google Drive ›</a></div>';
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:600px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:sticky;top:0;background:#fff;padding-bottom:4px;"><strong style="font-size:16px;color:#0d4420;">'+fvEsc(title)+'</strong>'
+    +'<button onclick="fvDrillClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">'+rows.length+' item'+(rows.length===1?'':'s')+' · total '+money(total)+'</div>'
+    +h+foot+'</div>';
+}
+
 /* Full money summary since January — capital in, one-off shop build, operating costs.
    Accountant view: separates the one-off construction/fit-out from running costs. */
 function fvJanSummaryHTML(){
@@ -5533,22 +5603,26 @@ function fvJanSummaryHTML(){
   // lowers your real cash position) — it's just flagged as refundable.
   var totalOut = build + rentJM + bondPaid + inventory + runningTrading + otherJM;
   var net = totalIn - totalOut;
-  function r(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;padding-left:10px;"><span>'+lbl+'</span><span style="font-weight:700;">'+money(val)+'</span></div>'; }
+  function r(lbl, val, key){
+    var base = 'display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;padding-left:10px;';
+    var attr = key ? ' onclick="fvDrill(\''+key+'\')" style="cursor:pointer;'+base+'"' : ' style="'+base+'"';
+    return '<div'+attr+'><span>'+lbl+(key?' <span style="color:#1c4587;font-weight:700;">›</span>':'')+'</span><span style="font-weight:700;">'+money(val)+'</span></div>';
+  }
   function tot(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;border-top:1px solid #eee;padding:5px 0 2px;"><span>'+lbl+'</span><span>'+money(val)+'</span></div>'; }
   return '<div class="grand-card" style="background:#fff;color:#111;text-align:left;padding:14px 16px;border:1px solid #e5e7eb;">'
     + '<div style="font-weight:800;font-size:15px;color:#0d4420;margin-bottom:6px;">📊 Full summary — since January</div>'
     + '<div style="font-weight:800;font-size:11px;color:#15803d;margin:6px 0 1px;">MONEY IN</div>'
-    + r('💰 Owner investment (received)', capital)
+    + r('💰 Owner investment (received)', capital, 'owner')
     + '<div style="display:flex;justify-content:space-between;font-size:12px;color:#b45309;padding:3px 0;padding-left:10px;"><span>⏳ Jaswinder — not yet put in</span><span style="font-weight:700;">' + money(capitalPending) + '</span></div>'
-    + (bankIn ? r('📈 Shop sales (card + wholesale)', bankIn) : '')
+    + (bankIn ? r('📈 Shop sales (card + wholesale)', bankIn, 'sales') : '')
     + tot('Total in', totalIn)
     + '<div style="font-weight:800;font-size:11px;color:#b91c1c;margin:10px 0 1px;">MONEY OUT</div>'
-    + r('🏗️ Shop build &amp; fit-out (one-off)', build)
-    + (rentJM ? r('🏪 Rent &amp; property (setup)', rentJM) : '')
-    + (bondPaid ? r('🏦 Rental bond (refundable — comes back)', bondPaid) : '')
-    + (inventory ? r('📦 Inventory (produce &amp; stock to sell)', inventory) : '')
-    + (runningTrading ? r('🚚 Running costs (Apr–Jun)', runningTrading) : '')
-    + (otherJM ? r('💡 Other (utilities, legal, bank)', otherJM) : '')
+    + r('🏗️ Shop build &amp; fit-out (one-off)', build, 'build')
+    + (rentJM ? r('🏪 Rent &amp; property (setup)', rentJM, 'rent') : '')
+    + (bondPaid ? r('🏦 Rental bond (refundable — comes back)', bondPaid, 'bond') : '')
+    + (inventory ? r('📦 Inventory (produce &amp; stock to sell)', inventory, 'inventory') : '')
+    + (runningTrading ? r('🚚 Running costs (Apr–Jun)', runningTrading, 'running') : '')
+    + (otherJM ? r('💡 Other (utilities, legal, bank)', otherJM, 'other') : '')
     + tot('Total out', totalOut)
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;"><span style="font-weight:800;">Net position</span><strong style="font-size:18px;color:'+(net>=0?'#15803d':'#b91c1c')+';">'+(net>=0?'':'−')+money(Math.abs(net))+'</strong></div>'
     + '<div style="font-size:10px;color:#9ca3af;margin-top:8px;line-height:1.5;">'
