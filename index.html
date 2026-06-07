@@ -1676,7 +1676,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v71';
+var APP_BUILD = 'v72';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1996,7 +1996,8 @@ function makeRow(p, idx) {
   var customName = getProductName(idx);
   var isRenamed  = customName !== p[3];
   nameDiv.innerHTML =
-    '<span id="pnametext' + idx + '">' + customName + '</span>' +
+    '<span id="pnametext' + idx + '" onclick="fvProductHistory(' + idx + ')" style="cursor:pointer;" title="See purchase history for this item">' + customName + '</span>' +
+    '<button class="edit-name-btn" title="Purchase history" onclick="fvProductHistory(' + idx + ');event.stopPropagation();">🕐</button>' +
     (p[8] ? '<span class="must-badge">!</span>' : '') +
     ' <button class="edit-name-btn" title="Edit name" onclick="startEditName(' + idx + ',event)">✏️</button>' +
     (isRenamed ? '<button class="edit-name-btn reset-name-btn" title="Reset to original" onclick="resetName(' + idx + ',event)">↩</button>' : '');
@@ -4486,6 +4487,25 @@ function saveRunToHistory() {
   alert('Run saved to History!\n' + boughtItems.length + ' products · $' + totalSpend.toFixed(2) + ' total spend');
 }
 
+/* Tap a product on the List → jump to its purchase history (By Product, filtered). */
+function fvProductHistory(idx){
+  if (typeof showView === 'function') showView('History');
+  histMode = 'product';
+  if (typeof buildHistoryView === 'function') buildHistoryView();
+  var nm = (typeof getProductName === 'function') ? getProductName(idx) : '';
+  var si = document.getElementById('histSearch'); if (si) si.value = nm;
+  var cl = document.getElementById('histClear'); if (cl) cl.style.display = nm ? 'block' : 'none';
+  if (typeof renderHistory === 'function') renderHistory(nm);
+}
+/* Tap a date in History → open that day's invoice photos in Drive
+   (Mandi invoice photos are named "YYYY_MM_DD Supplier- …"). */
+function fvOpenInvoiceForDate(date, e){
+  if (e && e.stopPropagation) e.stopPropagation();
+  var q = String(date || '').replace(/-/g, '_');
+  if (!q) return;
+  window.open('https://drive.google.com/drive/search?q=' + encodeURIComponent(q), '_blank');
+}
+
 function buildHistoryView() {
   var hv   = document.getElementById('viewHistory');
   var hist = loadHistory();
@@ -4756,8 +4776,8 @@ function renderByDate(hist, dates, q, container) {
     hdr.className = 'hist-acc-header' + (isOpen ? ' open' : '');
     hdr.innerHTML =
       '<div class="hist-acc-left">' +
-        '<span class="hist-acc-date">' + run.label + '</span>' +
-        '<span class="hist-acc-meta">' + items.length + ' items · ' + nSuppliers + ' suppliers</span>' +
+        '<span class="hist-acc-date" onclick="fvOpenInvoiceForDate(\'' + date + '\',event)" style="cursor:pointer;text-decoration:underline;" title="Open this date\'s invoice photos in Drive">' + run.label + ' 📷</span>' +
+        '<span class="hist-acc-meta">' + items.length + ' items · ' + nSuppliers + ' suppliers · tap date 📷 for invoices</span>' +
       '</div>' +
       '<div class="hist-acc-right">' +
         '<span class="hist-acc-total">$' + dayTotal.toFixed(2) + '</span>' +
