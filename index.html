@@ -1657,7 +1657,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v78';
+var APP_BUILD = 'v79';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5070,7 +5070,7 @@ function fvPLNetPanelHTML(selMonth){
     });
     if (d.days > 0) h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Average running cost per trading day ≈ ' + money(d.running / d.days) + ' <span style="color:#cbd5e1;">(indicative only — real bills are monthly/quarterly)</span></div>';
   }
-  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. “Money in” is settled card takings + wholesale, so it can differ a little from the till totals below.</div>' +
+  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. 💵 “Money in” is card + wholesale from your bank — it does <strong>not</strong> include cash takings yet, so your real sales are higher. Full takings (incl. cash) will come from the EPOS Now till once it’s connected.</div>' +
     '</div>';
   return h;
 }
@@ -5511,14 +5511,20 @@ function fvJanSummaryHTML(){
   var cat = {};
   if (typeof STMT_EXPENSES !== 'undefined' && STMT_EXPENSES) STMT_EXPENSES.forEach(function(e){ if (e.c==='Transfer') return; cat[e.c]=(cat[e.c]||0)+e.a; });
   var build   = (cat['Equipment']||0) + (cat['Fit-out']||0) + (cat['Fees & legal']||0);  // one-off construction
-  var rentJM  = (cat['Property']||0);
+  // The rental bond (4 months' rent) is refundable — pull it OUT of the property
+  // spend and show it separately, so it isn't counted as a sunk cost.
+  var MONTHLY_RENT = 7262.75;
+  var bondFull   = MONTHLY_RENT * 4;                       // $29,051.00
+  var propertyTot = (cat['Property']||0);
+  var bondPaid   = Math.min(bondFull, propertyTot);        // refundable portion actually in the data
+  var rentJM     = propertyTot - bondPaid;                 // real rent/property expense (bond removed)
   var stockJM = (cat['Stock']||0);
   var otherJM = (cat['Utilities']||0) + (cat['Marketing']||0) + (cat['Bank']||0) + (cat['Other']||0);
   var bc = (typeof fvBankCompute==='function') ? fvBankCompute() : null;
   var bankIn  = bc ? bc.inn : 0;
   var bankOut = bc ? (bc.out - ((bc.byCat && bc.byCat.TRANSFER) ? bc.byCat.TRANSFER.out : 0)) : 0;
   var totalIn = capital + bankIn;
-  var totalOut = build + rentJM + stockJM + otherJM + bankOut;
+  var totalOut = build + rentJM + stockJM + otherJM + bankOut;   // bond NOT included (it's refundable)
   var net = totalIn - totalOut;
   function r(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;padding-left:10px;"><span>'+lbl+'</span><span style="font-weight:700;">'+money(val)+'</span></div>'; }
   function tot(lbl, val){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;border-top:1px solid #eee;padding:5px 0 2px;"><span>'+lbl+'</span><span>'+money(val)+'</span></div>'; }
@@ -5526,7 +5532,7 @@ function fvJanSummaryHTML(){
     + '<div style="font-weight:800;font-size:15px;color:#0d4420;margin-bottom:6px;">📊 Full summary — since January</div>'
     + '<div style="font-weight:800;font-size:11px;color:#15803d;margin:6px 0 1px;">MONEY IN</div>'
     + r('💰 Owner investment', capital)
-    + (bankIn ? r('📈 Shop sales (card takings)', bankIn) : '')
+    + (bankIn ? r('📈 Shop sales (card + wholesale)', bankIn) : '')
     + tot('Total in', totalIn)
     + '<div style="font-weight:800;font-size:11px;color:#b91c1c;margin:10px 0 1px;">MONEY OUT</div>'
     + r('🏗️ Shop build &amp; fit-out (one-off)', build)
@@ -5535,8 +5541,13 @@ function fvJanSummaryHTML(){
     + (bankOut ? r('🚚 Trading costs (Apr–Jun)', bankOut) : '')
     + (otherJM ? r('💡 Other (utilities, legal, bank)', otherJM) : '')
     + tot('Total out', totalOut)
+    + (bondPaid ? '<div style="font-weight:800;font-size:11px;color:#1c4587;margin:12px 0 1px;">HELD — REFUNDABLE (not a cost)</div>'
+        + r('🏦 Rental bond — you get this back', bondPaid) : '')
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;"><span style="font-weight:800;">Net position</span><strong style="font-size:18px;color:'+(net>=0?'#15803d':'#b91c1c')+';">'+(net>=0?'':'−')+money(Math.abs(net))+'</strong></div>'
-    + '<div style="font-size:10px;color:#9ca3af;margin-top:8px;line-height:1.5;">Indicative allocation. “Build &amp; fit-out” = one-off shop construction (equipment, fit-out, permits) from the Jan–Mar bank statements; trading costs are from the Apr–Jun bank screenshots. Full detail in the Capital &amp; bank view below.</div>'
+    + '<div style="font-size:10px;color:#9ca3af;margin-top:8px;line-height:1.5;">'
+      + (bondPaid ? 'The rental bond (' + money(bondPaid) + ', ~4 months’ rent) is held separately because it’s <strong>refundable</strong> — you get it back, so it’s not counted as a cost. ' : '')
+      + '💵 “Shop sales” here is card + wholesale from the bank — it does <strong>not</strong> include cash takings yet, so real sales are higher. Full takings (incl. cash) will come from the EPOS Now till once it’s connected. '
+      + 'Indicative allocation: “Build &amp; fit-out” = one-off construction; trading costs are Apr–Jun. Full detail in the Capital &amp; bank view below.</div>'
     + '</div>';
 }
 
