@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v85';
+var APP_BUILD = 'v86';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1773,14 +1773,12 @@ function fvBuyRenderSummary(){
   var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
   if (bar) {
     bar.style.display = 'block';
+    // Count strip + sync status + the Share/Print block, all pinned at the TOP of the List.
     bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' · <strong>' + boxes + '</strong> to buy'
       + '<span style="flex:1;"></span>'
       + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>'
-      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '');
-  }
-  if (foot) {
-    foot.style.display = 'block';
-    foot.innerHTML = '<div class="buylist-foot"><div style="font-weight:700;color:#0d4420;margin-bottom:10px;">🛒 Share or print this list</div>'
+      + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '')
+      + '<div class="buylist-foot" style="margin:0 0 4px;"><div style="font-weight:700;color:#0d4420;margin-bottom:10px;">🛒 Share or print this list</div>'
       + '<div class="buylist-foot-btns">'
       + '<button class="buylist-fbtn" onclick="fvBuyCopy()">📋 Copy</button>'
       + '<button class="buylist-fbtn" onclick="fvBuyEmail()">📧 Email</button>'
@@ -1788,6 +1786,7 @@ function fvBuyRenderSummary(){
       + '</div>'
       + '<div style="font-size:11px;color:#6b7280;margin-top:9px;">Tip: tap <strong>Copy</strong>, then paste into the “Import from SMS” box to load the whole list in one go.</div></div>';
   }
+  if (foot) { foot.style.display = 'none'; foot.innerHTML = ''; }   // moved to the top bar
 }
 function fvBuySyncStatusHTML(){
   if (typeof fvSyncEnabled === 'function' && fvSyncEnabled())
@@ -5356,7 +5355,7 @@ function fvPLNetPanelHTML(selMonth){
     });
     if (d.days > 0) h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Average running cost per trading day ≈ ' + money(d.running / d.days) + ' <span style="color:#cbd5e1;">(indicative only — real bills are monthly/quarterly)</span></div>';
   }
-  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. 💵 “Money in” is card + wholesale from your bank — it does <strong>not</strong> include cash takings yet, so your real sales are higher. Full takings (incl. cash) will come from the EPOS Now till once it’s connected.</div>' +
+  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. 💵 “Money in” here is <strong>money actually banked</strong> (card via Adyen + wholesale) over your bank-feed weeks — it does <strong>not</strong> include cash takings. The “Revenue” in the day view below (e.g. the “Last 90 days” total) is your <strong>till sales</strong> — a different source, a longer span, and it <strong>includes cash &amp; GST</strong> — so it’s higher. They’ll line up once the EPOS Now till is connected.</div>' +
     '</div>';
   return h;
 }
@@ -5825,8 +5824,24 @@ function fvDrill(key){
     });
   if (spec.contrib && typeof CONTRIBUTIONS!=='undefined' && CONTRIBUTIONS)
     CONTRIBUTIONS.forEach(function(c){ rows.push({ d:(c.d||''), who:(c.party||c.name||'Contribution'), amt:Math.abs(c.amt||0), inflow:true }); });
+  // Best-effort: link bank/statement rows to a matching supplier invoice photo (so e.g. rent → Cameron invoice).
+  rows.forEach(function(r){ if(!r.fid){ var f=fvDrillMatchInvoice(r.who); if(f) r.fid=f; } });
   rows.sort(function(a,b){ return (String(a.d) < String(b.d)) ? 1 : -1; });   // newest first
   fvDrillRender(spec.title, rows, spec.note);
+}
+function fvDrillMatchInvoice(who){
+  if(typeof SHOP_INVOICES==='undefined'||!SHOP_INVOICES) return null;
+  var w=String(who||'').toLowerCase(); if(!w) return null;
+  var fid=null;
+  SHOP_INVOICES.forEach(function(iv){ if(iv.dup||!iv.s) return; var s=String(iv.s).toLowerCase(); var first=(s.split(/[^a-z0-9]+/)[0]||'');
+    if(s && (w.indexOf(s)>=0 || (first.length>=4 && w.indexOf(first)>=0))){ var f=(typeof FV_INVOICE_FILES!=='undefined')?FV_INVOICE_FILES[iv.n]:null; if(f && /^[A-Za-z0-9_-]+$/.test(f)) fid=f; } });
+  return fid;
+}
+function fvDrillFind(whoEnc,dEnc){
+  var who=decodeURIComponent(whoEnc||''), d=decodeURIComponent(dEnc||'');
+  var q=(who+' '+(d||'')).trim();
+  try{ window.open('https://drive.google.com/drive/search?q='+encodeURIComponent(q),'_blank'); }
+  catch(e){ try{ window.open(FV_INVOICE_FOLDER,'_blank'); }catch(e2){} }
 }
 function fvDrillRender(title, rows, note){
   var ov=document.getElementById('fvDrillOverlay'); if(!ov){ ov=document.createElement('div'); ov.id='fvDrillOverlay'; document.body.appendChild(ov); }
@@ -5838,18 +5853,21 @@ function fvDrillRender(title, rows, note){
   var h='';
   if(!rows.length) h+='<div style="color:#6b7280;font-size:13px;padding:12px 0;">No transactions recorded for this yet.</div>';
   rows.forEach(function(r){
-    h+='<div style="border-top:1px solid #eef0f2;padding:10px 0;">'
+    // Whole row is tappable → opens the invoice photo if linked, else searches Drive for it.
+    var open = r.fid
+      ? "window.open('https://drive.google.com/file/d/"+r.fid+"/view','_blank')"
+      : "fvDrillFind('"+encodeURIComponent(r.who||'')+"','"+encodeURIComponent(r.d||'')+"')";
+    var hint = r.fid ? '📄 tap to open the invoice ›' : '🔍 tap to find the invoice in Drive ›';
+    h+='<div onclick="'+open+'" style="cursor:pointer;border-top:1px solid #eef0f2;padding:10px 0;">'
       +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#374151;"><span style="flex:1;min-width:0;"><strong>'+fvEsc(r.who||'')+'</strong><br><span style="color:#9ca3af;font-size:11px;">'+fmtD(r.d)+'</span></span>'
-      +'<span style="white-space:nowrap;font-weight:700;color:'+(r.inflow?'#15803d':'#111')+';">'+(r.inflow?'+':'')+money(r.amt)+'</span></div>';
-    if(r.fid) h+='<div style="display:flex;gap:8px;margin-top:7px;">'
-      +'<a href="https://drive.google.com/file/d/'+r.fid+'/view" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#eef2ff;color:#1c4587;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">👁️ View invoice</a>'
-      +'<a href="https://drive.google.com/uc?export=download&amp;id='+r.fid+'" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;text-align:center;padding:9px;background:#dcfce7;color:#15803d;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;">⬇️ Download</a></div>';
-    h+='</div>';
+      +'<span style="white-space:nowrap;font-weight:700;color:'+(r.inflow?'#15803d':'#111')+';">'+(r.inflow?'+':'')+money(r.amt)+'</span></div>'
+      +'<div style="font-size:11px;color:#1c4587;font-weight:700;margin-top:5px;">'+hint+'</div>'
+      +'</div>';
   });
   var foot='<div style="font-size:11px;color:#9ca3af;margin-top:12px;line-height:1.5;">'
     + (note? fvEsc(note)+' ' : '')
-    + (rows.length && !withPhoto ? 'These are bank payments — no invoice photo is attached to them. ' : '')
-    + '<a href="#" onclick="event.preventDefault();event.stopPropagation();try{window.open(FV_INVOICE_FOLDER,\'_blank\');}catch(e){}" style="color:#1c4587;font-weight:700;">Open the invoice folder in Google Drive ›</a></div>';
+    + 'Tap any line to open its invoice photo' + (rows.length && withPhoto<rows.length ? ' — for bank payments with no photo it searches your Drive' : '') + '. '
+    + '<a href="#" onclick="event.preventDefault();event.stopPropagation();try{window.open(FV_INVOICE_FOLDER,\'_blank\');}catch(e){}" style="color:#1c4587;font-weight:700;">Open the invoice folder ›</a></div>';
   ov.innerHTML='<div style="background:#fff;width:100%;max-width:600px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:sticky;top:0;background:#fff;padding-bottom:4px;"><strong style="font-size:16px;color:#0d4420;">'+fvEsc(title)+'</strong>'
     +'<button onclick="fvDrillClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>'
@@ -7283,6 +7301,7 @@ function fvChangePwSubmit(){
 
 function fvLoginSuccess(found, p, rem, fbAlready){
   window._fvFails = 0; window._fvLockUntil = 0;
+  if (typeof fvTouchActivity === 'function') fvTouchActivity();   // start the idle clock fresh
   fvSession = { user: found.user, name: found.name, role: found.role };
   var js = JSON.stringify(fvSession);
   try {
@@ -7371,6 +7390,41 @@ function fvLogout() {
   if (typeof fvRenderSync === 'function') fvRenderSync();
 }
 
+/* ── Auto sign-out for security ───────────────────────────────────────────────
+   Signs the device out after FV_IDLE_HOURS of NO use (the timer resets every
+   time the app is touched), so an active user is never kicked mid-task but a
+   forgotten/lost phone logs itself out. Change the number to adjust. */
+var FV_IDLE_HOURS = 36;
+function fvTouchActivity(){ try{ localStorage.setItem('fvLastActive', String(Date.now())); }catch(e){} }
+function fvAutoLogout(){
+  fvSession = null;
+  try{ sessionStorage.removeItem('fvAuth'); localStorage.removeItem('fvAuth'); }catch(e){}
+  if (typeof fvFbClear === 'function') fvFbClear();
+  if (fvSyncTimer){ clearInterval(fvSyncTimer); fvSyncTimer = null; }
+  if (typeof fvShowLogin === 'function') fvShowLogin();
+  if (typeof fvRenderAccount === 'function') fvRenderAccount();
+  if (typeof fvApplyAccess === 'function') fvApplyAccess();
+  var err = document.getElementById('loginError'); if (err) err.textContent = 'Signed out after ' + FV_IDLE_HOURS + 'h of no use — please sign in again.';
+}
+function fvCheckIdle(){
+  if (!fvSession) return;
+  var t = 0; try{ t = parseInt(localStorage.getItem('fvLastActive') || '0', 10) || 0; }catch(e){}
+  if (t && (Date.now() - t) > FV_IDLE_HOURS * 3600 * 1000) fvAutoLogout();
+}
+var _fvIdleInit = false;
+function fvInitIdleGuard(){
+  if (_fvIdleInit) return; _fvIdleInit = true;
+  if (!localStorage.getItem('fvLastActive')) fvTouchActivity();
+  var last = 0;
+  ['pointerdown','keydown','touchstart'].forEach(function(ev){
+    document.addEventListener(ev, function(){ var n = Date.now(); if (n - last > 30000){ last = n; fvTouchActivity(); } }, { passive:true });
+  });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden){ fvCheckIdle(); fvTouchActivity(); } });
+  window.addEventListener('focus', function(){ fvCheckIdle(); });
+  setInterval(fvCheckIdle, 5 * 60 * 1000);
+  fvCheckIdle();
+}
+
 function fvRenderAccount() {
   var el = document.getElementById('accountBox'); if (!el) return;
   if (!fvSession) { el.innerHTML = '<div class="acct-row">Not signed in</div>'; return; }
@@ -7384,6 +7438,8 @@ function fvRenderAccount() {
 
 function fvAuthGate() {
   fvLoadSession();
+  if (typeof fvInitIdleGuard === 'function') fvInitIdleGuard();
+  if (typeof fvCheckIdle === 'function') fvCheckIdle();   // expire a stale session before showing the app
   if (fvSession) { fvHideLogin(); } else { fvShowLogin(); }
   fvRenderAccount();
   if (typeof fvApplyAccess === 'function') fvApplyAccess();
