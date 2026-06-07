@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v83';
+var APP_BUILD = 'v84';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2633,10 +2633,14 @@ function fvCObulk(){
     (ord.lines||[]).forEach(function(l){ if(!l.key)return; if(!agg[l.key])agg[l.key]={key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:0,parts:[]};
       agg[l.key].qty+=(l.qty||0); agg[l.key].parts.push({name:(custs[ord.custId]&&custs[ord.custId].name)||'?',qty:l.qty||0}); });
   });
-  Object.keys(agg).forEach(function(k){ var a=agg[k]; var pi=(typeof extractPackInfo==='function')?extractPackInfo(a.name):null;
-    if(pi){ var f=convertToPackUnit(a.qty,(a.unit==='ea'?'each':a.unit),pi); a.boxes=(f!=null)?Math.ceil(f*2)/2:null; } });
+  Object.keys(agg).forEach(function(k){ var a=agg[k];
+    if(a.unit==='kg'){ var bk=fvCOboxKg(a.name,a.key); if(bk){ a.boxKg=bk; a.boxes=Math.ceil((a.qty/bk)*2)/2; } } });
   return agg;
 }
+/* Box size (kg per box). The product name usually carries it — e.g. "(15kg box)",
+   "(13kg box)", "18 kg" — and FV_BOXKG fills the gaps from the market spreadsheet. */
+var FV_BOXKG = {"Louis||Kiwifruit NZ Green /kg (per box)":9,"Gazzola Farms||Cucumbers Continental XXL (per box)":15,"Latorre's||Cucumbers Lebanese Small /kg (per box)":10,"Latorre's||Eggplant /kg (per box)":7,"Latorre's||Capsicum Red /kg (per box)":10,"Latorre's||Capsicum Green Large /kg (per box)":10,"Latorre's||Tomatoes Roma /kg (per box)":10,"Latorre's||Beans Rugby /kg (per box)":10,"Independent Produce||Pears Packham /kg (per box)":13,"IFP 85 (Dave)||Tomatoes Truss /kg (per box)":5,"IFP 85 (Dave)||Cucumbers Continental XXL (per box)":15,"IFP 85 (Dave)||Grapes White Seedless /kg (per box)":10,"IFP 85 (Dave)||Grapes Red Seedless /kg (per box)":10,"C & S Ponte||Ginger /kg (per kg loose)":10,"C & S Ponte||Pumpkin Jap /kg (per each)":28.9,"C & S Ponte||Pumpkin Butternut /kg (per each)":24,"C & S Ponte||Watermelon Seedless /kg (per each)":33.5,"BRP 59 (Andrew)||Mushrooms White Cup /kg":4,"BRP 59 (Andrew)||Mushrooms White Flat /kg":4,"BRP 59 (Andrew)||Mushrooms Brown /kg":3,"TEN Farm (Chris)||Papaya Red /kg":8};
+function fvCOboxKg(name,key){ var m=String(name).match(/(\d+\.?\d*)\s*kg/i); if(m) return parseFloat(m[1]); if(key && FV_BOXKG[key]!=null) return FV_BOXKG[key]; return null; }
 function fvCOexportText(ord){
   var c=fvCOloadCust()[ord.custId]||{},L=[];
   L.push('HAPPY DAYS FRUIT VEG & GROCER');
