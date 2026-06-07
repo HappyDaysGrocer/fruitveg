@@ -129,7 +129,7 @@
     .buylist-fbtn { flex:1; padding:12px 6px; background:#15662f; color:#fff; border:none; border-radius:9px; font-size:14px; font-weight:700; cursor:pointer; }
     .buylist-fbtn:active { background:#0d4420; }
     /* Run sub-tabs (List/Orders/Totals/Add merged under the List tab) */
-    .run-tabs { display:flex; gap:6px; padding:8px 0 6px; position:sticky; top:0; background:#f7f8fa; z-index:5; }
+    .run-tabs { display:flex; gap:6px; padding:8px 6px; background:#f0f2f5; flex:0 0 auto; box-shadow:0 1px 3px rgba(0,0,0,0.10); z-index:5; }
     .run-tab { flex:1; padding:9px 4px; border:1px solid #cbd5e1; background:#fff; color:#374151; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
     .run-tab.active { background:#15662f; color:#fff; border-color:#15662f; }
     .sync-warn { background:#b45309; color:#fff; padding:11px 14px; border-radius:10px; margin:8px 0; font-size:13px; font-weight:700; cursor:pointer; text-align:center; }
@@ -1063,6 +1063,14 @@
 <!-- Stats bar (hidden — merged into header) -->
 <div class="stats-bar"></div>
 
+<!-- Run sub-tabs (Buy List / Orders / Totals / Add) — pinned header, sits OUTSIDE the scroll area so it stays put while scrolling -->
+<div class="run-tabs" id="runTabs" style="display:none;">
+  <button class="run-tab" id="rtList"   onclick="showView('List')">📋 Buy List</button>
+  <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
+  <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
+  <button class="run-tab" id="rtAdd"    onclick="showView('Add')">➕ Add</button>
+</div>
+
 <!-- Search bar -->
 <div class="search-bar" id="searchBar">
   <div class="search-wrap">
@@ -1073,13 +1081,6 @@
 
 <!-- Main content -->
 <div class="content" id="mainContent">
-  <!-- Run sub-tabs: Buy List / Orders / Totals / Add (merged in from the old bottom tabs) -->
-  <div class="run-tabs" id="runTabs" style="display:none;">
-    <button class="run-tab" id="rtList"   onclick="showView('List')">📋 Buy List</button>
-    <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
-    <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
-    <button class="run-tab" id="rtAdd"    onclick="showView('Add')">➕ Add</button>
-  </div>
   <!-- List view -->
   <div class="view active" id="viewList"></div>
 
@@ -1673,7 +1674,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v69';
+var APP_BUILD = 'v70';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
