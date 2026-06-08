@@ -98,7 +98,8 @@
       display: flex; justify-content: space-between; align-items: center;
     }
     .supplier-left { display: flex; flex-direction: column; gap: 1px; }
-    .supplier-phone { font-size: 10px; opacity: 0.7; font-weight: 400; }
+    .supplier-phone { font-size: 11px; opacity: 0.95; font-weight: 400; margin-top: 2px; }
+    .supplier-phone a { padding: 2px 0; display: inline-block; }
     .supplier-subtotal { font-size: 13px; color: #93c5fd; font-weight: 800; white-space: nowrap; }
     .sup-add-btn { background: rgba(255,255,255,0.92); color: #14532d; border: none; border-radius: 999px; font-size: 11px; font-weight: 800; padding: 3px 10px; cursor: pointer; line-height: 1.35; white-space: nowrap; }
     .sup-add-btn:active { background: #ffffff; transform: scale(0.96); }
@@ -1832,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v101';
+var APP_BUILD = 'v102';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2145,13 +2146,14 @@ function buildList() {
 
     var hdr = document.createElement('div');
     hdr.className = 'supplier-header';
+    var telN = phone ? String(phone).replace(/[^0-9+]/g,'') : '';
     hdr.innerHTML =
       '<div class="supplier-left">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' + stallBadge +
           '<span>' + sup.toUpperCase() + '</span>' +
           '<button class="sup-add-btn" onclick="fvAddProductOpenById(\'' + supId + '\',event)">+ Add</button>' +
         '</div>' +
-        (phone ? '<div class="supplier-phone">' + fmtPhone(phone) + '</div>' : '') +
+        (phone ? '<div class="supplier-phone"><a href="tel:' + telN + '" onclick="event.stopPropagation();" style="color:#cfe3ff;text-decoration:none;font-weight:600;">📞 ' + fmtPhone(phone) + '</a>&nbsp;&nbsp;<a href="sms:' + telN + '" onclick="event.stopPropagation();" style="color:#cfe3ff;text-decoration:none;">✉️&nbsp;SMS</a></div>' : '') +
       '</div>' +
       '<div class="supplier-subtotal" id="sub' + supId + '"></div>';
     block.appendChild(hdr);
