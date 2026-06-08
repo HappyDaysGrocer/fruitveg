@@ -1513,7 +1513,173 @@ var PRODUCTS = [
   ['LPG (Joey)',null,'0499551343','Mung Bean Sprouts (1 box)',null,null,null,null,false],
   ['LPG (Joey)',null,'0499551343','Peashoots (1 box)',null,null,null,null,false],
   ['LPG (Joey)',null,'0499551343','Beansprouts (1 box)',null,null,null,null,false],
-  ['LPG (Joey)',null,'0499551343','Alfalfa Sprouts (1 box)',null,null,null,null,false]
+  ['LPG (Joey)',null,'0499551343','Alfalfa Sprouts (1 box)',null,null,null,null,false],
+  /* ── GROCERY SUPPLIERS (extracted from invoices, 2026) — no stall → 🛒 Grocery tab ── */
+  ['Sabrini Foods',null,'+61 3 9767 6666','Coriander Seed 200g / Pattu (Ctn of 24)',null,40.32,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Jaggery Powder 500g / Sabrini (Ctn of 20)',null,33,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Salt - Iodised 1kg / Pattu (Ctn of 25)',null,23.18,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Atta Flour 5kg / Aashirvaad (Ctn of 3)',null,29.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Atta Multigrain Flour 5kg / Aashirvaad (Ctn of 3)',null,37.5,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Dark Soy Sauce 210gm / Ching\'s (Ctn of 24)',null,45.6,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Schezwan Hot Sauce 250gm / Ching\'s Secret (Ctn of 24)',null,66,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Chings Chowmein Noodles 140g + Masala 20g FOC / Ching\'s Secret (Ctn of 30)',null,37.5,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Besan Fine 800g / Pattu (Ctn of 12)',null,25.8,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Rice Flour Coarse 1kg / Pattu (Ctn of 12)',null,30.74,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Rice Flour Fine 1kg / Pattu (Ctn of 12)',null,30.74,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Semolina Coarse 1kg / Pattu (Ctn of 12)',null,24.57,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Semolina Fine 1kg / Pattu (Ctn of 12)',null,24.57,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Ghee Pet Jar 830ml / GRB (Ctn of 12)',null,174,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Brown Ghee Pet Jar 830ml / GRB (Ctn of 12)',null,174,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Garlic Crushed 1kg / Pattu (Ctn of 6)',null,29.7,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Ginger Garlic Crushed 1kg / Pattu (Ctn of 6)',null,29.7,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Makhana Plain 200g / Pattu (Ctn of 10)',null,75,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Black Lentils 1kg / Pattu (Ctn of 15)',null,32.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Channa Dhall 1kg / Pattu (Ctn of 15)',null,30.75,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Chickpea Kabuli (8-9mm) 1kg / Pattu (Ctn of 15)',null,35.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Chickpea Tyson 1kg / Pattu (Ctn of 15)',null,27,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Mung Beans Berken 1kg / Pattu (Ctn of 15)',null,38.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Mung Dhall (Small) 1kg / Pattu (Ctn of 15)',null,44.7,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Red Kidney Beans Dark 1kg / Pattu (Ctn of 15)',null,65.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Sabudana (Ind) 1kg / Pattu (Ctn of 12)',null,39,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Sesame Seed White 250g / Pattu (Ctn of 20)',null,37.2,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Urid Dhall White 1kg / Pattu (Ctn of 15)',null,null,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Urid Split (With Skin) 1kg / Pattu (Ctn of 15)',null,50.25,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Urid Whole Black 1kg / Pattu (Ctn of 15)',null,48,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Yellow Split Peas 1kg / Pattu (Ctn of 15)',null,28.5,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Peanuts Raw Small 1kg / Pattu (Ctn of 15)',null,82.5,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Gingelly Oil 1ltr / Miller (Ctn of 10)',null,81.89,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Mustard Oil (Kachi Ghani) 1ltr / Miller (Ctn of 12)',null,null,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Sunflower Oil 2L / Miller (Ctn of 6)',null,35.7,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Desi All in One Chutney 280g / Pattu (Ctn of 12)',null,37.17,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Date and Tamarind Chutney 330g / Pattu (Ctn of 12)',null,37.17,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Mint Chutney 280gm / Pattu (Ctn of 12)',null,37.17,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Daawat Brown Rice 1kg (Ctn of 6)',null,29.4,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Daawat Biryani Rice 1kg (Ctn of 6)',null,29.4,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Everyday Rice / Daawat 5kg (Ctn of 3)',null,33.75,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Poha Medium 1kg / Pattu (Ctn of 10)',null,28,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Ajwain Seed 100g / Pattu (Ctn of 20)',null,27.6,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Star Aniseed Powder 100g / Pattu (Ctn of 20)',null,54.32,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Cardamom Green 100g / Pattu (Ctn of 20)',null,167.07,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Chilli Powder Hot (PREMIUM) 200g / Pattu (Ctn of 24)',null,71.52,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Cloves Whole 50g / Pattu (Ctn of 30)',null,57.78,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Cumin Seeds 200g / Pattu (Ctn of 24)',null,null,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Coriander Powder (PREMIUM) 200g / Pattu (Ctn of 24)',null,37.2,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Dry Ginger 100g / Pattu (Ctn of 20)',null,38.32,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Fenugreek Seed 200g / Pattu (Ctn of 24)',null,29.66,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Fennel Seed 200g / Pattu (Ctn of 24)',null,48.48,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Flax Seed (Alsi) 100g / Pattu (Ctn of 20)',null,22.66,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Ginger Powder 100g / Pattu (Ctn of 20)',null,26.6,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Garam Masala 200g / Pattu (Ctn of 24)',null,73.67,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Kalonji 200g / Pattu (Ctn of 24)',null,58.8,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Mustard Seed Brown 200g / Pattu (Ctn of 24)',null,29.66,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Black Pepper Powder 100g / Pattu (Ctn of 20)',null,40.79,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Poppy Seed Black 100g / Pattu (Ctn of 20)',null,32.6,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Turmeric Powder (PREMIUM) 200g / Pattu (Ctn of 24)',null,42,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Dark Fantasy Fantastik Choco Mocha Creme 150g / Sunfeast (Ctn of 36)',null,90,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Himalayan Pink Salt 400g / Shan (Ctn of 24)',null,36,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Atta 10kg / Grewal',null,13.5,null,null,false],
+  ['Sabrini Foods',null,'+61 3 9767 6666','Gold Tea 900g / Tata Tea (Ctn of 8)',null,95.2,null,null,false],
+  ['Redimilk',null,'(03) 9702 4262','Cheer Tasty Cheese Slices 1.5kg (SL-96)',null,20.82,null,null,false],
+  ['Redimilk',null,'(03) 9702 4262','Devondale Mozzarella Shredded 2kg',null,19.36,null,null,false],
+  ['Redimilk',null,'(03) 9702 4262','Sungold Jersey Milk 2L',null,4.14,null,null,false],
+  ['Redimilk',null,'(03) 9702 4262','Sungold Jersey Lite Milk 2L',null,4.14,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Tomato Ketchup Classic 300g x6',null,18,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Baby Roma 12 x 400g',null,25.2,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Cherry Tomatoes 400g x 12',null,25.2,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Passata 12 x 700ml',null,35.55,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Passata Organic 6 x 560g',null,19.62,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Paste 12 x 440g',null,37.8,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Peeled Tomatoes 12 x 400g',null,21.15,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Polpa Chopped 12 x 400g',null,22.05,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Sugo Semplice Basil 6 x 400g',null,20.25,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Polpa Chopped Organic 12 x 400g',null,23.4,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti San Marzano 6 x 400g',null,23.4,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Olitalia Extra Virgin Olive Oil \'Chefmania\' 6 x 500ml',null,53.1,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Marchetti Pasta Conchiglioni 12 x 500g',null,42.3,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Marchetti Pasta Filejia 12 x 500g',null,37.8,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Marchetti Pasta Maccheroni Al Ferro 12 x 500g',null,37.8,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Marchetti Pasta Mafalda 12 x 500g',null,37.8,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Marchetti Pasta Orecchiette 12 x 500g',null,37.8,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Pasta Jesce Gluten Free Spaghetti 18 x 250g',null,60.3,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Di Martino Dolce & Gabbana Spaghetti 24 x 500g',null,54,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Di Martino Dolce & Gabbana Penne Mezz. Rigate 12 x 500g',null,27,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Di Martino Dolce & Gabbana Fusilata Casare 12 x 500g',null,27,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Di Martino Dolce & Gabbana Elicoidali 12 x 500g',null,27,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Ellebi Rice Arborio 6 x 1kg',null,27,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Ellebi Rice Carnaroli 6 x 1kg',null,27,null,null,false],
+  ['Gulli Food',null,'1300 448 554','Mutti Passata With Basil 6 x 700ml',null,22.95,null,null,false],
+  ['Baker Boys',null,'0428 437 394','Catering White 20mm Sliced',null,7.94,null,null,false],
+  ['Baker Boys',null,'0428 437 394','Turkish 540g',null,4.68,null,null,false],
+  ['Baker Boys',null,'0428 437 394','Beetroot Burger Bun 100g seeds',null,1.25,null,null,false],
+  ['Baker Boys',null,'0428 437 394','Almond Croissant',null,3.22,null,null,false],
+  ['Baker Boys',null,'0428 437 394','Choc Almond Croissant',null,2.81,null,null,false],
+  ['Five Senses',null,'(08) 9557 0800','Crompton Road - 1kg Bag',null,30,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Ricotta 375g',null,37.8,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Mozzarella 250g',null,51,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Shredded Cheddar 250g (16)',null,66.4,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Shredded Mozzarella 500g',null,87.6,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Pizza Blend 500g',null,88.8,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Haloumy 750g',null,72.6,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Grated Parmesan 250g',null,87,null,null,false],
+  ['Alba Cheese',null,'+61 3 9330 2282','Fetta 175g',null,36,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Snickerz Slice (15pcs)',null,51.75,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Ferrero Slice (15pcs)',null,51.75,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Lemon Cheesecake Slice (15pcs)',null,51.75,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Passionfruit Cheesecake Slice (15pcs)',null,51.75,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Notella Bar (12pcs)',null,39.6,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Sweet Nectar - Coconut Rough Protein Balls (25pcs)',null,53.75,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Caramel Slice (8pcs)',null,30.4,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Hazelnut Bueno Slice (10pcs)',null,38,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Chocolate Mud Cake (9pcs)',null,34.2,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - White Choco Raspberry Mud Cake (9pcs)',null,34.2,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Notella Mud Cake (9pcs)',null,34.2,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Blood Orange Pistachio Cake (8pcs)',null,30.4,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Vanilla Passionfruit Cake (8pcs)',null,30.4,null,null,false],
+  ['Plant Bakery',null,'1300 121 584','Plant Baked - Banana Cake (8pcs)',null,30.4,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Red Velvet Cake 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Tiramisu Cake 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Rich Ganache Cake 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Ms Berry Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Salted Caramel Mud Cake 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Biscoff Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Toffee Caramel Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Walnut Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Peanut Butter Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Blueberry Brownie 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Carrot Cake 6 Pack',null,23.7,null,null,false],
+  ['Mahadeva\'s Kitchen',null,'0393175653','Tiramisu Brownie 6 Pack',null,25.5,null,null,false],
+  ['Haryana Traders',null,'0485 933 166','Milk 5Liter Cow',null,9.25,null,null,false],
+  ['Haryana Traders',null,'0485 933 166','Milk 2Liter Homo',null,3.73,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Butter Unsalted 500gm (Dairy Farmers)',null,8.7,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Cheese Spread Cream Philly 250gm (Philadelphia)',null,5.29,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Dip Beetroot Homestyle 800gm (Chris\' Dips)',null,10.76,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Dip Spicy Capsicum 800gm (Chris\' Dips)',null,12.61,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Margarine Nuttelex Buttery 2kg (Nuttelex)',null,11.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Margarine Nuttelex 500gm (Nuttelex)',null,5.49,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Beetroot Sliced A10 (Edgell)',null,13.66,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Biscuit PC Anzac & Choc Chip (100 x 21gm) (Macs)',null,34.37,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Mayonnaise Chipotle Vegan 1kg (Woods)',null,11.5,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Mayonnaise Vegan 2.2kg (Woods)',null,30.13,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sauce Sriracha Hot Chilli 740ml (A&T)',null,11.83,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sugar Brown 1kg (CSR)',null,4.29,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sugar Caster 1kg (CSR)',null,3.23,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sugar Raw 1kg (CSR)',null,2.81,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Butter PC (200 x 7gm) (Devondale)',null,39.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Capsicum Chargrill Fresh 2kg (Sandhurst)',null,27.49,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Cheese Cheddar Slices Processed 1.5kg (Bega)',null,21.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Cheese Cream 2kg (Devondale)',null,23.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Eggplant Chargrill Fresh 2kg (Sandhurst)',null,30.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Pesto Basil 1.9kg (Sandhurst)',null,27.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Honey Squeeze 375ml (Eateo)',null,4.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Olives Kalamata Sliced 2kg (Sandhurst)',null,17.49,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Salt Table 750gm (Saxa)',null,3.89,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sugar PC Raw Sticks (2500 x 3gm) (CSR)',null,33.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Sugar PC White Sticks (2500 x 3gm) (CSR)',null,34.99,null,null,false],
+  ['Superior Food',null,'(03) 9538 0800','Syrup Maple 1lt (Edlyn)',null,7.99,null,null,false],
+  ['Accredited Distributors',null,'03 9703 8500','Bega Peanut Butter Crunchy 200g',null,3.44,null,null,false],
+  ['Accredited Distributors',null,'03 9703 8500','Bega Peanut Butter Smooth 200g',null,3.44,null,null,false],
+  ['Accredited Distributors',null,'03 9703 8500','Nutella 220g',null,4.76,null,null,false],
+  ['Accredited Distributors',null,'03 9703 8500','Heinz Tomato Ketchup Top Down 220ml',null,2.35,null,null,false]
 ];
 
 // Merge the EPOS shop catalogue (loaded from shopProducts.js) so every shop item is orderable too.
@@ -1653,7 +1819,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v93';
+var APP_BUILD = 'v94';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5315,27 +5481,33 @@ function fvBankByCat(monthFilter){
   });
   return { byCat:byCat, periodStart:minD, periodEnd:maxD };
 }
+/* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
+var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":6292.56,"items":1504,"mp":0.533,"bad":0}};
+function fvEposForMonth(selMonth){
+  if (typeof EPOS_MONTHLY === 'undefined') return null;
+  if (selMonth){ var m = EPOS_MONTHLY[selMonth]; return m ? { sales:m.sales, items:m.items, mp:m.mp } : null; }
+  var sales=0, items=0, keys=Object.keys(EPOS_MONTHLY); if (!keys.length) return null;
+  keys.forEach(function(k){ sales += EPOS_MONTHLY[k].sales||0; items += EPOS_MONTHLY[k].items||0; });
+  return { sales:sales, items:items, mp:(typeof EPOS_SALES!=='undefined'?EPOS_SALES.cleanMarginPerc:0) };
+}
 function fvPLNet(selMonth){
   var b = fvBankByCat(selMonth || null);
-  if (!b) return null;
-  var bc = b.byCat;
+  var bc = (b && b.byCat) ? b.byCat : {};
   var g = function(code, fld){ return (bc[code] && bc[code][fld]) ? bc[code][fld] : 0; };
-  var revenue = g('SALES','inn') + g('B2B','inn');
+  // Revenue = real till sales (EPOS, incl CASH) for the month; fall back to banked sales if no till data.
+  var epos = fvEposForMonth(selMonth);
+  var revenue = epos ? epos.sales : (g('SALES','inn') + g('B2B','inn'));
   var goods   = g('PRODUCE','out') + g('STOCK_OTHER','out');
   var items = [], running = 0;
   FV_OPEX.forEach(function(p){ var v = g(p[0],'out'); if (v > 0){ items.push({ label:p[1], amt:v, code:p[0] }); running += v; } });
-  // Safety net: count any money-out in a category we didn't explicitly classify
-  // (not goods, not one-off capital, not transfers, not income) so net profit is
-  // never flattered by an unexpected code silently dropping out.
   var classified = { SALES:1, B2B:1, PRODUCE:1, STOCK_OTHER:1, TRANSFER:1, FITOUT:1 };
   FV_OPEX.forEach(function(p){ classified[p[0]] = 1; });
   var other = 0;
   Object.keys(bc).forEach(function(code){ if (!classified[code]) other += (bc[code].out || 0); });
   if (other > 0){ items.push({ label:'Other running costs', amt:other, code:'__other' }); running += other; }
   items.sort(function(a,b){ return b.amt - a.amt; });
-  var gross = revenue - goods, net = gross - running, days = 0;
-  if (b.periodStart && b.periodEnd){ days = Math.round((new Date(b.periodEnd + 'T00:00:00') - new Date(b.periodStart + 'T00:00:00')) / 86400000) + 1; }
-  return { revenue:revenue, goods:goods, gross:gross, running:running, net:net, items:items, start:b.periodStart, end:b.periodEnd, days:days };
+  var gross = revenue - goods, net = gross - running;
+  return { revenue:revenue, fromTill:!!epos, soldItems:(epos?epos.items:null), marginPerc:(epos?epos.mp:null), goods:goods, gross:gross, running:running, net:net, items:items, start:(b?b.periodStart:null), end:(b?b.periodEnd:null) };
 }
 function fvFmtDshort(d){ if (!d) return ''; return new Date(d + 'T00:00:00').toLocaleDateString('en-AU',{ day:'numeric', month:'short' }); }
 function fvPLNetBtnStyle(active){
@@ -5345,49 +5517,48 @@ function fvPLNetSetMonth(m){ window._plNetMonth = (m === 'all') ? null : m; fvPL
 function fvPLNetRender(){ var el = document.getElementById('plNetPanel'); if (el) el.innerHTML = fvPLNetPanelHTML(window._plNetMonth || null); }
 function fvPLNetPanelHTML(selMonth){
   var d = fvPLNet(selMonth);
-  var placeholder = '<div class="manage-card" style="color:#6b7280;font-size:13px;padding:16px;">📊 Your full profit picture (sales minus stock, rent, wages and all running costs) will appear here once your bank feed loads.</div>';
-  if (!d) return placeholder;
-  if (!selMonth && d.revenue === 0 && d.goods === 0 && d.running === 0) return placeholder;
   var money = function(n){ return '$' + Number(n||0).toLocaleString(undefined,{ minimumFractionDigits:2, maximumFractionDigits:2 }); };
-  var bc = (typeof fvBankCompute === 'function') ? fvBankCompute() : null;
-  var months = (bc && bc.byMonth) ? Object.keys(bc.byMonth).sort() : [];
-  var MLAB = { '2026-03':'Mar', '2026-04':'Apr', '2026-05':'May', '2026-06':'Jun', '2026-07':'Jul', '2026-08':'Aug', '2026-09':'Sep' };
-  var toggle = '';
-  if (months.length > 1){
-    toggle = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;">' +
-      '<button onclick="fvPLNetSetMonth(\'all\')" style="' + fvPLNetBtnStyle(!selMonth) + '">Whole period</button>';
-    months.forEach(function(m){ toggle += '<button onclick="fvPLNetSetMonth(\'' + m + '\')" style="' + fvPLNetBtnStyle(selMonth === m) + '">' + (MLAB[m] || m) + '</button>'; });
-    toggle += '</div>';
-  }
-  var periodLabel = d.start ? (fvFmtDshort(d.start) + ' – ' + fvFmtDshort(d.end) + ' ' + String(d.end).slice(0,4)) : '';
+  var monthsSet = {};
+  if (typeof EPOS_MONTHLY !== 'undefined') Object.keys(EPOS_MONTHLY).forEach(function(k){ monthsSet[k] = 1; });
+  var bcc = (typeof fvBankCompute === 'function') ? fvBankCompute() : null;
+  if (bcc && bcc.byMonth) Object.keys(bcc.byMonth).forEach(function(k){ monthsSet[k] = 1; });
+  var months = Object.keys(monthsSet).sort();
+  if (!d || (!months.length && d.revenue === 0 && d.goods === 0 && d.running === 0))
+    return '<div class="manage-card" style="color:#6b7280;font-size:13px;padding:16px;">📊 Your monthly profit picture will appear here once your sales &amp; bank data load.</div>';
+  var MLAB = { '2026-01':'Jan','2026-02':'Feb','2026-03':'Mar','2026-04':'Apr','2026-05':'May','2026-06':'Jun','2026-07':'Jul','2026-08':'Aug','2026-09':'Sep','2026-10':'Oct','2026-11':'Nov','2026-12':'Dec' };
+  var toggle = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;">'
+    + '<button onclick="fvPLNetSetMonth(\'all\')" style="' + fvPLNetBtnStyle(!selMonth) + '">All</button>';
+  months.forEach(function(m){ toggle += '<button onclick="fvPLNetSetMonth(\'' + m + '\')" style="' + fvPLNetBtnStyle(selMonth === m) + '">' + (MLAB[m] || m) + '</button>'; });
+  toggle += '</div>';
+  var label = selMonth ? ((MLAB[selMonth] || selMonth) + ' ' + String(selMonth).slice(0,4)) : 'All months';
   var netPos = d.net >= 0;
-  var h = '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;">' +
-    '<div style="font-weight:800;font-size:15px;color:#0d4420;">💷 Running costs &amp; net profit</div>' +
-    '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + (periodLabel ? periodLabel + ' · ' : '') + 'based on your bank feed</div>' +
-    toggle +
-    '<div class="pl-summary" style="margin:10px 0 8px;">' +
-      '<div class="pl-sum-card" onclick="fvDrill(\'pl_in\')" style="cursor:pointer;"><div class="pl-sum-label">Money in (sales) ›</div><div class="pl-sum-val" style="color:#93c5fd;">' + money(d.revenue) + '</div></div>' +
-      '<div class="pl-sum-card" onclick="fvDrill(\'pl_goods\')" style="cursor:pointer;"><div class="pl-sum-label">Stock &amp; produce bought ›</div><div class="pl-sum-val" style="color:#fbbf24;">' + money(d.goods) + '</div></div>' +
-      '<div class="pl-sum-card" onclick="fvDrill(\'running\')" style="cursor:pointer;"><div class="pl-sum-label">Running costs ›</div><div class="pl-sum-val" style="color:#f87171;">' + money(d.running) + '</div></div>' +
-      '<div class="pl-sum-card"><div class="pl-sum-label">Gross profit (after stock)</div><div class="pl-sum-val" style="color:' + (d.gross>=0?'#4ade80':'#f87171') + ';">' + money(d.gross) + '</div></div>' +
-    '</div>' +
-    '<div style="background:' + (netPos ? '#f0fdf4' : '#fef2f2') + ';border:1px solid ' + (netPos ? '#bbf7d0' : '#fecaca') + ';border-radius:12px;padding:14px 16px;margin-bottom:6px;">' +
-      '<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">Net profit after running costs</div>' +
-      '<div style="font-size:26px;font-weight:900;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">' + (netPos ? '' : '−') + money(Math.abs(d.net)) + '</div>' +
-      '<div style="font-size:11px;color:#6b7280;margin-top:2px;">What’s left after stock, rent, wages and all bills' + (periodLabel ? ', for ' + periodLabel : '') + '</div>' +
-    '</div>';
+  var salesSub = d.fromTill
+    ? ((d.soldItems != null ? d.soldItems.toLocaleString() + ' items · ' : '') + (d.marginPerc != null ? (d.marginPerc*100).toFixed(0) + '% margin · ' : '') + 'incl. cash')
+    : 'banked card + wholesale';
+  var h = '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;">'
+    + '<div style="font-weight:800;font-size:15px;color:#0d4420;">💷 Sales, running costs &amp; net profit</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + label + ' · sales from the till (incl cash), costs from the bank</div>'
+    + toggle
+    + '<div class="pl-summary" style="margin:10px 0 8px;">'
+      + '<div class="pl-sum-card"><div class="pl-sum-label">Sales (from till)</div><div class="pl-sum-val" style="color:#93c5fd;">' + money(d.revenue) + '</div><div class="pl-sum-sub">' + salesSub + '</div></div>'
+      + '<div class="pl-sum-card" onclick="fvDrill(\'pl_goods\')" style="cursor:pointer;"><div class="pl-sum-label">Stock &amp; produce ›</div><div class="pl-sum-val" style="color:#fbbf24;">' + money(d.goods) + '</div></div>'
+      + '<div class="pl-sum-card" onclick="fvDrill(\'running\')" style="cursor:pointer;"><div class="pl-sum-label">Running costs ›</div><div class="pl-sum-val" style="color:#f87171;">' + money(d.running) + '</div></div>'
+      + '<div class="pl-sum-card"><div class="pl-sum-label">Gross profit</div><div class="pl-sum-val" style="color:' + (d.gross>=0?'#4ade80':'#f87171') + ';">' + money(d.gross) + '</div></div>'
+    + '</div>'
+    + '<div style="background:' + (netPos ? '#f0fdf4' : '#fef2f2') + ';border:1px solid ' + (netPos ? '#bbf7d0' : '#fecaca') + ';border-radius:12px;padding:14px 16px;margin-bottom:6px;">'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">Net profit after running costs · ' + label + '</div>'
+      + '<div style="font-size:26px;font-weight:900;color:' + (netPos ? '#15803d' : '#b91c1c') + ';">' + (netPos ? '' : '−') + money(Math.abs(d.net)) + '</div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">Sales − stock bought − running costs</div>'
+    + '</div>';
   if (d.items.length){
     h += '<div style="font-weight:700;color:#374151;font-size:12px;margin:12px 0 2px;">Where the running costs went</div>';
-    d.items.forEach(function(it){
-      var pct = d.running > 0 ? (it.amt / d.running * 100) : 0;
-      var drillable = it.code && it.code !== '__other';
+    d.items.forEach(function(it){ var pct = d.running > 0 ? (it.amt / d.running * 100) : 0; var drillable = it.code && it.code !== '__other';
       var attr = drillable ? ' onclick="fvDrill(\'cat:' + it.code + '\')" style="cursor:pointer;display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"' : ' style="display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"';
       h += '<div' + attr + '><span>' + it.label + (drillable ? ' <span style="color:#1c4587;font-weight:700;">›</span>' : '') + ' <span style="color:#9ca3af;font-size:11px;">' + pct.toFixed(0) + '%</span></span><span style="font-weight:700;">' + money(it.amt) + '</span></div>';
     });
-    if (d.days > 0) h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">Average running cost per trading day ≈ ' + money(d.running / d.days) + ' <span style="color:#cbd5e1;">(indicative only — real bills are monthly/quarterly)</span></div>';
   }
-  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = money in − stock bought − running costs, for this period. One-off shop fit-out &amp; build costs aren’t counted here (they built the shop, they’re not a monthly cost) — see the Capital &amp; bank view. 💵 “Money in” here is <strong>money actually banked</strong> (card via Adyen + wholesale) over your bank-feed weeks — it does <strong>not</strong> include cash takings. The “Revenue” in the day view below (e.g. the “Last 90 days” total) is your <strong>till sales</strong> — a different source, a longer span, and it <strong>includes cash &amp; GST</strong> — so it’s higher. They’ll line up once the EPOS Now till is connected.</div>' +
-    '</div>';
+  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = sales − stock bought − running costs. <strong>Sales</strong> are real till takings (include CASH). <strong>Costs</strong> come from the bank feed, which is fullest from April on — earlier months may show fewer costs. One-off shop fit-out isn’t counted here (see Capital &amp; bank).</div>'
+    + '</div>';
   return h;
 }
 
@@ -5466,10 +5637,7 @@ function buildPLView() {
   // independent of which EPOS day is picked, and shown even before any EPOS import.
   var netDiv = document.createElement('div'); netDiv.id = 'plNetPanel'; netDiv.style.marginTop = '8px';
   pv.appendChild(netDiv);
-  if (typeof fvPLNetRender === 'function') fvPLNetRender();
-
-  // Real till sales (incl cash) from the latest EPOS export
-  if (typeof fvEposSalesCardHTML === 'function') { var esc = fvEposSalesCardHTML(); if (esc) { var esd = document.createElement('div'); esd.innerHTML = esc; pv.appendChild(esd); } }
+  if (typeof fvPLNetRender === 'function') fvPLNetRender();   // combined: sales (till) + running costs + net, month-tabbed
 
   // Bank-statement money in/out from the uploaded screenshots (BANK_TX) — tap for the full breakdown
   if (typeof fvCashflowButtonHTML === 'function') {
