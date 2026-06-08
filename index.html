@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v92';
+var APP_BUILD = 'v93';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1873,6 +1873,11 @@ function fvBuyUndo(){
   if (typeof buildList === 'function') buildList(); else fvBuyRerender();
 }
 
+// List sub-view: 'mandi' = market-stall suppliers; 'grocery' = all other suppliers.
+var fvListMode = (function(){ try { return localStorage.getItem('fvListMode') || 'mandi'; } catch(e){ return 'mandi'; } })();
+function fvSetListMode(m){ fvListMode = (m === 'grocery' ? 'grocery' : 'mandi'); try { localStorage.setItem('fvListMode', fvListMode); } catch(e){} buildList(); var mc = document.getElementById('mainContent'); if (mc) mc.scrollTop = 0; }
+function fvSupIsMandi(s){ return (s != null && String(s).trim() !== ''); }   // has a stall = Mandi
+
 function buildList() {
   var container = document.getElementById('viewList');
   container.innerHTML = '';
@@ -1901,6 +1906,24 @@ function buildList() {
     if (!aNum && bNum) return 1;
     return a.name.localeCompare(b.name);
   });
+
+  // Mandi / Grocery sub-tabs
+  var mode = (typeof fvListMode !== 'undefined' && fvListMode) ? fvListMode : 'mandi';
+  var modeWrap = document.createElement('div');
+  modeWrap.style.cssText = 'display:flex;gap:6px;margin:6px 0 8px;';
+  function modeBtn(key, label){ var on = (mode === key); return '<button onclick="fvSetListMode(\'' + key + '\')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;border:1px solid ' + (on?'#15662f':'#cbd5e1') + ';background:' + (on?'#15662f':'#fff') + ';color:' + (on?'#fff':'#374151') + ';">' + label + '</button>'; }
+  modeWrap.innerHTML = modeBtn('mandi','🍎 Mandi') + modeBtn('grocery','🛒 Grocery');
+  container.appendChild(modeWrap);
+
+  // Keep only the suppliers for the chosen sub-tab
+  suppliers = suppliers.filter(function(s){ return (mode === 'grocery') ? !fvSupIsMandi(s.stall) : fvSupIsMandi(s.stall); });
+  if (!suppliers.length) {
+    var emL = document.createElement('div'); emL.className = 'empty-state';
+    emL.innerHTML = (mode === 'grocery')
+      ? 'No grocery suppliers yet.<br><br>Add one via <strong>🏪 More → Add New Supplier</strong> (e.g. Sabrini, Redi Melk) and it’ll appear here.'
+      : 'No Mandi suppliers found.';
+    container.appendChild(emL);
+  }
 
   // Stall navigation strip
   var strip = document.createElement('div');
