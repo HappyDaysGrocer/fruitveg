@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v108';
+var APP_BUILD = 'v109';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7964,27 +7964,46 @@ function fvBlurObserve_(){
   ['viewSpend','viewPL'].forEach(function(id){ var el = document.getElementById(id); if (el) window._fvBlurObserver.observe(el, { childList:true, subtree:true, characterData:true }); });
 }
 window.addEventListener('load', function(){ try { fvBlurObserve_(); if (fvBlurAmountsOn()) ['viewSpend','viewPL'].forEach(function(id){ var el = document.getElementById(id); if (el) fvMaskAmounts_(el); }); } catch(e){} });
+// Masked password box (each character shows as a • bullet) for revealing finance numbers.
 function fvFinUnlockPrompt(targetView){
   if (!fvSession) { alert('Please sign in first.'); return; }
-  var p = prompt('Enter YOUR password to view the financial numbers:');
-  if (p === null) return;
-  if (!p) { alert('No password entered.'); return; }
+  var ov = document.getElementById('fvFinPwOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'fvFinPwOverlay'; document.body.appendChild(ov); }
+  ov.setAttribute('style', 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100050;display:flex;align-items:center;justify-content:center;padding:24px;');
+  ov.onclick = function(e){ if (e.target === ov) fvFinUnlockClose(); };
+  ov.innerHTML = '<div style="background:#fff;width:100%;max-width:340px;border-radius:16px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+    + '<div style="font-size:34px;text-align:center;line-height:1;">👁️</div>'
+    + '<div style="font-size:17px;font-weight:800;color:#0d4420;text-align:center;margin:8px 0 4px;">Enter your password</div>'
+    + '<div style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:14px;">to show the financial numbers</div>'
+    + '<input id="fvFinPwInput" type="password" inputmode="text" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key===\'Enter\')fvFinUnlockSubmit(\'' + targetView + '\')" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:16px;margin-bottom:6px;">'
+    + '<div id="fvFinPwErr" style="color:#b91c1c;font-size:12px;min-height:16px;margin-bottom:4px;"></div>'
+    + '<button id="fvFinPwBtn" onclick="fvFinUnlockSubmit(\'' + targetView + '\')" style="width:100%;padding:13px;border:none;border-radius:10px;background:#15662f;color:#fff;font-size:15px;font-weight:800;cursor:pointer;">👁️ Show numbers</button>'
+    + '<button onclick="fvFinUnlockClose()" style="width:100%;padding:10px;background:none;color:#6b7280;border:none;font-size:13px;margin-top:4px;cursor:pointer;">Cancel</button>'
+    + '</div>';
+  setTimeout(function(){ var i = document.getElementById('fvFinPwInput'); if (i) i.focus(); }, 60);
+}
+function fvFinUnlockClose(){ var o = document.getElementById('fvFinPwOverlay'); if (o) o.remove(); }
+function fvFinUnlockSubmit(targetView){
+  var inp = document.getElementById('fvFinPwInput'), err = document.getElementById('fvFinPwErr');
+  var p = inp ? inp.value : '';
+  if (!p) { if (err) err.textContent = 'Please type your password.'; return; }
+  var btn = document.getElementById('fvFinPwBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  function bad(msg){ if (btn) { btn.disabled = false; btn.textContent = '👁️ Show numbers'; } if (err) err.textContent = msg || 'That password is not correct.'; if (inp) { inp.value = ''; inp.focus(); } }
   fvHash(p).then(function(h){
     var cand = null;
     for (var i = 0; i < FV_USERS.length; i++) if (FV_USERS[i].user === fvSession.user) { cand = FV_USERS[i]; break; }
-    var ov = (typeof fvPwOvLoad === 'function') ? fvPwOvLoad() : {};
-    var gateHash = (cand && ov[fvSession.user] !== undefined) ? ov[fvSession.user] : (cand ? cand.hash : null);
-    function ok(){ window._fvFinUnlocked = true;
+    var ovr = (typeof fvPwOvLoad === 'function') ? fvPwOvLoad() : {};
+    var gateHash = (cand && ovr[fvSession.user] !== undefined) ? ovr[fvSession.user] : (cand ? cand.hash : null);
+    function ok(){ window._fvFinUnlocked = true; fvFinUnlockClose();
       if (targetView === 'Spend' && typeof buildSpendView === 'function') buildSpendView();
       else if (typeof buildPLView === 'function') buildPLView();
     }
     if (gateHash !== null && gateHash === h) { ok(); return; }
-    // password may have been changed on another device — verify via Firebase
     if (typeof fvFirebaseSignIn === 'function') {
       fvFirebaseSignIn(fvSession.user, p).then(function(){ if (typeof fvPwOvSet === 'function') fvPwOvSet(fvSession.user, h); ok(); })
-        .catch(function(){ alert('That password is not correct.'); });
-    } else { alert('That password is not correct.'); }
-  }).catch(function(){ alert('Could not check the password — please try again.'); });
+        .catch(function(){ bad('That password is not correct.'); });
+    } else { bad('That password is not correct.'); }
+  }).catch(function(){ bad('Could not check — please try again.'); });
 }
 function fvBlankFinance(viewId) {
   var v = document.getElementById(viewId);
