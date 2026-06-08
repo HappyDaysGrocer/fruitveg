@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v102';
+var APP_BUILD = 'v104';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2053,10 +2053,259 @@ function fvBuyUndo(){
   if (typeof buildList === 'function') buildList(); else fvBuyRerender();
 }
 
+/* ─── GO LIVE — market-run timer & alerts ───────────────────────────────────
+   The team must be back at the ute by 5:30am loading the car. "Go Live" starts
+   a clock that pops a big alert at set times. Times are minutes-of-day (local).
+   Resumes across reload for the same day; alerts each fire once per day. Note:
+   timers need the app OPEN — the team uses it during the run, so that's fine. */
+var FV_LIVE_ALERTS=[
+  {id:'t0330',min:210,clock:'3:30am',shortMsg:'Go buy all the items',msg:'🛒 GO! Buy all the items, team.'},
+  {id:'t0430',min:270,clock:'4:30am',shortMsg:'Should be 50%+ now',msg:'⏳ We should be 50% or more done now.'},
+  {id:'t0500',min:300,clock:'5:00am',shortMsg:'30 min left — finalise',msg:'⏰ Only 30 minutes left. Start finalising all the orders.'},
+  {id:'t0515',min:315,clock:'5:15am',shortMsg:'Get ready to load',msg:'🚚 Get ready to head back to the car to load up.'},
+  {id:'t0530',min:330,clock:'5:30am',shortMsg:'Back at the ute',msg:'🏁 Be back at the ute now — load the car!'}
+];
+function fvLiveTodayKey(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function fvLiveNowMin(){ var d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function fvLiveLoad(){ try{ return JSON.parse(localStorage.getItem('fvLive')||'{}'); }catch(e){ return {}; } }
+function fvLiveSaveState(o){ try{ localStorage.setItem('fvLive', JSON.stringify(o)); }catch(e){} }
+function fvLiveIsOn(){ var L=fvLiveLoad(); return !!(L.on && L.date===fvLiveTodayKey()); }
+function fvLiveFiredLoad(){ try{ var o=JSON.parse(localStorage.getItem('fvLiveFired')||'{}'); if(!o||o.date!==fvLiveTodayKey()) return {date:fvLiveTodayKey(),fired:{}}; if(!o.fired)o.fired={}; return o; }catch(e){ return {date:fvLiveTodayKey(),fired:{}}; } }
+function fvLiveFiredSave(o){ try{ localStorage.setItem('fvLiveFired', JSON.stringify(o)); }catch(e){} }
+function fvLiveBarRefresh(){ var b=document.getElementById('fvLiveBar'); if(b) b.innerHTML=fvLiveBarHTML(); }
+function fvLiveBarHTML(){
+  if(!fvLiveIsOn()){
+    return '<button onclick="fvLiveStart()" style="width:100%;padding:12px;border:none;border-radius:12px;background:#0d4420;color:#fff;font-size:15px;font-weight:800;cursor:pointer;margin:2px 0 8px;box-shadow:0 2px 6px rgba(13,68,32,.25);">▶️ Go Live — market run timer</button>';
+  }
+  var nx=fvLiveNext();
+  return '<div style="background:#15662f;color:#fff;border-radius:12px;padding:10px 12px;margin:2px 0 8px;display:flex;align-items:center;gap:10px;">'
+    +'<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:14px;">⏱️ LIVE — back at the ute by 5:30am</div>'
+    +'<div style="font-size:12px;opacity:.92;margin-top:2px;">'+(nx?('Next alert: '+fvEsc(nx.clock)+' — '+fvEsc(nx.shortMsg)):'All alerts done — finish loading!')+'</div></div>'
+    +'<button onclick="fvLiveStop()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Stop</button></div>';
+}
+function fvLiveNext(){ var f=fvLiveFiredLoad(); for(var i=0;i<FV_LIVE_ALERTS.length;i++){ var a=FV_LIVE_ALERTS[i]; if(!f.fired[a.id]) return a; } return null; }
+function fvLiveStart(){
+  fvLiveSaveState({on:true, date:fvLiveTodayKey()});
+  // mark alerts whose time has already passed as fired, so we don't dump old ones now
+  var f=fvLiveFiredLoad(); var nm=fvLiveNowMin();
+  FV_LIVE_ALERTS.forEach(function(a){ if(a.min<=nm) f.fired[a.id]=true; });
+  fvLiveFiredSave(f);
+  if(('Notification' in window) && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch(e){} }
+  fvLiveEnsureTimer();
+  fvLiveBarRefresh();
+  alert('⏱️ Market run timer is LIVE.\n\nKeep the app open. You will get a big alert at 3:30am, 4:30am, 5:00am, 5:15am and 5:30am (back at the ute).');
+}
+function fvLiveStop(){ var L=fvLiveLoad(); L.on=false; fvLiveSaveState(L); fvLiveBarRefresh(); }
+function fvLiveCheck(){ if(!fvLiveIsOn()) return; var f=fvLiveFiredLoad(); var nm=fvLiveNowMin(); FV_LIVE_ALERTS.forEach(function(a){ if(!f.fired[a.id] && a.min<=nm) fvLiveFire(a); }); }
+function fvLiveFire(a){
+  var f=fvLiveFiredLoad(); if(f.fired[a.id]) return; f.fired[a.id]=true; fvLiveFiredSave(f);
+  try{ if('vibrate' in navigator) navigator.vibrate([300,150,300,150,300]); }catch(e){}
+  try{ if(('Notification' in window) && Notification.permission==='granted') new Notification('Happy Days — '+a.clock, {body:a.msg}); }catch(e){}
+  fvLiveShowModal(a);
+  fvLiveBarRefresh();
+}
+function fvLiveShowModal(a){
+  var ov=document.getElementById('fvLiveModal'); if(!ov){ ov=document.createElement('div'); ov.id='fvLiveModal'; document.body.appendChild(ov); }
+  ov.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200000;display:flex;align-items:center;justify-content:center;padding:24px;');
+  ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.45);">'
+    +'<div style="font-size:13px;font-weight:800;color:#15662f;letter-spacing:1px;">'+fvEsc(a.clock)+'</div>'
+    +'<div style="font-size:22px;font-weight:800;color:#0d4420;margin:10px 0 6px;line-height:1.3;">'+fvEsc(a.msg)+'</div>'
+    +'<div style="font-size:13px;color:#6b7280;margin-bottom:18px;">We have to be back at the ute by 5:30am.</div>'
+    +'<button onclick="fvLiveModalClose()" style="width:100%;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">Got it 👍</button></div>';
+}
+function fvLiveModalClose(){ var o=document.getElementById('fvLiveModal'); if(o) o.remove(); }
+function fvLiveEnsureTimer(){
+  if(window._fvLiveTimer) { fvLiveCheck(); return; }
+  window._fvLiveTimer=setInterval(fvLiveCheck, 20000);
+  try{ document.addEventListener('visibilitychange', function(){ if(!document.hidden) fvLiveCheck(); }); window.addEventListener('focus', fvLiveCheck); }catch(e){}
+  fvLiveCheck();
+}
+
 // List sub-view: 'mandi' = market-stall suppliers; 'grocery' = all other suppliers.
 var fvListMode = (function(){ try { return localStorage.getItem('fvListMode') || 'mandi'; } catch(e){ return 'mandi'; } })();
-function fvSetListMode(m){ fvListMode = (m === 'grocery' ? 'grocery' : 'mandi'); try { localStorage.setItem('fvListMode', fvListMode); } catch(e){} buildList(); var mc = document.getElementById('mainContent'); if (mc) mc.scrollTop = 0; }
+function fvSetListMode(m){ fvListMode = (m === 'grocery' ? 'grocery' : (m === 'menu' ? 'menu' : 'mandi')); try { localStorage.setItem('fvListMode', fvListMode); } catch(e){} buildList(); var mc = document.getElementById('mainContent'); if (mc) mc.scrollTop = 0; }
 function fvSupIsMandi(s){ return (s != null && String(s).trim() !== ''); }   // has a stall = Mandi
+
+/* ─── Café menu costings (baked from the EPOS catalogue, 2026-05-04) ─────────
+   Each row: [name, section, tillCost, sellPrice]. Read-only reference of what
+   the till charges + what it costs us. The owner can TAP an item to set its
+   real make/buy cost — saved in mandiMenuCosts and synced to the team (/menucosts).
+   We keep adding more costings over time; cost 0 = "needs a cost". */
+var FV_CAFE_MENU=[
+['Babyccino','Coffee',0.77,3.00],
+['Cappuccino','Coffee',1.10,5.00],
+['Coffee Pods','Coffee',6.60,11.00],
+['Five Senses Crompton Road 1kg','Coffee',30.00,69.99],
+['Flat White','Coffee',1.10,5.00],
+['Latte','Coffee',1.10,5.00],
+['Long Black','Coffee',1.10,5.00],
+['Long Macchiato','Coffee',1.10,5.00],
+['Magic','Coffee',1.10,5.00],
+['Mocha','Coffee',1.10,5.00],
+['Piccolo','Coffee',1.10,4.00],
+['Short black','Coffee',1.10,4.00],
+['Short Macchiato','Coffee',1.10,5.00],
+['Iced Chocolate','Iced coffee',2.00,7.00],
+['Iced Coffee','Iced coffee',2.00,7.00],
+['Iced Latte','Iced coffee',2.00,7.00],
+['Iced Long Black','Iced coffee',2.00,7.00],
+['Iced Mocha','Iced coffee',2.00,7.00],
+['Almond milk','Drinks & add-ons',0.30,0.80],
+['Caramel Syrup','Drinks & add-ons',0.20,0.80],
+['Hazelnut Syrup','Drinks & add-ons',0.20,0.80],
+['Lactose free milk','Drinks & add-ons',0.30,0.80],
+['Layers bliss','Drinks & add-ons',0.00,6.99],
+['Oat milk','Drinks & add-ons',0.30,0.80],
+['Skim milk','Drinks & add-ons',0.30,0.40],
+['Soy milk','Drinks & add-ons',0.00,0.80],
+['Vanilla Syrup','Drinks & add-ons',0.20,0.80],
+['Banana Cafe','Sandwiches, toasties & burgers',0.25,1.00],
+['Bread Pakora','Sandwiches, toasties & burgers',1.00,3.00],
+['Cheese Corn Toastie','Sandwiches, toasties & burgers',1.00,8.00],
+['Cheese tomato onion toastie','Sandwiches, toasties & burgers',1.00,10.00],
+['Cheesy Beast Toastie','Sandwiches, toasties & burgers',1.00,6.00],
+['Garden Harvest Loaf','Sandwiches, toasties & burgers',1.00,13.00],
+['Loaded Veg Club Toastie','Sandwiches, toasties & burgers',1.00,13.00],
+['Mediterranean Tofu Loaf','Sandwiches, toasties & burgers',3.00,13.00],
+['Paneer Tika Loaf','Sandwiches, toasties & burgers',4.00,13.00],
+['Peanut Butter Banana Toastie','Sandwiches, toasties & burgers',1.00,7.00],
+['Potato Melt','Sandwiches, toasties & burgers',1.00,11.00],
+['Puff Bites','Sandwiches, toasties & burgers',1.00,3.00],
+['Red Bun Burger','Sandwiches, toasties & burgers',4.00,10.00],
+['Samosa','Sandwiches, toasties & burgers',0.50,3.00],
+['Sandwhich Customise','Sandwiches, toasties & burgers',0.40,1.00],
+['Toast','Sandwiches, toasties & burgers',1.00,5.00],
+['Turkish Paneer Loaf','Sandwiches, toasties & burgers',4.00,13.00],
+['Veggie Delux Burger','Sandwiches, toasties & burgers',3.00,10.00],
+['Veggie Patty Crunch Loaf','Sandwiches, toasties & burgers',4.00,13.00],
+['Caper bagle','Specials',3.00,8.99],
+['Layered Bliss','Specials',2.50,6.99],
+['Veg Ham and cheese','Specials',0.00,9.99],
+['Croissant - Plain','Croissants & pastries',3.02,4.95],
+['Croissant Mini- Almond','Croissants & pastries',2.52,4.00],
+['Croissant Mini- Chocolate  AU pain','Croissants & pastries',2.23,3.00],
+['Croissant Mini- Plain','Croissants & pastries',1.89,3.00],
+['Croissant- Almond','Croissants & pastries',3.54,5.95],
+['Croissant- Choc Almond','Croissants & pastries',3.09,5.50],
+['Croissant- Chocolate','Croissants & pastries',3.43,5.50],
+['Croissiant- Pain au chocalate','Croissants & pastries',3.43,6.05],
+['Danish Mini- Apricot','Croissants & pastries',2.11,3.95],
+['Danish Mini- Sour Cherry','Croissants & pastries',2.48,3.94],
+['Danish-  Apricot','Croissants & pastries',0.00,4.95],
+['Danish- Sour Cherry','Croissants & pastries',3.17,4.95],
+['Berry Ripe Bar','Sweets & slices',0.00,7.50],
+['Caramel Slice - Plant Baked','Sweets & slices',7.50,7.50],
+['Dark Choc Walnut Goodness Bar','Sweets & slices',0.00,7.50],
+['Ferrero Slice','Sweets & slices',0.00,7.50],
+['Hazelnut Bueno Slice- Plant Baked','Sweets & slices',7.50,7.50],
+['Passionfruit Cheesecake Slice','Sweets & slices',0.00,7.50],
+['Raspberry Frangipane- Plant Baked','Sweets & slices',0.00,7.50],
+['Snickerz Bar','Sweets & slices',0.00,7.50],
+['Snickerz Protein ball','Sweets & slices',0.00,3.95],
+['Vegan ms Berry','Sweets & slices',4.50,7.50],
+['Vegan peanut butter','Sweets & slices',3.95,7.50],
+['Vegan Toffee Caramel Crunch MK','Sweets & slices',0.00,8.50],
+['Banana Cake- Plant Baked','Cakes',0.00,7.50],
+['Blood Orange Pistachio Cake','Cakes',4.00,7.50],
+['Carrot Cake MK','Cakes',0.00,7.50],
+['Chocolate Bliss Cake','Cakes',0.00,6.99],
+['Chocolate Mud cake','Cakes',3.80,7.50],
+['Hazelnut Ganache Cake MK','Cakes',0.00,8.50],
+['Notella Bar Cake- Plant Baked','Cakes',3.60,7.50],
+['Notella Mud Cake- Plant Baked','Cakes',3.60,7.50],
+['Red Velvet Cake MK','Cakes',0.00,7.95],
+['Rich Ganache Cake MK','Cakes',4.00,7.50],
+['Salted Caramel Mud Cake MK','Cakes',0.00,7.50],
+['Tiramisu Cake MK','Cakes',0.00,8.50],
+['White Chocolate Raspberry Mud Cake','Cakes',0.00,7.50],
+['Biscoff Brownie MK','Brownies',4.00,7.95],
+['Blueberry/chic fudge brownie','Brownies',3.95,7.50],
+['Peanut Butter Slice- Plant Baked','Brownies',0.00,7.00],
+['Roasted walnut brownie','Brownies',0.00,7.50],
+['Tiramisu Brownie MK','Brownies',0.00,8.50],
+['Toffee Caramel Brownie MK','Brownies',0.00,7.50],
+['Anzac cookies','Cookies',0.00,3.00],
+['Choc chip cookies','Cookies',0.00,3.00],
+['BUTTER PC (200 X 7GM) , 1001952 DEVONDALE','Cafe ingredients (bulk)',39.99,70.00],
+['CAPSICUM C/GRILL FRESH 2KG(2) , SFCGC2 SANDHURST','Cafe ingredients (bulk)',27.49,50.00],
+['CHEESE CHEDDAR SLICES PROCESSED 1.5KG(8) , 3001896 BEGA','Cafe ingredients (bulk)',21.99,42.00],
+['CHEESE CREAM 2KG(6) , 1001783 DEVONDALE','Cafe ingredients (bulk)',23.99,48.00],
+['EGGPLANT C/GRILL FRESH 2KG(2) , SFEGG2 SANDHURST','Cafe ingredients (bulk)',30.99,60.00],
+['MARGARINE NUTTELEX BUTTERY 2KG(4) , NLX-BTY-2KG-0012 NUTTELEX','Cafe ingredients (bulk)',11.99,25.00],
+['OLIVES KALAMATA SLICED 2KG(6) , SKOP2 SANDHURST','Cafe ingredients (bulk)',17.49,34.00],
+['PESTO BASIL 1.9KG(6) , PESTO2 SANDHURST DRY GOODS','Cafe ingredients (bulk)',27.99,45.00],
+['SYRUP MAPLE 1LT(6) , I02706 EDLYN','Cafe ingredients (bulk)',7.99,13.00]
+];
+var FV_CAFE_SECORDER=['Coffee','Iced coffee','Drinks & add-ons','Sandwiches, toasties & burgers','Specials','Croissants & pastries','Sweets & slices','Cakes','Brownies','Cookies','Cafe ingredients (bulk)'];
+var FV_CAFE_SECLABEL={'Coffee':'☕ Coffee','Iced coffee':'🧋 Iced coffee','Drinks & add-ons':'🥤 Milk, syrups &amp; add-ons','Sandwiches, toasties & burgers':'🥪 Sandwiches, toasties &amp; burgers','Specials':'⭐ Specials','Croissants & pastries':'🥐 Croissants &amp; pastries','Sweets & slices':'🍫 Sweets &amp; slices','Cakes':'🍰 Cakes','Brownies':'🍫 Brownies','Cookies':'🍪 Cookies','Cafe ingredients (bulk)':'🧀 Café ingredients (bulk)'};
+function fvMenuCostsLoad(){ try{ return JSON.parse(localStorage.getItem('mandiMenuCosts')||'{}'); }catch(e){ return {}; } }
+function fvMenuCostsSave(o){ try{ localStorage.setItem('mandiMenuCosts', JSON.stringify(o)); }catch(e){} if(typeof fvJsonPush==='function') fvJsonPush('menucosts', o); }
+function fvMenuCostsPull(){ if(typeof fvJsonGet!=='function') return Promise.resolve(); return fvJsonGet('menucosts').then(function(r){ if(r&&typeof r==='object'){ try{localStorage.setItem('mandiMenuCosts',JSON.stringify(r));}catch(e){} if((typeof fvListMode!=='undefined')&&fvListMode==='menu'){ var lst=document.getElementById('cafeMenuList'); var sq=document.getElementById('cafeMenuSearch'); if(lst) lst.innerHTML=fvCafeMenuListHTML(sq?sq.value:''); } } }); }
+function fvCafeEffCost(name, baked){ var ov=fvMenuCostsLoad(); var v=ov[name]; return (v!=null && v!=='' && !isNaN(parseFloat(v))) ? parseFloat(v) : baked; }
+function fvCafeMargin(cost, sell){ return (sell>0) ? (sell-cost)/sell : 0; }
+function fvJsArg(s){ return "'"+String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')+"'"; }
+function fvCafeMenuRow(m){
+  var name=m[0], baked=m[2], sell=m[3];
+  var cost=fvCafeEffCost(name,baked);
+  var ov=fvMenuCostsLoad(); var edited=(ov[name]!=null&&ov[name]!==''&&!isNaN(parseFloat(ov[name])));
+  var hasCost=cost>0, mp=fvCafeMargin(cost,sell), prof=sell-cost;
+  // Café-tuned bands: green >=55%, amber 35-55%, red <35% (a 40% bought-in pastry is normal, not a warning)
+  var mcol=!hasCost?'#9ca3af':(mp>=0.55?'#15803d':(mp>=0.35?'#b45309':'#b91c1c'));
+  var costTxt = !hasCost ? ''
+    : (edited
+        ? ' · <b style="color:#15662f;">Your cost</b> '+fvRCmoney(cost)+(baked>0?' <span style="color:#9ca3af;">(till '+fvRCmoney(baked)+')</span>':'')
+        : ' · Till cost '+fvRCmoney(cost));
+  var right=hasCost
+    ? '<div style="text-align:right;white-space:nowrap;"><div style="font-weight:800;color:'+mcol+';font-size:15px;">'+Math.round(mp*100)+'%</div><div style="font-size:11px;color:#6b7280;">+'+fvRCmoney(prof)+'</div></div>'
+    : '<div style="text-align:right;color:#b91c1c;font-weight:700;font-size:12px;white-space:nowrap;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:4px 8px;">＋ add cost</div>';
+  return '<div onclick="fvMenuSetCost('+fvJsArg(name)+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid #eef0f2;border-radius:10px;margin-bottom:6px;cursor:pointer;background:#fff;">'
+    +'<div style="min-width:0;flex:1;"><div style="font-weight:600;color:#111;font-size:14px;">'+fvEsc(name)+(edited?' <span style="font-size:10px;color:#15662f;font-weight:700;">✎ yours</span>':'')+'</div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-top:1px;">Sell '+fvRCmoney(sell)+costTxt+'</div></div>'
+    +right+'<div style="color:#cbd5e1;font-size:16px;">›</div></div>';
+}
+function fvCafeMenuListHTML(q){
+  q=(q||'').trim().toLowerCase();
+  var bySec={}; FV_CAFE_MENU.forEach(function(m){ if(q && m[0].toLowerCase().indexOf(q)<0) return; (bySec[m[1]]=bySec[m[1]]||[]).push(m); });
+  var h='', any=false;
+  FV_CAFE_SECORDER.forEach(function(sec){ var arr=bySec[sec]; if(!arr||!arr.length) return; any=true;
+    h+='<div style="font-weight:800;color:#0d4420;margin:14px 0 5px;font-size:14px;">'+(FV_CAFE_SECLABEL[sec]||sec)+' <span style="color:#9ca3af;font-weight:600;font-size:12px;">('+arr.length+')</span></div>';
+    arr.forEach(function(m){ h+=fvCafeMenuRow(m); });
+  });
+  return any?h:'<div style="color:#6b7280;padding:18px 0;text-align:center;">No menu items match that search.</div>';
+}
+function fvCafeMenuSearch(q){ var lst=document.getElementById('cafeMenuList'); if(lst) lst.innerHTML=fvCafeMenuListHTML(q); }
+function fvMenuSetCost(name){
+  var ov=fvMenuCostsLoad();
+  var cur=(ov[name]!=null&&ov[name]!=='')?ov[name]:'';
+  var baked=0; for(var i=0;i<FV_CAFE_MENU.length;i++){ if(FV_CAFE_MENU[i][0]===name){ baked=FV_CAFE_MENU[i][2]; break; } }
+  var msg='Cost to make/buy "'+name+'" in $ (e.g. 2.50)' + (baked>0?' — till has $'+baked.toFixed(2):'') + '. Blank = clear.';
+  var v=prompt(msg, cur!==''?cur:(baked>0?baked:''));
+  if(v===null) return;
+  v=String(v).trim();
+  if(v===''){ delete ov[name]; }
+  else { var n=parseFloat(v); if(isNaN(n)||n<0){ alert('Please enter a number like 2.50'); return; } ov[name]=Math.round(n*100)/100; }
+  fvMenuCostsSave(ov);
+  var lst=document.getElementById('cafeMenuList'); var sq=document.getElementById('cafeMenuSearch');
+  if(lst) lst.innerHTML=fvCafeMenuListHTML(sq?sq.value:'');
+}
+function fvRenderCafeMenu(container){
+  var noCost=0; FV_CAFE_MENU.forEach(function(m){ if(fvCafeEffCost(m[0],m[2])<=0) noCost++; });
+  var rc=(typeof fvRCload==='function')?fvRCload():{}; var rcn=Object.keys(rc).length;
+  var w=document.createElement('div');
+  var h='';
+  h+='<div style="background:#0d4420;color:#fff;border-radius:12px;padding:12px 14px;margin:2px 0 10px;">'
+    +'<div style="font-size:16px;font-weight:800;">☕ Café menu — cost &amp; margin</div>'
+    +'<div style="font-size:12px;opacity:.92;margin-top:3px;line-height:1.45;">Each item shows what it <b>sells</b> for, what it <b>costs</b> us, and the <b>margin</b>. Tap any row to set or fix its cost — it saves for the whole team. This is only for working out your margin; it does <b>not</b> change your till or your prices. We will keep adding costings over time.</div>'
+    +(noCost?'<div style="font-size:12px;margin-top:7px;background:#b91c1c;border-radius:8px;padding:6px 9px;font-weight:600;">⚠️ '+noCost+' items still need a cost — tap them to add it.</div>':'')
+    +'</div>';
+  h+='<div class="order-summary-card" onclick="fvRCOpen()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;">'
+    +'<div style="min-width:0;"><div style="font-weight:800;color:#1c4587;">🥪 Make-in-house cost calculator</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">Work out a sandwich/burger material cost from its ingredients</div></div>'
+    +'<div style="font-size:13px;color:#15662f;font-weight:800;white-space:nowrap;">'+(rcn?rcn+' saved ›':'Open ›')+'</div></div>';
+  h+='<input id="cafeMenuSearch" oninput="fvCafeMenuSearch(this.value)" placeholder="🔎 Search the menu…" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:10px;font-size:15px;margin:10px 0;">';
+  h+='<div id="cafeMenuList">'+fvCafeMenuListHTML('')+'</div>';
+  w.innerHTML=h;
+  container.appendChild(w);
+}
 
 function buildList() {
   var container = document.getElementById('viewList');
@@ -2071,6 +2320,12 @@ function buildList() {
   container.appendChild(buildOrderSummaryPanel());
   var blBar = document.createElement('div'); blBar.id = 'buyListBar'; blBar.style.display = 'none';
   container.appendChild(blBar);
+
+  // Go Live — market-run timer (shows in every List mode)
+  var liveBar = document.createElement('div'); liveBar.id = 'fvLiveBar';
+  liveBar.innerHTML = (typeof fvLiveBarHTML === 'function' ? fvLiveBarHTML() : '');
+  container.appendChild(liveBar);
+  if (typeof fvLiveIsOn === 'function' && fvLiveIsOn() && typeof fvLiveEnsureTimer === 'function') fvLiveEnsureTimer();
 
   // Build sorted supplier list — numeric stall first, then non-stall alphabetically
   var supMap = {};
@@ -2092,8 +2347,13 @@ function buildList() {
   var modeWrap = document.createElement('div');
   modeWrap.style.cssText = 'display:flex;gap:6px;margin:6px 0 8px;';
   function modeBtn(key, label){ var on = (mode === key); return '<button onclick="fvSetListMode(\'' + key + '\')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;border:1px solid ' + (on?'#15662f':'#cbd5e1') + ';background:' + (on?'#15662f':'#fff') + ';color:' + (on?'#fff':'#374151') + ';">' + label + '</button>'; }
-  modeWrap.innerHTML = modeBtn('mandi','🍎 Mandi') + modeBtn('grocery','🛒 Grocery');
+  modeWrap.innerHTML = modeBtn('mandi','🍎 Mandi') + modeBtn('grocery','🛒 Grocery') + modeBtn('menu','☕ Café menu');
   container.appendChild(modeWrap);
+
+  // Café menu costings — its own view (not a supplier list)
+  var _sb = document.getElementById('searchBar');
+  if (_sb && typeof _fvActiveId === 'function' && _fvActiveId() === 'viewList') _sb.style.display = (mode === 'menu') ? 'none' : 'block';
+  if (mode === 'menu') { fvRenderCafeMenu(container); if (typeof fvBuyRenderSummary === 'function') fvBuyRenderSummary(); return; }
 
   // Keep only the suppliers for the chosen sub-tab
   suppliers = suppliers.filter(function(s){ return (mode === 'grocery') ? !fvSupIsMandi(s.stall) : fvSupIsMandi(s.stall); });
@@ -2285,7 +2545,10 @@ function refreshRow(idx) {
     buy.classList.add('active');
     buy.textContent = '✓';
     det.className = 'product-detail done';
-    det.textContent = s.buyer + '  ·  ' + s.qty + ' × $' + parseFloat(s.price).toFixed(2) + '  =  $' + (s.qty * s.price).toFixed(2);
+    var buysTag = (s.buys > 1) ? ' · <b>' + s.buys + ' buys</b>' : '';
+    var priceLbl = (s.buys > 1) ? ('~$' + parseFloat(s.price).toFixed(2)) : ('$' + parseFloat(s.price).toFixed(2));
+    det.innerHTML = fvEsc(s.buyer) + '  ·  ' + s.qty + ' × ' + priceLbl + '  =  $' + (s.qty * s.price).toFixed(2) + buysTag
+      + ' <button onclick="fvBuyAgain(' + idx + ',event)" style="margin-left:6px;padding:2px 8px;border:1px solid #15662f;background:#eafaf0;color:#15662f;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Buy again</button>';
   }
 }
 
@@ -2341,9 +2604,10 @@ function openModal(idx) {
   activeModal = idx;
 
   document.getElementById('modalSup').textContent  = p[0].toUpperCase() + (p[1] ? '  ·  STALL ' + p[1] : '');
-  document.getElementById('modalProd').textContent = getProductName(idx);
+  document.getElementById('modalProd').textContent = getProductName(idx) + (window._fvBuyAgain ? '  ·  another purchase' : '');
 
-  var prev = (state[idx] && state[idx].status === 'bought') ? state[idx] : null;
+  // In "Buy again" mode start with blank fields so it logs a NEW purchase rather than editing the last one.
+  var prev = (!window._fvBuyAgain && state[idx] && state[idx].status === 'bought') ? state[idx] : null;
 
   // Buyer buttons
   var grid = document.getElementById('buyerGrid');
@@ -2379,6 +2643,7 @@ function openModal(idx) {
 function closeModal() {
   document.getElementById('buyModal').classList.remove('open');
   activeModal = -1;
+  window._fvBuyAgain = false;
 }
 
 function overlayTap(e) {
@@ -2404,13 +2669,29 @@ function confirmPurchase() {
   if (isNaN(qty)   || qty   <= 0)        { alert('Please enter a valid quantity.'); return; }
   if (isNaN(price) || price < 0)         { alert('Please enter a valid price.'); return; }
 
-  state[activeModal] = { status:'bought', buyer:buyer, qty:qty, price:price };
+  var addAnother = window._fvBuyAgain && state[activeModal] && state[activeModal].status === 'bought';
+  if (addAnother) {
+    // Add a fresh purchase to the same item, keeping the running total exact (weighted-average price).
+    var old = state[activeModal];
+    var totQty   = (old.qty || 0) + qty;
+    var totSpent = (old.qty || 0) * (old.price || 0) + qty * price;
+    var avgPrice = totQty > 0 ? totSpent / totQty : price;
+    state[activeModal] = { status:'bought', buyer:buyer, qty:totQty, price:avgPrice, buys:(old.buys || 1) + 1 };
+  } else {
+    state[activeModal] = { status:'bought', buyer:buyer, qty:qty, price:price, buys:1 };
+  }
+  window._fvBuyAgain = false;
   saveState();
   refreshRow(activeModal);
   refreshSubtotals();
   refreshStats();
   if (typeof fvBuyRenderSummary === 'function') fvBuyRenderSummary();   // update the "Total spent" line at the top
   closeModal();
+}
+function fvBuyAgain(idx, e){
+  if (e && e.stopPropagation) e.stopPropagation();
+  window._fvBuyAgain = true;
+  openModal(idx);
 }
 
 /* ─── SKIP ──────────────────────────────────────────────────────────────── */
@@ -2446,9 +2727,11 @@ function showView(name) {
     });
   }
   var isList = name === 'List';
-  document.getElementById('searchBar').style.display = isList ? 'block' : 'none';
+  // hide the product search in café-menu mode (it has its own in-panel search and no supplier rows to filter)
+  var _menuMode = (typeof fvListMode !== 'undefined' && fvListMode === 'menu');
+  document.getElementById('searchBar').style.display = (isList && !_menuMode) ? 'block' : 'none';
   var mc = document.getElementById('mainContent');
-  mc.className = isList ? 'content' : 'content no-search';
+  mc.className = (isList && !_menuMode) ? 'content' : 'content no-search';
   mc.scrollTop = 0;   // start each tab at the top (the pane is the scroller now)
   var btt = document.getElementById('backToTop');
   if (btt && !isList) btt.classList.remove('show');
@@ -2643,6 +2926,14 @@ function fmtPhone(raw) {
 function loadOrders() { try { var s=localStorage.getItem('mandiOrders2'); return s?JSON.parse(s):{};} catch(e){return{};} }
 function saveOrders(o) { try { localStorage.setItem('mandiOrders2', JSON.stringify(o)); } catch(e){} }
 function orderKey(p) { return p[0] + '||' + p[3]; }
+// Which product keys have been marked 'bought' on the List this run — used to green order lines.
+function fvCOboughtKeys(){
+  var set = {};
+  if (typeof state === 'object' && state) {
+    for (var i = 0; i < PRODUCTS.length; i++) { var s = state[i]; if (s && s.status === 'bought') set[orderKey(PRODUCTS[i])] = true; }
+  }
+  return set;
+}
 function getOrderFor(idx) { var o=loadOrders(); return o[orderKey(PRODUCTS[idx])]||null; }
 
 // ── Unit helpers ────────────────────────────────────────────────────────────
@@ -2998,10 +3289,10 @@ function fvCOrenderOrder(){
   var groups={}; PRODUCTS.forEach(function(p,i){ if(!p[3])return; var s=p[0]||'Other'; (groups[s]=groups[s]||[]).push({i:i,p:p}); });
   var opts='<option value="">— pick a product —</option><option value="__ADD__">➕ Add a product not listed…</option>';
   Object.keys(groups).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}).forEach(function(s){ var g=groups[s]; opts+='<optgroup label="'+fvEsc(s)+(g[0].p[1]?' (stall '+fvEsc(g[0].p[1])+')':'')+'">'; g.forEach(function(x){ opts+='<option value="'+x.i+'">'+fvEsc(x.p[3])+'</option>'; }); opts+='</optgroup>'; });
-  var linesHtml='',total=0;
-  (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt;
-    linesHtml+='<div style="border-top:1px solid #eef0f2;padding:9px 0;">'
-      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+fvEsc(l.name)+'</span>'
+  var linesHtml='',total=0; var _bk=fvCOboughtKeys();
+  (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt; var bought=!!_bk[l.key];
+    linesHtml+='<div style="border-top:1px solid #eef0f2;padding:9px 0;'+(bought?'background:#ecfdf5;border-radius:8px;':'')+'">'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+(bought?'<span title="Bought at the market">✅ </span>':'')+fvEsc(l.name)+'</span>'
       +'<button onclick="fvCOlineDel(\''+ord.id+'\','+i+')" style="background:none;border:none;color:#b91c1c;font-size:16px;cursor:pointer;">✕</button></div>'
       +'<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">'
       +'<input type="number" inputmode="decimal" value="'+(l.qty||0)+'" onchange="fvCOlineQty(\''+ord.id+'\','+i+',this.value)" style="width:62px;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;"><span style="font-size:12px;color:#6b7280;">'+fvEsc(l.unit||'')+'</span>'
@@ -3031,12 +3322,14 @@ function fvCOrenderBulk(){
   keys.sort(function(a,b){ var s=String(agg[a].sup||'').localeCompare(String(agg[b].sup||'')); return s!==0?s:String(agg[a].name||'').localeCompare(String(agg[b].name||'')); });
   var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">🛒 Purchasing — what to buy at the market</div>';
   if(!keys.length){ h+='<div style="color:#9ca3af;font-size:13px;">No open restaurant orders yet.</div>'; }
+  var _bkB=fvCOboughtKeys();
   keys.forEach(function(k){ var a=agg[k],parts=a.parts.map(function(pt){return fvEsc(pt.name)+' '+pt.qty+fvEsc(a.unit||'');}).join(', ');
+    var bought=!!_bkB[k];
     // PURCHASING figure (right): whole boxes for kg products, else the qty in its unit
     var buyTxt = (a.buyBoxes!=null) ? ('buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'')) : (a.qty+fvEsc(a.unit||''));
     var needTxt = a.qty+fvEsc(a.unit||'') + (a.boxKg?(' need'):'') ;
     var spare = (a.buyBoxes!=null && a.spareKg>0) ? (' · '+a.spareKg+'kg spare') : '';
-    h+='<div style="border-top:1px solid #eef0f2;padding:9px 0;"><div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;font-size:14px;">'+fvEsc(a.name)+'</span><span style="font-weight:800;white-space:nowrap;color:#15662f;">'+buyTxt+'</span></div>'
+    h+='<div style="border-top:1px solid #eef0f2;padding:9px 0;'+(bought?'background:#ecfdf5;border-radius:8px;':'')+'"><div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;font-size:14px;'+(bought?'color:#15803d;':'')+'">'+(bought?'✅ ':'')+fvEsc(a.name)+'</span><span style="font-weight:800;white-space:nowrap;color:'+(bought?'#15803d':'#15662f')+';">'+(bought?'bought':buyTxt)+'</span></div>'
       +'<div style="font-size:11px;color:#6b7280;margin-top:2px;">'+(a.boxKg?('restaurants need '+a.qty+'kg ('+a.boxKg+'kg/box)'+spare+' · '):'')+parts+'</div></div>';
   });
   // ① Shop's own buy-list (added on the List tab with +) shown here too, so this is the full picture
@@ -6769,7 +7062,7 @@ function fvStatePull(){ return fvBlobGet('runstate').then(function(d){ if(d&&typ
 function fvCustomProdPull(){ return fvJsonGet('customproducts').then(function(arr){ if(Array.isArray(arr)){ try{localStorage.setItem('mandiCustomProducts',JSON.stringify(arr));}catch(e){} if(typeof rebuildProducts==='function')rebuildProducts(); if(_fvActiveId()==='viewList'&&typeof buildList==='function')buildList(); } }); }
 function fvHistoryPull(){ return fvJsonGet('history').then(function(h){ if(h&&typeof h==='object'){ try{localStorage.setItem('mandiHistory',JSON.stringify(h));}catch(e){} } }); }
 function fvRecipesPull(){ return fvJsonGet('recipes').then(function(r){ if(r&&typeof r==='object'){ try{localStorage.setItem('mandiRecipes',JSON.stringify(r));}catch(e){} if(document.getElementById('fvRCOverlay')&&typeof fvRCrender==='function') fvRCrender(); } }); }
-function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); }
+function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); fvMenuCostsPull(); }
 function fvSharedSeed(){
   if(!fvBlobOn())return;
   fvBlobGet('sell').then(function(d){ if(d===null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
@@ -6777,6 +7070,7 @@ function fvSharedSeed(){
   fvBlobGet('customproducts').then(function(d){ if(d===null){ var c=(typeof loadCustomProducts==='function')?loadCustomProducts():null; if(c&&c.length) fvJsonPush('customproducts',c); } });
   fvBlobGet('history').then(function(d){ if(d===null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
   fvBlobGet('recipes').then(function(d){ if(d===null){ var r=(typeof fvRCload==='function')?fvRCload():null; if(r&&Object.keys(r).length) fvJsonPush('recipes',r); } });
+  fvBlobGet('menucosts').then(function(d){ if(d===null){ var mc=(typeof fvMenuCostsLoad==='function')?fvMenuCostsLoad():null; if(mc&&Object.keys(mc).length) fvJsonPush('menucosts',mc); } });
 }
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
