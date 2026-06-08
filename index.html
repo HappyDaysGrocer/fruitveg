@@ -7987,8 +7987,7 @@ function fvFinEyeBarHTML(targetView){
   var bl = fvBlurAmountsOn();
   var btnStyle = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid #15662f;background:#eafaf0;color:#15662f;border-radius:999px;font-size:13px;font-weight:800;cursor:pointer;';
   return '<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:2px 0 8px;">'
-    + '<button id="fvBlurBtn" onclick="fvToggleBlurAmounts()" style="' + btnStyle + '">' + (bl ? '👁️ Show amounts' : '🙈 Hide amounts') + '</button>'
-    + '<button onclick="fvFinHide()" style="' + btnStyle + '">🙈 Hide numbers</button></div>';
+    + '<button id="fvBlurBtn" onclick="fvToggleBlurAmounts()" style="' + btnStyle + '">' + (bl ? '👁️ Show amounts' : '🙈 Hide amounts') + '</button></div>';
 }
 function fvFinHide(){
   window._fvFinUnlocked = false;
