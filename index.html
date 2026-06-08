@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v112';
+var APP_BUILD = 'v113';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6038,25 +6038,33 @@ var FV_BAKERY_KW = /croissant|cake|slice|brownie|danish|cookie|muffin|tart|pastr
 function fvIsBakery(name){ return FV_BAKERY_KW.test(String(name||'')); }
 // Weekly buy seeded from the recent Baker Boys invoices (owner can adjust per item).
 var FV_BAKERY_BUY_SEED = { 'Almond Croissant':30, 'Croissant- Choc Almond':26, 'Croissant- Chocolate':8, 'Plain Croissant':12 };
+/* The 90-day EPOS export ends 4 Jun 2026, but real trading only began in May
+   (Feb $113, Mar $260, Apr $196, May $18,466) — so ~all sales happened over
+   ~5 weeks (1 May–4 Jun), not 12.9. Divide item qty by ACTIVE weeks so the
+   sold/week rate reflects how the shop actually trades now. Refresh when a
+   newer EPOS export is loaded. */
+var FV_EPOS_ACTIVE_WEEKS = 5;
 function fvBakeryBuyLoad(){ try { return JSON.parse(localStorage.getItem('mandiBakeryBuy')||'{}'); } catch(e){ return {}; } }
 function fvBakeryBuySave(o){ try { localStorage.setItem('mandiBakeryBuy', JSON.stringify(o)); } catch(e){} if (typeof fvJsonPush === 'function') fvJsonPush('bakerybuy', o); }
 function fvBakeryBuyPull(){ if (typeof fvJsonGet !== 'function') return Promise.resolve(); return fvJsonGet('bakerybuy').then(function(r){ if (r && typeof r === 'object'){ try { localStorage.setItem('mandiBakeryBuy', JSON.stringify(r)); } catch(e){} var el = document.getElementById('plBakery'); if (el) el.innerHTML = fvBakeryWasteHTML(); } }); }
 function fvBakeryWasteHTML(){
   if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '';
   var ov = fvBakeryBuyLoad();
-  var weeks = 90/7;
+  var weeks = (typeof FV_EPOS_ACTIVE_WEEKS === 'number' && FV_EPOS_ACTIVE_WEEKS > 0) ? FV_EPOS_ACTIVE_WEEKS : 90/7;
   var items = EPOS90.items.filter(function(it){ return fvIsBakery(it.name) && (it.qty||0) > 0; });
   if (!items.length) return '';
   items.sort(function(a,b){ return b.revIncVAT - a.revIncVAT; });
   var rows='', totWasteYr=0, totSoldRev=0, anyBuy=false;
   items.forEach(function(it){
-    var soldWk = it.qty / weeks;
     var costEa = it.qty > 0 ? (it.cost||0)/it.qty : 0;
     var sellEa = it.qty > 0 ? it.revIncVAT/it.qty : 0;
     totSoldRev += it.revIncVAT;
-    var setVal = (ov[it.name] != null && ov[it.name] !== '') ? parseFloat(ov[it.name]) : null;
-    var seeded = (setVal == null) && (FV_BAKERY_BUY_SEED[it.name] != null);
-    var buyWk = setVal != null ? setVal : (seeded ? FV_BAKERY_BUY_SEED[it.name] : null);
+    var rec = ov[it.name];
+    var recB = (rec && typeof rec === 'object') ? rec.b : (typeof rec === 'number' ? rec : null);
+    var recS = (rec && typeof rec === 'object' && rec.s != null) ? rec.s : null;
+    var seeded = (recB == null) && (FV_BAKERY_BUY_SEED[it.name] != null);
+    var buyWk = (recB != null) ? recB : (seeded ? FV_BAKERY_BUY_SEED[it.name] : null);
+    var soldWk = (recS != null) ? recS : (it.qty / weeks);
     var wasteWk = (buyWk != null) ? Math.max(0, buyWk - soldWk) : null;
     var wasteYr = (wasteWk != null) ? wasteWk * costEa * 52 : 0;
     if (buyWk != null) { anyBuy = true; totWasteYr += wasteYr; }
@@ -6066,24 +6074,32 @@ function fvBakeryWasteHTML(){
     else tail = ' · <span style="color:#15803d;">selling it all 👍</span>';
     rows += '<div onclick="fvBakerySetBuy(' + fvJsArg(it.name) + ')" style="padding:7px 0;border-bottom:1px solid #f3f4f6;cursor:pointer;">'
       + '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#111;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + '</span><span style="color:#cbd5e1;">›</span></div>'
-      + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">Sell $' + sellEa.toFixed(2) + ' · sold ~' + soldWk.toFixed(1) + '/wk'
-        + (buyWk != null ? (' · buy <b style="color:#374151;">' + buyWk + '/wk</b>' + (seeded ? ' <span style="color:#9ca3af;">(from invoices)</span>' : '')) : '')
+      + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">Sell $' + sellEa.toFixed(2) + ' · sold ' + (recS != null ? ('<b style="color:#374151;">' + soldWk + '</b>/wk <span style="color:#9ca3af;">(yours)</span>') : ('~' + soldWk.toFixed(1) + '/wk'))
+        + (buyWk != null ? (' · buy <b style="color:#374151;">' + buyWk + '/wk</b>' + (seeded ? ' <span style="color:#9ca3af;">(invoices)</span>' : '')) : '')
         + tail + '</div></div>';
   });
   return '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;margin-top:8px;">'
     + '<div style="font-weight:800;font-size:15px;color:#0d4420;">🥐 Bakery wastage — bought vs sold</div>'
-    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;line-height:1.5;">Bakery items only last a few days — anything bought but not sold is <b>waste</b>. <b>Sold/week</b> is the till average over the last 90 days. Tap an item to set how many you <b>buy per week</b>; we’ll estimate the waste and what it costs you a year. <i>If your sales have grown recently the real waste is lower — adjust the buy number or ask me to refresh the sales figure.</i></div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;line-height:1.5;">Bakery items only last a few days — anything bought but not sold is <b>waste</b>. <b>Sold/week</b> is your real till rate over the ~5 active trading weeks since May (not dragged down by the quiet Feb–Apr). Tap an item to set how many you <b>buy per week</b> (croissants are pre-filled from your recent invoices); we’ll estimate the waste and what it costs you a year. Adjust the buy to a normal week for the truest figure.</div>'
     + rows
     + (anyBuy ? '<div style="display:flex;justify-content:space-between;font-weight:800;color:#0d4420;border-top:2px solid #0d4420;margin-top:6px;padding-top:6px;font-size:13px;"><span>Estimated bakery waste</span><span style="color:#b91c1c;">≈ $' + totWasteYr.toFixed(0) + '/yr</span></div>' : '')
     + '</div>';
 }
 function fvBakerySetBuy(name){
   var ov = fvBakeryBuyLoad();
-  var cur = (ov[name] != null && ov[name] !== '') ? ov[name] : (FV_BAKERY_BUY_SEED[name] != null ? FV_BAKERY_BUY_SEED[name] : '');
-  var v = prompt('How many "' + name + '" do you BUY per week?  (blank = clear)', cur);
-  if (v === null) return; v = String(v).trim();
-  if (v === '') { delete ov[name]; }
-  else { var n = parseFloat(v); if (isNaN(n) || n < 0) { alert('Please enter a number, e.g. 20'); return; } ov[name] = n; }
+  var rec = ov[name];
+  var curB = (rec && typeof rec === 'object') ? rec.b : (typeof rec === 'number' ? rec : (FV_BAKERY_BUY_SEED[name] != null ? FV_BAKERY_BUY_SEED[name] : ''));
+  var b = prompt('How many "' + name + '" do you BUY per week?  (blank = remove this item)', curB);
+  if (b === null) return; b = String(b).trim();
+  if (b === '') { delete ov[name]; fvBakeryBuySave(ov); var e0 = document.getElementById('plBakery'); if (e0) e0.innerHTML = fvBakeryWasteHTML(); return; }
+  var nb = parseFloat(b); if (isNaN(nb) || nb < 0) { alert('Please enter a number, e.g. 20'); return; }
+  var est = '';
+  try { if (typeof EPOS90 !== 'undefined' && EPOS90.items){ var w = (typeof FV_EPOS_ACTIVE_WEEKS === 'number' && FV_EPOS_ACTIVE_WEEKS > 0) ? FV_EPOS_ACTIVE_WEEKS : 90/7; for (var i=0;i<EPOS90.items.length;i++){ if (EPOS90.items[i].name === name){ est = (EPOS90.items[i].qty / w).toFixed(1); break; } } } } catch(e){}
+  var curS = (rec && typeof rec === 'object' && rec.s != null) ? rec.s : '';
+  var s = prompt('How many "' + name + '" do you actually SELL per week?\n(Blank = use the till estimate' + (est ? ' of about ' + est : '') + ')', curS);
+  var out = { b: nb };
+  if (s !== null) { s = String(s).trim(); if (s !== '') { var ns = parseFloat(s); if (!isNaN(ns) && ns >= 0) out.s = ns; } }
+  ov[name] = out;
   fvBakeryBuySave(ov);
   var el = document.getElementById('plBakery'); if (el) el.innerHTML = fvBakeryWasteHTML();
 }
