@@ -1819,7 +1819,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v94';
+var APP_BUILD = 'v95';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5608,97 +5608,10 @@ function buildPLView() {
   var pv = document.getElementById('viewPL');
   pv.innerHTML = '';
   if (typeof fvDateRangeBannerHTML === 'function') { var drb = fvDateRangeBannerHTML(); if (drb) { var drd = document.createElement('div'); drd.innerHTML = drb; pv.appendChild(drd); } }
-  var epos = loadEPOS();
-  var dates = Object.keys(epos).sort().reverse();
-
-  // Import bar
-  var importBar = document.createElement('div');
-  importBar.className = 'pl-import-bar';
-  importBar.innerHTML =
-    '<input type="file" id="plFileInput" accept=".csv,.xls,.xlsx">' +
-    '<button class="pl-import-btn" onclick="document.getElementById(\'plFileInput\').click()">📂 Import EPOS CSV</button>';
-
-  if (dates.length) {
-    var sel = document.createElement('select');
-    sel.className = 'pl-date-select';
-    sel.id = 'plDateSel';
-    dates.forEach(function(d) {
-      var opt = document.createElement('option');
-      var dayLabel = new Date(d + 'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
-      opt.value = d; opt.textContent = dayLabel + ' — ' + epos[d].fileName.split('_').slice(0,4).join('_');
-      sel.appendChild(opt);
-    });
-    sel.addEventListener('change', function(){ renderPLDay(this.value); });
-    importBar.appendChild(sel);
-  }
-  pv.appendChild(importBar);
-
-  // Realistic P&L panel (money in − stock − running costs = net profit) — bank-fed,
-  // independent of which EPOS day is picked, and shown even before any EPOS import.
+  // ONE simple dashboard — month-tabbed: Sales (from till) · running costs · net profit.
   var netDiv = document.createElement('div'); netDiv.id = 'plNetPanel'; netDiv.style.marginTop = '8px';
   pv.appendChild(netDiv);
-  if (typeof fvPLNetRender === 'function') fvPLNetRender();   // combined: sales (till) + running costs + net, month-tabbed
-
-  // Bank-statement money in/out from the uploaded screenshots (BANK_TX) — tap for the full breakdown
-  if (typeof fvCashflowButtonHTML === 'function') {
-    var cfHTML = fvCashflowButtonHTML();
-    if (cfHTML) { var cfWrap = document.createElement('div'); cfWrap.style.marginTop = '8px'; cfWrap.innerHTML = cfHTML; pv.appendChild(cfWrap); }
-  }
-
-  // File input handler
-  document.getElementById('plFileInput').addEventListener('change', function() {
-    var file = this.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      var date = importEPOSCSV(e.target.result, file.name);
-      if (date) {
-        alert('Imported ' + file.name + ' for ' + date + '!');
-        buildPLView();
-        renderPLDay(date);
-      }
-    };
-    reader.readAsText(file);
-    this.value = '';
-  });
-
-  if (!dates.length) {
-    var em = document.createElement('div'); em.className = 'pl-empty';
-    em.innerHTML = 'No sales data imported yet.<br><br>Tap <strong>Import EPOS CSV</strong> and select your DailySales CSV file.';
-    pv.appendChild(em);
-    return;
-  }
-
-  // Category filter
-  var cats = document.createElement('div');
-  cats.className = 'pl-cats';
-  cats.id = 'plCats';
-  [['all','All'],['produce','🥦 Produce'],['cafe','☕ Café'],['other','🛒 Grocery']].forEach(function(c) {
-    var btn = document.createElement('button');
-    btn.className = 'pl-cat-btn' + (plFilter === c[0] ? ' active' : '');
-    btn.textContent = c[1];
-    btn.addEventListener('click', function() {
-      plFilter = c[0];
-      document.querySelectorAll('.pl-cat-btn').forEach(function(b){b.classList.remove('active');});
-      btn.classList.add('active');
-      renderPLDay(_plCurrentDate);
-    });
-    cats.appendChild(btn);
-  });
-  pv.appendChild(cats);
-
-  // Search box (DOM-built so it doesn't wipe the category/import listeners)
-  var srch = document.createElement('input');
-  srch.id = 'plSearch'; srch.className = 'pl-search'; srch.type = 'text';
-  srch.placeholder = '🔍 Search products…'; srch.value = plSearchTerm || '';
-  srch.addEventListener('input', function(){ plSearchTerm = this.value.toLowerCase(); renderPLDay(_plCurrentDate); });
-  pv.appendChild(srch);
-
-  // Summary + table containers
-  var sumD = document.createElement('div'); sumD.id = 'plSummary'; sumD.className = 'pl-summary'; pv.appendChild(sumD);
-  var tblD = document.createElement('div'); tblD.id = 'plTable'; pv.appendChild(tblD);
-
-  renderPLDay(dates[0]);
+  if (typeof fvPLNetRender === 'function') fvPLNetRender();
 }
 
 function renderPLDay(date) {
