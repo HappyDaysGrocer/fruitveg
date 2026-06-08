@@ -1819,7 +1819,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v96';
+var APP_BUILD = 'v97';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2926,6 +2926,18 @@ function fvCORender(){
   else ov.innerHTML=fvCOrenderList();
 }
 function fvCObackBtn(view,label,cust){ return '<div style="margin-bottom:8px;"><button onclick="fvCOnav(\''+view+'\''+(cust?',\''+cust+'\'':'')+')" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;padding:4px 0;">‹ '+label+'</button></div>'; }
+function fvCOShopListHTML(){
+  if (typeof fvBuyLoad !== 'function') return '';
+  var m = fvBuyLoad(), items = [];
+  Object.keys(m).forEach(function(idx){ if (m[idx] > 0 && PRODUCTS[idx]) items.push({ name:PRODUCTS[idx][3], q:m[idx], sup:PRODUCTS[idx][0] }); });
+  if (!items.length) return '';
+  var rows = items.map(function(s){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>' + fvEsc(s.name) + ' <span style="color:#9ca3af;">· ' + fvEsc(s.sup) + '</span></span><span style="font-weight:700;">' + s.q + '</span></div>'; }).join('');
+  return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</span></div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Selected on the List tab with the +/− buttons</div>'
+    + rows
+    + '<button onclick="fvCOnav(\'bulk\')" style="width:100%;padding:8px;background:#15662f;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-top:8px;">See full purchasing list ›</button></div>';
+}
 function fvCOrenderList(){
   var custs=fvCOloadCust(),orders=fvCOloadOrders();
   var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
@@ -2933,7 +2945,8 @@ function fvCOrenderList(){
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
     +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button>'
     +'<button onclick="fvCOnewSupplier()" style="flex:1;min-width:140px;padding:11px;background:#7a4f1d;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏪 New supplier</button></div>';
-  if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one.</div>';
+  h += (typeof fvCOShopListHTML === 'function' ? fvCOShopListHTML() : '');   // List-selected items show here too
+  if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one, or your shop buy list shows above.</div>';
   ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
     var oc=open?(open.lines||[]).length:0;
     h+='<div class="order-summary-card">'
@@ -5620,14 +5633,48 @@ function fvEposSalesCardHTML(){
     + '</div>';
 }
 
+/* Item-level sales search/filter (Fruit & Veg / Café / Grocery), from the
+   90-day EPOS product data — sits under the monthly panel in the one P&L. */
+var _plItemFilter = 'all', _plItemSearch = '';
+function fvPLItemRows(){
+  if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No sales data yet.</div>';
+  var items = EPOS90.items.filter(function(it){
+    var cat = (typeof detectCategory === 'function') ? detectCategory(it.name) : 'other';
+    var catOk = (_plItemFilter === 'all') || (cat === _plItemFilter);
+    var sOk = !_plItemSearch || String(it.name).toLowerCase().indexOf(_plItemSearch) >= 0;
+    return catOk && sOk && (it.revIncVAT || 0) > 0;
+  });
+  items.sort(function(a,b){ return b.revIncVAT - a.revIncVAT; });
+  var totRev=0, totQty=0, rows='';
+  items.forEach(function(it){ totRev += it.revIncVAT; totQty += it.qty;
+    rows += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + ' <span style="color:#9ca3af;">×' + it.qty + '</span></span><span style="white-space:nowrap;font-weight:700;">$' + Number(it.revIncVAT).toFixed(2) + '</span></div>';
+  });
+  var head = '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#0d4420;border-bottom:2px solid #0d4420;padding-bottom:4px;margin-bottom:2px;"><span>' + items.length + ' items · ' + totQty + ' sold</span><span>$' + totRev.toFixed(2) + '</span></div>';
+  return head + (rows || '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No items match.</div>');
+}
+function fvPLItemsHTML(){
+  if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '';
+  var cats = [['all','All'],['produce','🥦 Fruit & Veg'],['cafe','☕ Café'],['other','🛒 Grocery']];
+  var btns = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;">' + cats.map(function(c){ return '<button onclick="fvPLItemsSetCat(\'' + c[0] + '\')" style="' + fvPLNetBtnStyle(_plItemFilter === c[0]) + '">' + c[1] + '</button>'; }).join('') + '</div>';
+  var srch = '<input type="text" value="' + String(_plItemSearch).replace(/"/g,'&quot;') + '" oninput="fvPLItemsSearch(this.value)" placeholder="🔍 Search products…" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">';
+  return '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;margin-top:8px;">'
+    + '<div style="font-weight:800;font-size:15px;color:#0d4420;">🔎 Item sales — search by type</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;">Last 90 days · filter Fruit &amp; Veg / Café / Grocery, or search a product</div>'
+    + btns + srch + '<div id="plItemList">' + fvPLItemRows() + '</div></div>';
+}
+function fvPLItemsSetCat(c){ _plItemFilter = c; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
+function fvPLItemsSearch(v){ _plItemSearch = String(v||'').toLowerCase(); var sc = document.getElementById('plItemList'); if (sc) sc.innerHTML = fvPLItemRows(); }
+
 function buildPLView() {
   var pv = document.getElementById('viewPL');
   pv.innerHTML = '';
   if (typeof fvDateRangeBannerHTML === 'function') { var drb = fvDateRangeBannerHTML(); if (drb) { var drd = document.createElement('div'); drd.innerHTML = drb; pv.appendChild(drd); } }
-  // ONE simple dashboard — month-tabbed: Sales (from till) · running costs · net profit.
+  // ONE dashboard — month-tabbed Sales · running costs · net profit, then item search/filter.
   var netDiv = document.createElement('div'); netDiv.id = 'plNetPanel'; netDiv.style.marginTop = '8px';
   pv.appendChild(netDiv);
   if (typeof fvPLNetRender === 'function') fvPLNetRender();
+  var itDiv = document.createElement('div'); itDiv.id = 'plItems'; pv.appendChild(itDiv);
+  if (typeof fvPLItemsHTML === 'function') itDiv.innerHTML = fvPLItemsHTML();
 }
 
 function renderPLDay(date) {
