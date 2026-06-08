@@ -1721,7 +1721,7 @@ function toggleOffSeason(idx) {
   saveOffSeason(o);
   refreshOffSeason(idx);
   // Also clear buy/skip if marking off-season
-  if (o[idx] && state[idx]) { delete state[idx]; saveState(); refreshRow(idx); refreshSubtotals(); refreshStats(); }
+  if (o[idx] && state[idx]) { delete state[idx]; saveState(); fvStateForget([idx]); refreshRow(idx); refreshSubtotals(); refreshStats(); }
 }
 
 function refreshOffSeason(idx) {
@@ -1822,11 +1822,17 @@ function saveState() {
   try { localStorage.setItem('mandiRun2', JSON.stringify(state)); } catch(e) {}
   if (typeof fvBlobSend === 'function') fvBlobSend('runstate', state, 'PATCH');   // share Done/bought records with the team
 }
+// Tell the team to DELETE these run-state records too (PATCH won't drop missing
+// keys, so a reset/un-skip must explicitly null them or they'd resurrect on sync).
+function fvStateForget(keys){
+  if (typeof fvBlobSend !== 'function' || !keys || !keys.length) return;
+  var b = {}; keys.forEach(function(k){ b[k] = null; }); fvBlobSend('runstate', b, 'PATCH');
+}
 
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v100';
+var APP_BUILD = 'v101';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2408,9 +2414,11 @@ function confirmPurchase() {
 /* ─── SKIP ──────────────────────────────────────────────────────────────── */
 
 function toggleSkip(idx) {
-  if (state[idx] && state[idx].status === 'skipped') delete state[idx];
+  var wasDel = false;
+  if (state[idx] && state[idx].status === 'skipped') { delete state[idx]; wasDel = true; }
   else state[idx] = { status:'skipped' };
   saveState();
+  if (wasDel) fvStateForget([idx]);
   refreshRow(idx);
   refreshSubtotals();
   refreshStats();
@@ -2558,8 +2566,10 @@ function buildTotals() {
 function confirmReset() {
   if (!fvAllowed('resetRun','Reset for a new run')) return;
   if (confirm('Reset all ticks and quantities for a new run?\n\nThis cannot be undone.')) {
+    var oldKeys = Object.keys(state);
     state = {};
     saveState();
+    fvStateForget(oldKeys);   // clear the cleared records on the team server too
     buildList();
     showView('List');
   }
@@ -6760,11 +6770,11 @@ function fvRecipesPull(){ return fvJsonGet('recipes').then(function(r){ if(r&&ty
 function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); }
 function fvSharedSeed(){
   if(!fvBlobOn())return;
-  fvBlobGet('sell').then(function(d){ if(d==null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
-  fvBlobGet('runstate').then(function(d){ if(d==null){ if(typeof state==='object'&&state&&Object.keys(state).length) fvBlobSend('runstate',state,'PATCH'); } });
-  fvBlobGet('customproducts').then(function(d){ if(d==null){ var c=(typeof loadCustomProducts==='function')?loadCustomProducts():null; if(c&&c.length) fvJsonPush('customproducts',c); } });
-  fvBlobGet('history').then(function(d){ if(d==null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
-  fvBlobGet('recipes').then(function(d){ if(d==null){ var r=(typeof fvRCload==='function')?fvRCload():null; if(r&&Object.keys(r).length) fvJsonPush('recipes',r); } });
+  fvBlobGet('sell').then(function(d){ if(d===null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
+  fvBlobGet('runstate').then(function(d){ if(d===null){ if(typeof state==='object'&&state&&Object.keys(state).length) fvBlobSend('runstate',state,'PATCH'); } });
+  fvBlobGet('customproducts').then(function(d){ if(d===null){ var c=(typeof loadCustomProducts==='function')?loadCustomProducts():null; if(c&&c.length) fvJsonPush('customproducts',c); } });
+  fvBlobGet('history').then(function(d){ if(d===null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
+  fvBlobGet('recipes').then(function(d){ if(d===null){ var r=(typeof fvRCload==='function')?fvRCload():null; if(r&&Object.keys(r).length) fvJsonPush('recipes',r); } });
 }
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
