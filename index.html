@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v106';
+var APP_BUILD = 'v107';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6078,7 +6078,7 @@ function buildPLView() {
   var pv = document.getElementById('viewPL');
   if (typeof fvFinLockWire === 'function') fvFinLockWire();
   if (typeof fvFinUnlocked === 'function' && !fvFinUnlocked()) { pv.innerHTML = fvFinLockedHTML('PL'); return; }
-  pv.innerHTML = '';
+  pv.innerHTML = (typeof fvFinEyeBarHTML === 'function' ? fvFinEyeBarHTML('PL') : '');
   if (typeof fvDateRangeBannerHTML === 'function') { var drb = fvDateRangeBannerHTML(); if (drb) { var drd = document.createElement('div'); drd.innerHTML = drb; pv.appendChild(drd); } }
   // ONE dashboard — month-tabbed Sales · running costs · net profit, then item search/filter.
   var netDiv = document.createElement('div'); netDiv.id = 'plNetPanel'; netDiv.style.marginTop = '8px';
@@ -6619,7 +6619,7 @@ function buildSpendView() {
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
   html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">📂 Tap a supplier to open it, then tap <strong>👁️ View</strong> or <strong>⬇️ Download</strong> on any invoice. Opens in Google Drive — sign in with your shop Google account on your phone.</div>';
   html += '<div style="font-size:11px;color:#6b7280;margin-top:8px;">“Income” is your total shop sales. Linking income to one supplier needs product→supplier tagging — ask me and I’ll set it up.</div>';
-  v.innerHTML = html;
+  v.innerHTML = (typeof fvFinEyeBarHTML === 'function' ? fvFinEyeBarHTML('Spend') : '') + html;
   window._spendSuppliers = supList;
   renderSpendRows();
 }
@@ -7887,11 +7887,22 @@ function fvFinLockWire(){
 function fvFinLockedHTML(targetView){
   var what = (targetView === 'Spend') ? 'money &amp; expenses' : 'profit &amp; loss';
   return '<div style="max-width:430px;margin:26px auto;text-align:center;padding:24px;">'
-    + '<div style="font-size:46px;line-height:1;">🔒</div>'
+    + '<div style="font-size:46px;line-height:1;">🙈</div>'
     + '<div style="font-size:19px;font-weight:800;color:#0d4420;margin:10px 0 4px;">The ' + what + ' numbers are hidden</div>'
-    + '<div style="font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:18px;">For privacy these figures are hidden by default. Enter <b>your own password</b> to view them.</div>'
-    + '<button onclick="fvFinUnlockPrompt(\'' + targetView + '\')" style="width:100%;max-width:300px;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">🔓 Enter my password to view</button>'
-    + '<div style="font-size:12px;color:#9ca3af;margin-top:14px;line-height:1.5;">It locks again when you leave the app, switch away, or log out.</div></div>';
+    + '<div style="font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:18px;">Numbers are hidden by default. Tap the eye and enter <b>your own password</b> to show them.</div>'
+    + '<button onclick="fvFinUnlockPrompt(\'' + targetView + '\')" style="width:100%;max-width:300px;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">👁️ Show numbers</button>'
+    + '<div style="font-size:12px;color:#9ca3af;margin-top:14px;line-height:1.5;">They hide again when you tap the eye, leave the app, or log out.</div></div>';
+}
+// Eye toggle shown at the top of the UNLOCKED finance views — tap to hide the numbers again.
+function fvFinEyeBarHTML(targetView){
+  return '<div style="display:flex;justify-content:flex-end;margin:2px 0 8px;">'
+    + '<button onclick="fvFinHide()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid #15662f;background:#eafaf0;color:#15662f;border-radius:999px;font-size:13px;font-weight:800;cursor:pointer;">👁️ Hide numbers</button></div>';
+}
+function fvFinHide(){
+  window._fvFinUnlocked = false;
+  var a = (typeof _fvActiveId === 'function') ? _fvActiveId() : '';
+  if (a === 'viewSpend' && typeof buildSpendView === 'function') buildSpendView();
+  else if (typeof buildPLView === 'function') buildPLView();
 }
 function fvFinUnlockPrompt(targetView){
   if (!fvSession) { alert('Please sign in first.'); return; }
