@@ -1819,7 +1819,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v95';
+var APP_BUILD = 'v96';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5483,6 +5483,14 @@ function fvBankByCat(monthFilter){
 }
 /* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
 var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":6292.56,"items":1504,"mp":0.533,"bad":0}};
+var FV_MONTHLY_RENT = 7262.75;   // rent is accrued evenly to EVERY calendar month (paid ~22nd)
+function fvPanelMonths(){
+  var s = {};
+  if (typeof EPOS_MONTHLY !== 'undefined') Object.keys(EPOS_MONTHLY).forEach(function(k){ s[k] = 1; });
+  var bc = (typeof fvBankCompute === 'function') ? fvBankCompute() : null;
+  if (bc && bc.byMonth) Object.keys(bc.byMonth).forEach(function(k){ s[k] = 1; });
+  return Object.keys(s).sort();
+}
 function fvEposForMonth(selMonth){
   if (typeof EPOS_MONTHLY === 'undefined') return null;
   if (selMonth){ var m = EPOS_MONTHLY[selMonth]; return m ? { sales:m.sales, items:m.items, mp:m.mp } : null; }
@@ -5505,6 +5513,14 @@ function fvPLNet(selMonth){
   var other = 0;
   Object.keys(bc).forEach(function(code){ if (!classified[code]) other += (bc[code].out || 0); });
   if (other > 0){ items.push({ label:'Other running costs', amt:other, code:'__other' }); running += other; }
+  // Rent: every calendar month carries one fixed monthly rent allowance (real rent is
+  // paid ~22nd; bank timing can put 0 or 2 payments in a month — this evens it out).
+  var rentMonths = selMonth ? 1 : Math.max(1, (typeof fvPanelMonths === 'function' ? fvPanelMonths().length : 1));
+  var rentAllow = FV_MONTHLY_RENT * rentMonths;
+  var bankRent = 0;
+  items = items.filter(function(it){ if (it.code === 'RENT'){ bankRent += it.amt; return false; } return true; });
+  running = running - bankRent + rentAllow;
+  items.push({ label:'Rent (monthly allowance)' + (rentMonths > 1 ? ' ×' + rentMonths : ''), amt:rentAllow, code:'RENT' });
   items.sort(function(a,b){ return b.amt - a.amt; });
   var gross = revenue - goods, net = gross - running;
   return { revenue:revenue, fromTill:!!epos, soldItems:(epos?epos.items:null), marginPerc:(epos?epos.mp:null), goods:goods, gross:gross, running:running, net:net, items:items, start:(b?b.periodStart:null), end:(b?b.periodEnd:null) };
@@ -5557,7 +5573,7 @@ function fvPLNetPanelHTML(selMonth){
       h += '<div' + attr + '><span>' + it.label + (drillable ? ' <span style="color:#1c4587;font-weight:700;">›</span>' : '') + ' <span style="color:#9ca3af;font-size:11px;">' + pct.toFixed(0) + '%</span></span><span style="font-weight:700;">' + money(it.amt) + '</span></div>';
     });
   }
-  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = sales − stock bought − running costs. <strong>Sales</strong> are real till takings (include CASH). <strong>Costs</strong> come from the bank feed, which is fullest from April on — earlier months may show fewer costs. One-off shop fit-out isn’t counted here (see Capital &amp; bank).</div>'
+  h += '<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.55;">Net profit = sales − stock bought − running costs. <strong>Sales</strong> are real till takings (include CASH). <strong>Rent</strong> is charged as a fixed monthly allowance (' + money(FV_MONTHLY_RENT) + ') to every calendar month, even though it’s paid around the 22nd — so each month carries its rent. Other <strong>costs</strong> come from the bank feed, fullest from April on. One-off shop fit-out isn’t counted here (see Capital &amp; bank).</div>'
     + '</div>';
   return h;
 }
