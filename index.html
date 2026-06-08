@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v105';
+var APP_BUILD = 'v106';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6076,6 +6076,8 @@ function fvRCdel(id){ if(!confirm('Delete this recipe?'))return; var o=fvRCload(
 
 function buildPLView() {
   var pv = document.getElementById('viewPL');
+  if (typeof fvFinLockWire === 'function') fvFinLockWire();
+  if (typeof fvFinUnlocked === 'function' && !fvFinUnlocked()) { pv.innerHTML = fvFinLockedHTML('PL'); return; }
   pv.innerHTML = '';
   if (typeof fvDateRangeBannerHTML === 'function') { var drb = fvDateRangeBannerHTML(); if (drb) { var drd = document.createElement('div'); drd.innerHTML = drb; pv.appendChild(drd); } }
   // ONE dashboard — month-tabbed Sales · running costs · net profit, then item search/filter.
@@ -6570,6 +6572,8 @@ function fvJanSummaryHTML(){
 
 function buildSpendView() {
   var v = document.getElementById('viewSpend'); if (!v) return;
+  if (typeof fvFinLockWire === 'function') fvFinLockWire();
+  if (typeof fvFinUnlocked === 'function' && !fvFinUnlocked()) { v.innerHTML = fvFinLockedHTML('Spend'); return; }
   if (typeof SHOP_INVOICES === 'undefined') { v.innerHTML = '<div class="manage-card">No invoice data yet.</div>'; return; }
   var supp = {}, unknownCount = 0;
   SHOP_INVOICES.forEach(function(iv){
@@ -7850,15 +7854,66 @@ function fvIsOwner()     { return fvCurrentRole() === 'owner'; }
      • Infinity → still building, no date set yet
    Remove a name entirely to give immediate, permanent access.
    Jaswinder ("Rinku") unlocks Tue 9 Jun 2026 2:00am Melbourne (AEST = 8 Jun 16:00 UTC). */
-var FV_FINANCE_UNLOCK = {
-  jaswinder: Date.UTC(2026, 5, 8, 16, 0, 0),   // Tue 9 Jun 2:00am Melbourne
-  rajiv:     Date.UTC(2026, 5, 8, 16, 0, 0)     // Tue 9 Jun 2:00am Melbourne (same schedule)
-};
+/* All 6 team accounts may access the finance pages — but the NUMBERS are hidden
+   behind a password re-entry (see the fvFin* lock below), so a left-open phone
+   doesn't expose the books. (Replaced the old scheduled per-user unlock.) */
+var FV_FINANCE_UNLOCK = {};
 function fvCanSeeFinance() {
-  if (!fvSession) return true;
+  if (!fvSession) return false;                  // must be signed in
   var t = FV_FINANCE_UNLOCK[fvSession.user];
-  if (t === undefined) return true;             // not restricted
-  return Date.now() >= t;                        // unlocked once the time passes
+  if (t === undefined) return true;             // all 6 may reach the page (then the password lock applies)
+  return Date.now() >= t;
+}
+
+/* ── Finance re-entry lock (privacy) ──────────────────────────────────────────
+   P&L and Money/Expenses numbers are HIDDEN by default. To see them the signed-in
+   person must re-type THEIR OWN password. Unlock is session-only and re-locks the
+   moment the app is backgrounded or they log out. Verifies against the same hash
+   as login (personal override if set, else the baked hash). */
+function fvFinUnlocked(){ return window._fvFinUnlocked === true; }
+function fvFinLock(){ window._fvFinUnlocked = false; }
+function fvFinLockWire(){
+  if (window._fvFinLockWired) return; window._fvFinLockWired = true;
+  try {
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) { window._fvFinUnlocked = false; }
+      else { var a = (typeof _fvActiveId === 'function') ? _fvActiveId() : '';
+        if (a === 'viewPL' && typeof buildPLView === 'function') buildPLView();
+        else if (a === 'viewSpend' && typeof buildSpendView === 'function') buildSpendView(); }
+    });
+    window.addEventListener('blur', function(){ window._fvFinUnlocked = false; });
+  } catch(e){}
+}
+function fvFinLockedHTML(targetView){
+  var what = (targetView === 'Spend') ? 'money &amp; expenses' : 'profit &amp; loss';
+  return '<div style="max-width:430px;margin:26px auto;text-align:center;padding:24px;">'
+    + '<div style="font-size:46px;line-height:1;">🔒</div>'
+    + '<div style="font-size:19px;font-weight:800;color:#0d4420;margin:10px 0 4px;">The ' + what + ' numbers are hidden</div>'
+    + '<div style="font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:18px;">For privacy these figures are hidden by default. Enter <b>your own password</b> to view them.</div>'
+    + '<button onclick="fvFinUnlockPrompt(\'' + targetView + '\')" style="width:100%;max-width:300px;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">🔓 Enter my password to view</button>'
+    + '<div style="font-size:12px;color:#9ca3af;margin-top:14px;line-height:1.5;">It locks again when you leave the app, switch away, or log out.</div></div>';
+}
+function fvFinUnlockPrompt(targetView){
+  if (!fvSession) { alert('Please sign in first.'); return; }
+  var p = prompt('Enter YOUR password to view the financial numbers:');
+  if (p === null) return;
+  if (!p) { alert('No password entered.'); return; }
+  fvHash(p).then(function(h){
+    var cand = null;
+    for (var i = 0; i < FV_USERS.length; i++) if (FV_USERS[i].user === fvSession.user) { cand = FV_USERS[i]; break; }
+    var ov = (typeof fvPwOvLoad === 'function') ? fvPwOvLoad() : {};
+    var gateHash = (cand && ov[fvSession.user] !== undefined) ? ov[fvSession.user] : (cand ? cand.hash : null);
+    function ok(){ window._fvFinUnlocked = true;
+      if (targetView === 'Spend' && typeof buildSpendView === 'function') buildSpendView();
+      else if (typeof buildPLView === 'function') buildPLView();
+    }
+    if (gateHash !== null && gateHash === h) { ok(); return; }
+    // password may have been changed on another device — verify via Firebase
+    if (typeof fvFirebaseSignIn === 'function') {
+      fvFirebaseSignIn(fvSession.user, p).then(function(){ if (typeof fvPwOvSet === 'function') fvPwOvSet(fvSession.user, h); ok(); })
+        .catch(function(){ alert('That password is not correct.'); });
+    } else { alert('That password is not correct.'); }
+  }).catch(function(){ alert('Could not check the password — please try again.'); });
 }
 function fvBlankFinance(viewId) {
   var v = document.getElementById(viewId);
@@ -8046,6 +8101,7 @@ function fvLogin() {
 
 function fvLogout() {
   if (!confirm('Log out of this device?')) return;
+  window._fvFinUnlocked = false;   // re-lock finances
   fvSession = null;
   try { sessionStorage.removeItem('fvAuth'); localStorage.removeItem('fvAuth'); } catch(e) {}
   if (typeof fvFbClear === 'function') fvFbClear();
