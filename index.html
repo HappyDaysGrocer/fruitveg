@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v111';
+var APP_BUILD = 'v112';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5997,13 +5997,21 @@ function fvPLItemRows(){
     return catOk && sOk && lowOk && (it.revIncVAT || 0) > 0;
   });
   items.sort(function(a,b){ return _plItemLow ? ((a.marginPerc||0) - (b.marginPerc||0)) : (b.revIncVAT - a.revIncVAT); });
-  var totRev=0, totQty=0, totMargin=0, rows='';
-  items.forEach(function(it){ totRev += it.revIncVAT; totQty += it.qty; totMargin += (it.margin||0);
+  var totRev=0, totQty=0, totMargin=0, totCost=0, rows='';
+  items.forEach(function(it){ totRev += it.revIncVAT; totQty += it.qty; totMargin += (it.margin||0); totCost += (it.cost||0);
     var mp = (it.marginPerc != null) ? it.marginPerc : 0;
     var mc = mp >= 0.30 ? '#15803d' : (mp >= 0.10 ? '#d97706' : '#dc2626');
-    rows += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + ' <span style="color:#9ca3af;">×' + it.qty + '</span></span><span style="white-space:nowrap;"><span style="color:' + mc + ';font-weight:700;">' + (mp*100).toFixed(0) + '%</span> <span style="font-weight:700;color:#111;">$' + Number(it.revIncVAT).toFixed(2) + '</span></span></div>';
+    var sellEa = it.qty > 0 ? it.revIncVAT / it.qty : 0;
+    var costEa = it.qty > 0 ? (it.cost || 0) / it.qty : 0;
+    rows += '<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;"><span style="flex:1;min-width:0;font-weight:600;color:#111;">' + fvEsc(it.name) + ' <span style="color:#9ca3af;font-weight:400;">×' + it.qty + '</span></span><span style="white-space:nowrap;font-weight:800;color:' + mc + ';">' + (mp*100).toFixed(0) + '%</span></div>'
+      + '<div style="display:flex;gap:12px;font-size:11px;color:#6b7280;margin-top:2px;flex-wrap:wrap;"><span>Cost <b style="color:#374151;">$' + costEa.toFixed(2) + '</b>/ea</span><span>Sell <b style="color:#374151;">$' + sellEa.toFixed(2) + '</b>/ea</span><span>Revenue <b style="color:#111;">$' + Number(it.revIncVAT).toFixed(2) + '</b></span></div>'
+      + '</div>';
   });
-  var head = '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#0d4420;border-bottom:2px solid #0d4420;padding-bottom:4px;margin-bottom:2px;"><span>' + items.length + ' items · ' + totQty + ' sold</span><span>' + (totRev>0?(totMargin/totRev*100).toFixed(0)+'% · ':'') + '$' + totRev.toFixed(2) + '</span></div>';
+  var totProfit = totRev - totCost;
+  var head = '<div style="font-size:12px;font-weight:800;color:#0d4420;border-bottom:2px solid #0d4420;padding-bottom:4px;margin-bottom:2px;">'
+    + '<div style="display:flex;justify-content:space-between;"><span>' + items.length + ' items · ' + totQty + ' sold</span><span>Revenue $' + totRev.toFixed(2) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-weight:600;color:#6b7280;font-size:11px;"><span>Cost $' + totCost.toFixed(2) + '</span><span>Profit $' + totProfit.toFixed(2) + (totRev>0?(' · '+(totMargin/totRev*100).toFixed(0)+'%'):'') + '</span></div></div>';
   return head + (rows || '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No items match.</div>');
 }
 function fvPLItemsHTML(){
@@ -6020,6 +6028,65 @@ function fvPLItemsHTML(){
 function fvPLItemsSetCat(c){ _plItemFilter = c; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
 function fvPLItemsLowToggle(){ _plItemLow = !_plItemLow; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
 function fvPLItemsSearch(v){ _plItemSearch = String(v||'').toLowerCase(); var sc = document.getElementById('plItemList'); if (sc) sc.innerHTML = fvPLItemRows(); }
+
+/* ═══ 🥐 BAKERY WASTAGE — bought vs sold (perishable items) ═══════════════════
+   Bakery resale items only last a few days, so anything bought-but-not-sold is
+   waste. We show sold/week from the till (EPOS, 90-day average) and let the owner
+   set how many they BUY per week → estimated waste units, $ and yearly impact.
+   Buy figures sync to the team via /bakerybuy (like the café cost overrides). */
+var FV_BAKERY_KW = /croissant|cake|slice|brownie|danish|cookie|muffin|tart|pastry|\bbun\b|bliss|mud cake|ganache|frangipane|cheesecake|berry ripe|bueno|snickerz|ferrero|notella|tiramisu|anzac|goodness bar|protein ball|caramel|walnut/i;
+function fvIsBakery(name){ return FV_BAKERY_KW.test(String(name||'')); }
+// Weekly buy seeded from the recent Baker Boys invoices (owner can adjust per item).
+var FV_BAKERY_BUY_SEED = { 'Almond Croissant':30, 'Croissant- Choc Almond':26, 'Croissant- Chocolate':8, 'Plain Croissant':12 };
+function fvBakeryBuyLoad(){ try { return JSON.parse(localStorage.getItem('mandiBakeryBuy')||'{}'); } catch(e){ return {}; } }
+function fvBakeryBuySave(o){ try { localStorage.setItem('mandiBakeryBuy', JSON.stringify(o)); } catch(e){} if (typeof fvJsonPush === 'function') fvJsonPush('bakerybuy', o); }
+function fvBakeryBuyPull(){ if (typeof fvJsonGet !== 'function') return Promise.resolve(); return fvJsonGet('bakerybuy').then(function(r){ if (r && typeof r === 'object'){ try { localStorage.setItem('mandiBakeryBuy', JSON.stringify(r)); } catch(e){} var el = document.getElementById('plBakery'); if (el) el.innerHTML = fvBakeryWasteHTML(); } }); }
+function fvBakeryWasteHTML(){
+  if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '';
+  var ov = fvBakeryBuyLoad();
+  var weeks = 90/7;
+  var items = EPOS90.items.filter(function(it){ return fvIsBakery(it.name) && (it.qty||0) > 0; });
+  if (!items.length) return '';
+  items.sort(function(a,b){ return b.revIncVAT - a.revIncVAT; });
+  var rows='', totWasteYr=0, totSoldRev=0, anyBuy=false;
+  items.forEach(function(it){
+    var soldWk = it.qty / weeks;
+    var costEa = it.qty > 0 ? (it.cost||0)/it.qty : 0;
+    var sellEa = it.qty > 0 ? it.revIncVAT/it.qty : 0;
+    totSoldRev += it.revIncVAT;
+    var setVal = (ov[it.name] != null && ov[it.name] !== '') ? parseFloat(ov[it.name]) : null;
+    var seeded = (setVal == null) && (FV_BAKERY_BUY_SEED[it.name] != null);
+    var buyWk = setVal != null ? setVal : (seeded ? FV_BAKERY_BUY_SEED[it.name] : null);
+    var wasteWk = (buyWk != null) ? Math.max(0, buyWk - soldWk) : null;
+    var wasteYr = (wasteWk != null) ? wasteWk * costEa * 52 : 0;
+    if (buyWk != null) { anyBuy = true; totWasteYr += wasteYr; }
+    var tail;
+    if (buyWk == null) tail = ' · <span style="color:#b91c1c;">tap to add weekly buy</span>';
+    else if (wasteWk != null && wasteWk >= 0.5) tail = ' · <b style="color:#b91c1c;">waste ~' + wasteWk.toFixed(0) + '/wk ≈ $' + wasteYr.toFixed(0) + '/yr</b>';
+    else tail = ' · <span style="color:#15803d;">selling it all 👍</span>';
+    rows += '<div onclick="fvBakerySetBuy(' + fvJsArg(it.name) + ')" style="padding:7px 0;border-bottom:1px solid #f3f4f6;cursor:pointer;">'
+      + '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#111;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + '</span><span style="color:#cbd5e1;">›</span></div>'
+      + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">Sell $' + sellEa.toFixed(2) + ' · sold ~' + soldWk.toFixed(1) + '/wk'
+        + (buyWk != null ? (' · buy <b style="color:#374151;">' + buyWk + '/wk</b>' + (seeded ? ' <span style="color:#9ca3af;">(from invoices)</span>' : '')) : '')
+        + tail + '</div></div>';
+  });
+  return '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;margin-top:8px;">'
+    + '<div style="font-weight:800;font-size:15px;color:#0d4420;">🥐 Bakery wastage — bought vs sold</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;line-height:1.5;">Bakery items only last a few days — anything bought but not sold is <b>waste</b>. <b>Sold/week</b> is the till average over the last 90 days. Tap an item to set how many you <b>buy per week</b>; we’ll estimate the waste and what it costs you a year. <i>If your sales have grown recently the real waste is lower — adjust the buy number or ask me to refresh the sales figure.</i></div>'
+    + rows
+    + (anyBuy ? '<div style="display:flex;justify-content:space-between;font-weight:800;color:#0d4420;border-top:2px solid #0d4420;margin-top:6px;padding-top:6px;font-size:13px;"><span>Estimated bakery waste</span><span style="color:#b91c1c;">≈ $' + totWasteYr.toFixed(0) + '/yr</span></div>' : '')
+    + '</div>';
+}
+function fvBakerySetBuy(name){
+  var ov = fvBakeryBuyLoad();
+  var cur = (ov[name] != null && ov[name] !== '') ? ov[name] : (FV_BAKERY_BUY_SEED[name] != null ? FV_BAKERY_BUY_SEED[name] : '');
+  var v = prompt('How many "' + name + '" do you BUY per week?  (blank = clear)', cur);
+  if (v === null) return; v = String(v).trim();
+  if (v === '') { delete ov[name]; }
+  else { var n = parseFloat(v); if (isNaN(n) || n < 0) { alert('Please enter a number, e.g. 20'); return; } ov[name] = n; }
+  fvBakeryBuySave(ov);
+  var el = document.getElementById('plBakery'); if (el) el.innerHTML = fvBakeryWasteHTML();
+}
 
 /* ═══ 🥪 RECIPE / MAKE-IN-HOUSE COST CALCULATOR ═══════════════════════════════
    What a sandwich/burger costs in materials vs its sell price. Each ingredient:
@@ -6089,6 +6156,8 @@ function buildPLView() {
   if (typeof fvPLNetRender === 'function') fvPLNetRender();
   var itDiv = document.createElement('div'); itDiv.id = 'plItems'; pv.appendChild(itDiv);
   if (typeof fvPLItemsHTML === 'function') itDiv.innerHTML = fvPLItemsHTML();
+  var bkDiv = document.createElement('div'); bkDiv.id = 'plBakery'; pv.appendChild(bkDiv);
+  if (typeof fvBakeryWasteHTML === 'function') bkDiv.innerHTML = fvBakeryWasteHTML();
 }
 
 function renderPLDay(date) {
@@ -7083,7 +7152,7 @@ function fvStatePull(){ return fvBlobGet('runstate').then(function(d){ if(d&&typ
 function fvCustomProdPull(){ return fvJsonGet('customproducts').then(function(arr){ if(Array.isArray(arr)){ try{localStorage.setItem('mandiCustomProducts',JSON.stringify(arr));}catch(e){} if(typeof rebuildProducts==='function')rebuildProducts(); if(_fvActiveId()==='viewList'&&typeof buildList==='function')buildList(); } }); }
 function fvHistoryPull(){ return fvJsonGet('history').then(function(h){ if(h&&typeof h==='object'){ try{localStorage.setItem('mandiHistory',JSON.stringify(h));}catch(e){} } }); }
 function fvRecipesPull(){ return fvJsonGet('recipes').then(function(r){ if(r&&typeof r==='object'){ try{localStorage.setItem('mandiRecipes',JSON.stringify(r));}catch(e){} if(document.getElementById('fvRCOverlay')&&typeof fvRCrender==='function') fvRCrender(); } }); }
-function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); fvMenuCostsPull(); }
+function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); fvMenuCostsPull(); fvBakeryBuyPull(); }
 function fvSharedSeed(){
   if(!fvBlobOn())return;
   fvBlobGet('sell').then(function(d){ if(d===null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
@@ -7092,6 +7161,7 @@ function fvSharedSeed(){
   fvBlobGet('history').then(function(d){ if(d===null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
   fvBlobGet('recipes').then(function(d){ if(d===null){ var r=(typeof fvRCload==='function')?fvRCload():null; if(r&&Object.keys(r).length) fvJsonPush('recipes',r); } });
   fvBlobGet('menucosts').then(function(d){ if(d===null){ var mc=(typeof fvMenuCostsLoad==='function')?fvMenuCostsLoad():null; if(mc&&Object.keys(mc).length) fvJsonPush('menucosts',mc); } });
+  fvBlobGet('bakerybuy').then(function(d){ if(d===null){ var bb=(typeof fvBakeryBuyLoad==='function')?fvBakeryBuyLoad():null; if(bb&&Object.keys(bb).length) fvJsonPush('bakerybuy',bb); } });
 }
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
