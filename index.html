@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v110';
+var APP_BUILD = 'v111';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5822,10 +5822,13 @@ function fvBankByCat(monthFilter){
 }
 /* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
 var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":6292.56,"items":1504,"mp":0.533,"bad":0}};
-var FV_MONTHLY_RENT = 7262.75;   // monthly rent incl mgmt fee + GST (Cameron Industrial invoice)
-/* Rent COMMENCED 22 Apr 2026 (verified: invoice 5212888 bills the period 22/04–21/05);
-   the 3-month rent-free period ran before this. So: months before April = rent-free,
-   April = pro-rata for the days from the 22nd, May onward = full month. */
+var FV_MONTHLY_RENT = 7262.75;   // $6,562.50 rent + $40 mgmt fee + GST per month (Cameron invoices 5212888/5275095; lease rent $78,750/yr ex-GST)
+/* VERIFIED against the SIGNED LEASE (dated 13/01/2026) and the Cameron rent invoices:
+   - Lease TERM commenced 22 Jan 2026 (3-year term + two 3-year options).
+   - The lease Schedule lists rent commencement 22/03/2026, BUT the landlord actually
+     first billed rent from 22/04/2026 (invoice 5212888 = period 22/04–21/05) — i.e. an
+     extra free month, giving ~3 months rent-free from the 22 Jan start (as the owner said).
+   So: months before April = rent-free, April = pro-rata from the 22nd, May onward = full. */
 var FV_RENT_START = '2026-04-22';
 function fvMonthRent(monthKey){
   if (!monthKey) return 0;
