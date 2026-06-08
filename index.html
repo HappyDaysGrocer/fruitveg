@@ -1123,6 +1123,13 @@
       </div>
     </div>
 
+    <!-- Recipe / make-cost calculator -->
+    <div class="manage-card">
+      <div class="manage-title">🥪 Recipe &amp; make-cost</div>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:12px;line-height:1.5;">Work out what a sandwich or burger costs to make in-house (materials) versus what you sell it for — so you know which ones make money.</p>
+      <button class="manage-btn btn-green" onclick="fvRCOpen()">🥪 Open recipe calculator</button>
+    </div>
+
     <!-- Add New Supplier card -->
     <div class="manage-card">
       <div class="manage-title">🏪 Add New Supplier</div>
@@ -1819,7 +1826,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v99';
+var APP_BUILD = 'v100';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5692,6 +5699,62 @@ function fvPLItemsSetCat(c){ _plItemFilter = c; var el = document.getElementById
 function fvPLItemsLowToggle(){ _plItemLow = !_plItemLow; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
 function fvPLItemsSearch(v){ _plItemSearch = String(v||'').toLowerCase(); var sc = document.getElementById('plItemList'); if (sc) sc.innerHTML = fvPLItemRows(); }
 
+/* ═══ 🥪 RECIPE / MAKE-IN-HOUSE COST CALCULATOR ═══════════════════════════════
+   What a sandwich/burger costs in materials vs its sell price. Each ingredient:
+   what the pack costs + how many sandwiches it makes → per-sandwich cost.
+   Stored in mandiRecipes, synced to the team (node /recipes). */
+var fvRCstate = { view:'list', id:null };
+function fvRCload(){ try{ return JSON.parse(localStorage.getItem('mandiRecipes')||'{}'); }catch(e){ return {}; } }
+function fvRCsave(o){ try{ localStorage.setItem('mandiRecipes', JSON.stringify(o)); }catch(e){} if (typeof fvJsonPush === 'function') fvJsonPush('recipes', o); }
+function fvRCid(){ return 'r' + Date.now().toString(36) + Math.floor(Math.random()*1296).toString(36); }
+function fvRCcost(r){ var t=0; ((r&&r.lines)||[]).forEach(function(l){ var mk=parseFloat(l.makes); if(mk>0) t += (parseFloat(l.packCost)||0)/mk; }); return t; }
+function fvRCmoney(n){ return '$' + Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fvRCOpen(){ var ov=document.getElementById('fvRCOverlay'); if(!ov){ ov=document.createElement('div'); ov.id='fvRCOverlay'; document.body.appendChild(ov); } ov.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:flex-end;justify-content:center;'); ov.onclick=function(e){ if(e.target===ov) fvRCClose(); }; fvRCstate={view:'list',id:null}; fvRCrender(); }
+function fvRCClose(){ var o=document.getElementById('fvRCOverlay'); if(o) o.remove(); }
+function fvRCrender(){ var ov=document.getElementById('fvRCOverlay'); if(!ov)return;
+  var body=(fvRCstate.view==='edit')?fvRCeditHTML(fvRCstate.id):fvRClistHTML();
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:600px;max-height:90vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:0;background:#fff;"><strong style="font-size:17px;color:#0d4420;">🥪 Recipe &amp; make-cost</strong>'
+    +'<button onclick="fvRCClose()" style="border:none;background:#f1f5f9;border-radius:8px;font-size:18px;width:34px;height:34px;cursor:pointer;line-height:1;">✕</button></div>' + body + '</div>'; }
+function fvRClistHTML(){ var o=fvRCload(), ids=Object.keys(o);
+  var h='<button onclick="fvRCnew()" style="width:100%;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;">➕ New recipe</button>';
+  if(!ids.length) return h+'<div style="color:#6b7280;font-size:13px;padding:8px 0;line-height:1.5;">No recipes yet. Add a sandwich or burger to work out what it costs to make in-house (materials) versus what you sell it for.</div>';
+  ids.forEach(function(id){ var r=o[id], cost=fvRCcost(r), sell=parseFloat(r.sell)||0, prof=sell-cost, mp=sell>0?prof/sell:0;
+    h+='<div class="order-summary-card" onclick="fvRCopen(\''+id+'\')" style="cursor:pointer;"><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#1c4587;font-size:15px;">'+fvEsc(r.name||'(unnamed)')+'</span><span style="font-size:12px;color:#9ca3af;">'+((r.lines||[]).length)+' items ›</span></div>'
+      +'<div style="display:flex;gap:10px;margin-top:6px;font-size:12px;"><span>Cost <strong>'+fvRCmoney(cost)+'</strong></span><span>Sell <strong>'+fvRCmoney(sell)+'</strong></span><span style="margin-left:auto;color:'+(prof>=0?'#15803d':'#b91c1c')+';font-weight:800;">'+(prof>=0?'+':'')+fvRCmoney(prof)+' ('+(mp*100).toFixed(0)+'%)</span></div></div>';
+  });
+  return h; }
+function fvRCeditHTML(id){ var o=fvRCload(), r=o[id]; if(!r) return fvRClistHTML();
+  var cost=fvRCcost(r), sell=parseFloat(r.sell)||0, prof=sell-cost, mp=sell>0?prof/sell:0;
+  var opts='<option value="">＋ add ingredient from catalogue…</option>';
+  PRODUCTS.forEach(function(p,i){ if(p[3]) opts+='<option value="'+i+'">'+fvEsc(p[3])+(p[5]!=null?(' — $'+p[5]):'')+'</option>'; });
+  var lines='';
+  (r.lines||[]).forEach(function(l,i){ var lc=(parseFloat(l.makes)>0)?((parseFloat(l.packCost)||0)/parseFloat(l.makes)):0;
+    lines+='<div style="border-top:1px solid #eef0f2;padding:8px 0;"><div style="display:flex;justify-content:space-between;gap:6px;align-items:center;"><input value="'+String(l.name||'').replace(/"/g,'&quot;')+'" onchange="fvRClineSet(\''+id+'\','+i+',\'name\',this.value)" placeholder="ingredient" style="flex:1;min-width:0;padding:7px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;"><button onclick="fvRCdelLine(\''+id+'\','+i+')" style="background:none;border:none;color:#b91c1c;font-size:15px;cursor:pointer;">✕</button></div>'
+      +'<div style="display:flex;gap:6px;align-items:center;margin-top:5px;font-size:12px;color:#6b7280;">pack $<input type="number" inputmode="decimal" value="'+(l.packCost!=null?l.packCost:'')+'" onchange="fvRClineSet(\''+id+'\','+i+',\'packCost\',this.value)" style="width:62px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;"> makes <input type="number" inputmode="decimal" value="'+(l.makes!=null?l.makes:'')+'" onchange="fvRClineSet(\''+id+'\','+i+',\'makes\',this.value)" style="width:52px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;"><span style="margin-left:auto;font-weight:700;color:#111;">'+fvRCmoney(lc)+'/ea</span></div></div>';
+  });
+  return '<div style="margin-bottom:6px;"><button onclick="fvRCback()" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;">‹ All recipes</button></div>'
+    +'<input value="'+String(r.name||'').replace(/"/g,'&quot;')+'" onchange="fvRCsetName(\''+id+'\',this.value)" placeholder="Recipe name (e.g. Ham &amp; Cheese Sandwich)" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;font-weight:700;margin-bottom:8px;">'
+    +'<div style="font-size:12px;color:#6b7280;margin-bottom:2px;">For each ingredient: what the <strong>pack/case costs</strong> and how many sandwiches it <strong>makes</strong>.</div>'
+    + (lines||'<div style="color:#9ca3af;font-size:13px;padding:6px 0;">No ingredients yet.</div>')
+    +'<select onchange="fvRCaddFromCat(\''+id+'\',this.value);" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:8px;">'+opts+'</select>'
+    +'<button onclick="fvRCaddLine(\''+id+'\')" style="width:100%;padding:9px;background:#eef2ff;color:#1c4587;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:6px;">＋ Add blank ingredient</button>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:12px;border-top:2px solid #0d4420;padding-top:8px;"><span style="font-weight:800;">Sell price $</span><input type="number" inputmode="decimal" value="'+(r.sell!=null?r.sell:'')+'" onchange="fvRCsetSell(\''+id+'\',this.value)" style="width:80px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;"></div>'
+    +'<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:14px;"><span>Material cost to make</span><strong>'+fvRCmoney(cost)+'</strong></div>'
+    +'<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:16px;"><span style="font-weight:800;">Profit each</span><strong style="color:'+(prof>=0?'#15803d':'#b91c1c')+';">'+(prof>=0?'+':'')+fvRCmoney(prof)+' ('+(mp*100).toFixed(0)+'%)</strong></div>'
+    +'<button onclick="fvRCdel(\''+id+'\')" style="width:100%;padding:8px;background:none;color:#b91c1c;border:none;font-size:12px;cursor:pointer;margin-top:10px;">Delete this recipe</button>';
+}
+function fvRCnew(){ var o=fvRCload(), id=fvRCid(); o[id]={id:id,name:'',sell:'',lines:[]}; fvRCsave(o); fvRCstate={view:'edit',id:id}; fvRCrender(); }
+function fvRCopen(id){ fvRCstate={view:'edit',id:id}; fvRCrender(); }
+function fvRCback(){ fvRCstate={view:'list',id:null}; fvRCrender(); }
+function fvRCsetName(id,v){ var o=fvRCload(); if(o[id]){ o[id].name=v; fvRCsave(o); } }
+function fvRCsetSell(id,v){ var o=fvRCload(); if(o[id]){ o[id].sell=v; fvRCsave(o); fvRCrender(); } }
+function fvRCaddLine(id){ var o=fvRCload(); if(o[id]){ o[id].lines=o[id].lines||[]; o[id].lines.push({name:'',packCost:'',makes:''}); fvRCsave(o); fvRCrender(); } }
+function fvRCaddFromCat(id,idx){ if(idx===''||idx==null)return; var p=PRODUCTS[parseInt(idx,10)]; if(!p)return; var o=fvRCload(); if(o[id]){ o[id].lines=o[id].lines||[]; o[id].lines.push({name:p[3],packCost:(p[5]!=null?p[5]:''),makes:''}); fvRCsave(o); fvRCrender(); } }
+function fvRClineSet(id,i,field,v){ var o=fvRCload(); if(o[id]&&o[id].lines[i]){ o[id].lines[i][field]=v; fvRCsave(o); fvRCrender(); } }
+function fvRCdelLine(id,i){ var o=fvRCload(); if(o[id]&&o[id].lines){ o[id].lines.splice(i,1); fvRCsave(o); fvRCrender(); } }
+function fvRCdel(id){ if(!confirm('Delete this recipe?'))return; var o=fvRCload(); delete o[id]; fvRCsave(o); fvRCback(); }
+
 function buildPLView() {
   var pv = document.getElementById('viewPL');
   pv.innerHTML = '';
@@ -6693,13 +6756,15 @@ function fvSellPull(){ return fvBlobGet('sell').then(function(d){ if(d&&typeof d
 function fvStatePull(){ return fvBlobGet('runstate').then(function(d){ if(d&&typeof d==='object'){ state=d; try{localStorage.setItem('mandiRun2',JSON.stringify(d));}catch(e){} if(typeof fvBuyRerender==='function')fvBuyRerender(); var id=_fvActiveId(); if(id==='viewTotals'&&typeof buildTotals==='function')buildTotals(); else if(id==='viewSell'&&typeof buildSellView==='function')buildSellView(); else if(id==='viewList'&&typeof buildList==='function')buildList(); } }); }
 function fvCustomProdPull(){ return fvJsonGet('customproducts').then(function(arr){ if(Array.isArray(arr)){ try{localStorage.setItem('mandiCustomProducts',JSON.stringify(arr));}catch(e){} if(typeof rebuildProducts==='function')rebuildProducts(); if(_fvActiveId()==='viewList'&&typeof buildList==='function')buildList(); } }); }
 function fvHistoryPull(){ return fvJsonGet('history').then(function(h){ if(h&&typeof h==='object'){ try{localStorage.setItem('mandiHistory',JSON.stringify(h));}catch(e){} } }); }
-function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); }
+function fvRecipesPull(){ return fvJsonGet('recipes').then(function(r){ if(r&&typeof r==='object'){ try{localStorage.setItem('mandiRecipes',JSON.stringify(r));}catch(e){} if(document.getElementById('fvRCOverlay')&&typeof fvRCrender==='function') fvRCrender(); } }); }
+function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); fvRecipesPull(); }
 function fvSharedSeed(){
   if(!fvBlobOn())return;
   fvBlobGet('sell').then(function(d){ if(d==null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
   fvBlobGet('runstate').then(function(d){ if(d==null){ if(typeof state==='object'&&state&&Object.keys(state).length) fvBlobSend('runstate',state,'PATCH'); } });
   fvBlobGet('customproducts').then(function(d){ if(d==null){ var c=(typeof loadCustomProducts==='function')?loadCustomProducts():null; if(c&&c.length) fvJsonPush('customproducts',c); } });
   fvBlobGet('history').then(function(d){ if(d==null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
+  fvBlobGet('recipes').then(function(d){ if(d==null){ var r=(typeof fvRCload==='function')?fvRCload():null; if(r&&Object.keys(r).length) fvJsonPush('recipes',r); } });
 }
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
