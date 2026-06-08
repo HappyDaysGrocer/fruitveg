@@ -1819,7 +1819,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v98';
+var APP_BUILD = 'v99';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5657,34 +5657,39 @@ function fvEposSalesCardHTML(){
 
 /* Item-level sales search/filter (Fruit & Veg / Café / Grocery), from the
    90-day EPOS product data — sits under the monthly panel in the one P&L. */
-var _plItemFilter = 'all', _plItemSearch = '';
+var _plItemFilter = 'all', _plItemSearch = '', _plItemLow = false;
 function fvPLItemRows(){
   if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No sales data yet.</div>';
   var items = EPOS90.items.filter(function(it){
     var cat = (typeof detectCategory === 'function') ? detectCategory(it.name) : 'other';
     var catOk = (_plItemFilter === 'all') || (cat === _plItemFilter);
     var sOk = !_plItemSearch || String(it.name).toLowerCase().indexOf(_plItemSearch) >= 0;
-    return catOk && sOk && (it.revIncVAT || 0) > 0;
+    var lowOk = !_plItemLow || ((it.marginPerc != null) && it.marginPerc < 0.15);   // making little/no money
+    return catOk && sOk && lowOk && (it.revIncVAT || 0) > 0;
   });
-  items.sort(function(a,b){ return b.revIncVAT - a.revIncVAT; });
-  var totRev=0, totQty=0, rows='';
-  items.forEach(function(it){ totRev += it.revIncVAT; totQty += it.qty;
-    rows += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + ' <span style="color:#9ca3af;">×' + it.qty + '</span></span><span style="white-space:nowrap;font-weight:700;">$' + Number(it.revIncVAT).toFixed(2) + '</span></div>';
+  items.sort(function(a,b){ return _plItemLow ? ((a.marginPerc||0) - (b.marginPerc||0)) : (b.revIncVAT - a.revIncVAT); });
+  var totRev=0, totQty=0, totMargin=0, rows='';
+  items.forEach(function(it){ totRev += it.revIncVAT; totQty += it.qty; totMargin += (it.margin||0);
+    var mp = (it.marginPerc != null) ? it.marginPerc : 0;
+    var mc = mp >= 0.30 ? '#15803d' : (mp >= 0.10 ? '#d97706' : '#dc2626');
+    rows += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#374151;padding:5px 0;border-bottom:1px solid #f3f4f6;"><span style="flex:1;min-width:0;">' + fvEsc(it.name) + ' <span style="color:#9ca3af;">×' + it.qty + '</span></span><span style="white-space:nowrap;"><span style="color:' + mc + ';font-weight:700;">' + (mp*100).toFixed(0) + '%</span> <span style="font-weight:700;color:#111;">$' + Number(it.revIncVAT).toFixed(2) + '</span></span></div>';
   });
-  var head = '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#0d4420;border-bottom:2px solid #0d4420;padding-bottom:4px;margin-bottom:2px;"><span>' + items.length + ' items · ' + totQty + ' sold</span><span>$' + totRev.toFixed(2) + '</span></div>';
+  var head = '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#0d4420;border-bottom:2px solid #0d4420;padding-bottom:4px;margin-bottom:2px;"><span>' + items.length + ' items · ' + totQty + ' sold</span><span>' + (totRev>0?(totMargin/totRev*100).toFixed(0)+'% · ':'') + '$' + totRev.toFixed(2) + '</span></div>';
   return head + (rows || '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No items match.</div>');
 }
 function fvPLItemsHTML(){
   if (typeof EPOS90 === 'undefined' || !EPOS90.items) return '';
   var cats = [['all','All'],['produce','🥦 Fruit & Veg'],['cafe','☕ Café'],['other','🛒 Grocery']];
-  var btns = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;">' + cats.map(function(c){ return '<button onclick="fvPLItemsSetCat(\'' + c[0] + '\')" style="' + fvPLNetBtnStyle(_plItemFilter === c[0]) + '">' + c[1] + '</button>'; }).join('') + '</div>';
+  var btns = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;">' + cats.map(function(c){ return '<button onclick="fvPLItemsSetCat(\'' + c[0] + '\')" style="' + fvPLNetBtnStyle(_plItemFilter === c[0]) + '">' + c[1] + '</button>'; }).join('')
+    + '<button onclick="fvPLItemsLowToggle()" style="' + fvPLNetBtnStyle(_plItemLow) + '">⚠️ Low margin</button></div>';
   var srch = '<input type="text" value="' + String(_plItemSearch).replace(/"/g,'&quot;') + '" oninput="fvPLItemsSearch(this.value)" placeholder="🔍 Search products…" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">';
   return '<div class="manage-card" style="background:#fff;border:1px solid #e5e7eb;padding:14px 16px;margin-top:8px;">'
-    + '<div style="font-weight:800;font-size:15px;color:#0d4420;">🔎 Item sales — search by type</div>'
-    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;">Last 90 days · filter Fruit &amp; Veg / Café / Grocery, or search a product</div>'
+    + '<div style="font-weight:800;font-size:15px;color:#0d4420;">🔎 Item sales &amp; margin</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 8px;">Last 90 days · each item shows its <strong>margin %</strong> (green = healthy, amber = thin, red = little/none) and revenue. Tap <strong>⚠️ Low margin</strong> to see what’s barely making money.</div>'
     + btns + srch + '<div id="plItemList">' + fvPLItemRows() + '</div></div>';
 }
 function fvPLItemsSetCat(c){ _plItemFilter = c; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
+function fvPLItemsLowToggle(){ _plItemLow = !_plItemLow; var el = document.getElementById('plItems'); if (el) el.innerHTML = fvPLItemsHTML(); }
 function fvPLItemsSearch(v){ _plItemSearch = String(v||'').toLowerCase(); var sc = document.getElementById('plItemList'); if (sc) sc.innerHTML = fvPLItemRows(); }
 
 function buildPLView() {
