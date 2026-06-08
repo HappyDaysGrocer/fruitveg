@@ -1070,7 +1070,6 @@
 <div class="run-tabs" id="runTabs" style="display:flex;">
   <button class="run-tab" id="rtList"   onclick="showView('List')">📋 List</button>
   <button class="run-tab" id="rtOrders" onclick="showView('Orders')">📦 Orders</button>
-  <button class="run-tab" id="rtTotals" onclick="showView('Totals')">💰 Totals</button>
   <button class="run-tab" id="rtAdd"    onclick="showView('Add')">🏪 More</button>
   <button class="run-tab" id="rtSell"   onclick="showView('Sell')">💲 Sell</button>
   <button class="run-tab run-sync" onclick="fvBuyForceSync()" title="Sync the buy list to the team">📤 Sync</button>
@@ -1654,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v89';
+var APP_BUILD = 'v90';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1756,17 +1755,22 @@ function buyListAdj(idx, delta, e){
   fvBuyPush(idx, q);                                  // share the change with the team
   fvBuyRenderSummary();
 }
+// Total actually spent this run = every item marked Done (qty × price paid).
+function fvSpendTotal(){ var g=0; if (typeof state==='object' && state){ Object.keys(state).forEach(function(k){ var s=state[k]; if (s && s.status==='bought') g += (s.qty||0)*(s.price||0); }); } return g; }
 function fvBuyRenderSummary(){
   var m = fvBuyLoad(); var idxs = Object.keys(m).filter(function(k){ return m[k] > 0; });
   var bar = document.getElementById('buyListBar');
   var foot = document.getElementById('buyListFooter');
+  var grand = (typeof fvSpendTotal === 'function') ? fvSpendTotal() : 0;
+  var totalLine = grand > 0 ? '<div class="buylist-bar" style="background:#0d4420;">💰 Total spent so far<span style="flex:1;"></span><strong>$' + grand.toFixed(2) + '</strong></div>' : '';
   if (!idxs.length) {
     var bak = fvBuyBakLoad();
     if (bar) {
       if (bak && Object.keys(bak).length) {
         bar.style.display = 'block';
-        bar.innerHTML = '<div class="buylist-bar" style="background:#b45309;">🗑️ Buy list cleared<span style="flex:1;"></span><button class="buylist-act" onclick="fvBuyUndo()">↩ Undo</button></div>';
-      } else { bar.style.display = 'none'; bar.innerHTML = ''; }
+        bar.innerHTML = totalLine + '<div class="buylist-bar" style="background:#b45309;">🗑️ Buy list cleared<span style="flex:1;"></span><button class="buylist-act" onclick="fvBuyUndo()">↩ Undo</button></div>';
+      } else if (totalLine) { bar.style.display = 'block'; bar.innerHTML = totalLine; }
+      else { bar.style.display = 'none'; bar.innerHTML = ''; }
     }
     if (foot) { foot.style.display = 'none'; foot.innerHTML = ''; }
     return;
@@ -1774,8 +1778,9 @@ function fvBuyRenderSummary(){
   var boxes = idxs.reduce(function(s, k){ return s + m[k]; }, 0);
   if (bar) {
     bar.style.display = 'block';
-    // Count strip + sync status + the Share/Print block, all pinned at the TOP of the List.
-    bar.innerHTML = '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' · <strong>' + boxes + '</strong> to buy'
+    // Total (top) + count strip + sync status + the Share/Print block, all pinned at the TOP of the List.
+    bar.innerHTML = totalLine
+      + '<div class="buylist-bar">🛒 <strong>' + idxs.length + '</strong> item' + (idxs.length === 1 ? '' : 's') + ' · <strong>' + boxes + '</strong> to buy'
       + '<span style="flex:1;"></span>'
       + '<button class="buylist-act clear" onclick="fvBuyClear()">Clear</button></div>'
       + (typeof fvBuySyncStatusHTML === 'function' ? fvBuySyncStatusHTML() : '')
@@ -2200,6 +2205,7 @@ function confirmPurchase() {
   refreshRow(activeModal);
   refreshSubtotals();
   refreshStats();
+  if (typeof fvBuyRenderSummary === 'function') fvBuyRenderSummary();   // update the "Total spent" line at the top
   closeModal();
 }
 
@@ -2217,7 +2223,7 @@ function toggleSkip(idx) {
 /* ─── VIEWS ─────────────────────────────────────────────────────────────── */
 
 function showView(name) {
-  var RUN = { List:1, Orders:1, Totals:1, Add:1, Sell:1 };   // these now live under the List tab strip
+  var RUN = { List:1, Orders:1, Add:1, Sell:1 };   // these now live under the List tab strip (Totals removed → shown at top of List)
   ['List','Store','Spend','Orders','Totals','Add','Sell','PL','History','Manage'].forEach(function(v) {
     var vc = document.getElementById('view' + v); if (vc) vc.classList.toggle('active', v === name);
   });
@@ -2229,7 +2235,7 @@ function showView(name) {
   var rt = document.getElementById('runTabs');
   if (rt) {
     rt.style.display = RUN[name] ? 'flex' : 'none';
-    [['rtList','List'],['rtOrders','Orders'],['rtTotals','Totals'],['rtAdd','Add'],['rtSell','Sell']].forEach(function(p){
+    [['rtList','List'],['rtOrders','Orders'],['rtAdd','Add'],['rtSell','Sell']].forEach(function(p){
       var b = document.getElementById(p[0]); if (b) b.classList.toggle('active', p[1] === name);
     });
   }
