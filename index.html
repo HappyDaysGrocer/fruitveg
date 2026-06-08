@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v104';
+var APP_BUILD = 'v105';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2063,15 +2063,16 @@ var FV_LIVE_ALERTS=[
   {id:'t0430',min:270,clock:'4:30am',shortMsg:'Should be 50%+ now',msg:'⏳ We should be 50% or more done now.'},
   {id:'t0500',min:300,clock:'5:00am',shortMsg:'30 min left — finalise',msg:'⏰ Only 30 minutes left. Start finalising all the orders.'},
   {id:'t0515',min:315,clock:'5:15am',shortMsg:'Get ready to load',msg:'🚚 Get ready to head back to the car to load up.'},
-  {id:'t0530',min:330,clock:'5:30am',shortMsg:'Back at the ute',msg:'🏁 Be back at the ute now — load the car!'}
+  {id:'t0530',min:330,clock:'5:30am',shortMsg:'Go to the car NOW',msg:'🚗 Go to the car right NOW!'},
+  {id:'t0545',min:345,clock:'5:45am',shortMsg:'Put the tarp on',msg:'🧵 Loading should be almost finished — start putting the tarp on.'},
+  {id:'t0600',min:360,clock:'6:00am',shortMsg:'Back to the shop',msg:'🚚 GO GO GO!!! Back to the shop.'}
 ];
-function fvLiveTodayKey(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
-function fvLiveNowMin(){ var d=new Date(); return d.getHours()*60+d.getMinutes(); }
+/* Each alert gets an ABSOLUTE target timestamp for the next market-run morning,
+   so arming the night before works and the run survives midnight with the app open. */
+function fvLiveNowMs(){ return new Date().getTime(); }
 function fvLiveLoad(){ try{ return JSON.parse(localStorage.getItem('fvLive')||'{}'); }catch(e){ return {}; } }
 function fvLiveSaveState(o){ try{ localStorage.setItem('fvLive', JSON.stringify(o)); }catch(e){} }
-function fvLiveIsOn(){ var L=fvLiveLoad(); return !!(L.on && L.date===fvLiveTodayKey()); }
-function fvLiveFiredLoad(){ try{ var o=JSON.parse(localStorage.getItem('fvLiveFired')||'{}'); if(!o||o.date!==fvLiveTodayKey()) return {date:fvLiveTodayKey(),fired:{}}; if(!o.fired)o.fired={}; return o; }catch(e){ return {date:fvLiveTodayKey(),fired:{}}; } }
-function fvLiveFiredSave(o){ try{ localStorage.setItem('fvLiveFired', JSON.stringify(o)); }catch(e){} }
+function fvLiveIsOn(){ var L=fvLiveLoad(); if(!L||!L.on) return false; if(L.expires && fvLiveNowMs()>=L.expires) return false; return true; }
 function fvLiveBarRefresh(){ var b=document.getElementById('fvLiveBar'); if(b) b.innerHTML=fvLiveBarHTML(); }
 function fvLiveBarHTML(){
   if(!fvLiveIsOn()){
@@ -2079,38 +2080,49 @@ function fvLiveBarHTML(){
   }
   var nx=fvLiveNext();
   return '<div style="background:#15662f;color:#fff;border-radius:12px;padding:10px 12px;margin:2px 0 8px;display:flex;align-items:center;gap:10px;">'
-    +'<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:14px;">⏱️ LIVE — back at the ute by 5:30am</div>'
-    +'<div style="font-size:12px;opacity:.92;margin-top:2px;">'+(nx?('Next alert: '+fvEsc(nx.clock)+' — '+fvEsc(nx.shortMsg)):'All alerts done — finish loading!')+'</div></div>'
+    +'<div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:14px;">⏱️ LIVE — back to the shop by 6:00am</div>'
+    +'<div style="font-size:12px;opacity:.92;margin-top:2px;">'+(nx?('Next alert: '+fvEsc(nx.clock)+' — '+fvEsc(nx.shortMsg)):'All alerts done — back to the shop!')+'</div></div>'
     +'<button onclick="fvLiveStop()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Stop</button></div>';
 }
-function fvLiveNext(){ var f=fvLiveFiredLoad(); for(var i=0;i<FV_LIVE_ALERTS.length;i++){ var a=FV_LIVE_ALERTS[i]; if(!f.fired[a.id]) return a; } return null; }
+function fvLiveNext(){ var L=fvLiveLoad(); if(!L||!L.on) return null; var f=L.fired||{}; for(var i=0;i<FV_LIVE_ALERTS.length;i++){ if(!f[FV_LIVE_ALERTS[i].id]) return FV_LIVE_ALERTS[i]; } return null; }
 function fvLiveStart(){
-  fvLiveSaveState({on:true, date:fvLiveTodayKey()});
-  // mark alerts whose time has already passed as fired, so we don't dump old ones now
-  var f=fvLiveFiredLoad(); var nm=fvLiveNowMin();
-  FV_LIVE_ALERTS.forEach(function(a){ if(a.min<=nm) f.fired[a.id]=true; });
-  fvLiveFiredSave(f);
+  var d=new Date(); var now=d.getTime();
+  var midnight=new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0).getTime();
+  var nowMin=d.getHours()*60+d.getMinutes();
+  var lastMin=FV_LIVE_ALERTS[FV_LIVE_ALERTS.length-1].min;
+  // if we're already past the last alert time today, schedule for TOMORROW morning
+  var runBase=(nowMin>lastMin) ? (midnight+86400000) : midnight;
+  var targets={}, fired={}, maxT=0;
+  FV_LIVE_ALERTS.forEach(function(a){ var t=runBase + a.min*60000; targets[a.id]=t; if(t<=now) fired[a.id]=true; if(t>maxT) maxT=t; });
+  fvLiveSaveState({ on:true, targets:targets, fired:fired, expires:maxT + 2*3600000 });   // auto-clears ~2h after the last alert
   if(('Notification' in window) && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch(e){} }
   fvLiveEnsureTimer();
   fvLiveBarRefresh();
-  alert('⏱️ Market run timer is LIVE.\n\nKeep the app open. You will get a big alert at 3:30am, 4:30am, 5:00am, 5:15am and 5:30am (back at the ute).');
+  alert('⏱️ Market run timer is LIVE' + (runBase>midnight ? ' for TOMORROW morning' : '') + '.\n\nKeep the app open. Big alerts at 3:30, 4:30, 5:00, 5:15, 5:30, 5:45 and 6:00am (back to the shop).');
 }
 function fvLiveStop(){ var L=fvLiveLoad(); L.on=false; fvLiveSaveState(L); fvLiveBarRefresh(); }
-function fvLiveCheck(){ if(!fvLiveIsOn()) return; var f=fvLiveFiredLoad(); var nm=fvLiveNowMin(); FV_LIVE_ALERTS.forEach(function(a){ if(!f.fired[a.id] && a.min<=nm) fvLiveFire(a); }); }
-function fvLiveFire(a){
-  var f=fvLiveFiredLoad(); if(f.fired[a.id]) return; f.fired[a.id]=true; fvLiveFiredSave(f);
-  try{ if('vibrate' in navigator) navigator.vibrate([300,150,300,150,300]); }catch(e){}
-  try{ if(('Notification' in window) && Notification.permission==='granted') new Notification('Happy Days — '+a.clock, {body:a.msg}); }catch(e){}
-  fvLiveShowModal(a);
-  fvLiveBarRefresh();
+function fvLiveCheck(){
+  var L=fvLiveLoad(); if(!L||!L.on) return;
+  if(L.expires && fvLiveNowMs()>=L.expires){ L.on=false; fvLiveSaveState(L); fvLiveBarRefresh(); return; }   // run window over
+  var now=fvLiveNowMs(), f=L.fired||{}, due=[], changed=false;
+  FV_LIVE_ALERTS.forEach(function(a){ if(!f[a.id] && L.targets && L.targets[a.id] && now>=L.targets[a.id]){ f[a.id]=true; changed=true; due.push(a); } });
+  if(changed){ L.fired=f; fvLiveSaveState(L);
+    try{ if('vibrate' in navigator) navigator.vibrate([300,150,300,150,300]); }catch(e){}
+    try{ if(('Notification' in window) && Notification.permission==='granted') new Notification('Happy Days — '+due[due.length-1].clock, {body:due[due.length-1].msg}); }catch(e){}
+    fvLiveShowModal(due);   // show all alerts that came due in one popup (handles a backlog after the app was closed)
+    fvLiveBarRefresh();
+  }
 }
-function fvLiveShowModal(a){
+function fvLiveShowModal(list){
+  if(!list || !list.length) return;
   var ov=document.getElementById('fvLiveModal'); if(!ov){ ov=document.createElement('div'); ov.id='fvLiveModal'; document.body.appendChild(ov); }
   ov.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200000;display:flex;align-items:center;justify-content:center;padding:24px;');
+  var body='';
+  list.forEach(function(a){ body+='<div style="margin-bottom:'+(list.length>1?'12px':'0')+';"><div style="font-size:13px;font-weight:800;color:#15662f;letter-spacing:1px;">'+fvEsc(a.clock)+'</div>'
+    +'<div style="font-size:'+(list.length>1?'18px':'22px')+';font-weight:800;color:#0d4420;margin:6px 0 0;line-height:1.3;">'+fvEsc(a.msg)+'</div></div>'; });
   ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.45);">'
-    +'<div style="font-size:13px;font-weight:800;color:#15662f;letter-spacing:1px;">'+fvEsc(a.clock)+'</div>'
-    +'<div style="font-size:22px;font-weight:800;color:#0d4420;margin:10px 0 6px;line-height:1.3;">'+fvEsc(a.msg)+'</div>'
-    +'<div style="font-size:13px;color:#6b7280;margin-bottom:18px;">We have to be back at the ute by 5:30am.</div>'
+    + body
+    +'<div style="font-size:13px;color:#6b7280;margin:14px 0 18px;">Market run — back to the shop by 6:00am.</div>'
     +'<button onclick="fvLiveModalClose()" style="width:100%;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">Got it 👍</button></div>';
 }
 function fvLiveModalClose(){ var o=document.getElementById('fvLiveModal'); if(o) o.remove(); }
@@ -2759,7 +2771,9 @@ function onSearch(query) {
     var rows    = block.querySelectorAll('.product-row');
     var anyVis  = false;
     rows.forEach(function(row) {
-      var text = row.textContent.toLowerCase();
+      // match on the PRODUCT NAME only (not button labels like "to buy" / "Buy again")
+      var nameEl = document.getElementById('pnametext' + row.id.slice(3));
+      var text = (nameEl ? nameEl.textContent : row.textContent).toLowerCase();
       var show = !words.length || words.every(function(w){ return text.indexOf(w) >= 0; });
       row.style.display = show ? '' : 'none';
       if (show) anyVis = true;
