@@ -1648,12 +1648,13 @@ function loadState() {
 }
 function saveState() {
   try { localStorage.setItem('mandiRun2', JSON.stringify(state)); } catch(e) {}
+  if (typeof fvBlobSend === 'function') fvBlobSend('runstate', state, 'PATCH');   // share Done/bought records with the team
 }
 
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v88';
+var APP_BUILD = 'v89';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3920,7 +3921,7 @@ function refreshOrderSummaryPanel() {
 function loadSell() {
   try { var s = localStorage.getItem('mandiSell'); return s ? JSON.parse(s) : {}; } catch(e) { return {}; }
 }
-function saveSell(d) { try { localStorage.setItem('mandiSell', JSON.stringify(d)); } catch(e) {} }
+function saveSell(d) { try { localStorage.setItem('mandiSell', JSON.stringify(d)); } catch(e) {} if (typeof fvBlobSend === 'function') fvBlobSend('sell', d, 'PATCH'); }
 function sellKey(p) { return p[0] + '||' + p[3]; }
 
 // Units per box from pack info
@@ -4236,6 +4237,7 @@ function loadCustomProducts() {
 }
 function saveCustomProducts(list) {
   try { localStorage.setItem('mandiCustomProducts', JSON.stringify(list)); } catch(e) {}
+  if (typeof fvJsonPush === 'function') fvJsonPush('customproducts', list);   // share added products with the team
 }
 
 function buildAddView() {
@@ -4523,7 +4525,7 @@ function importProductList() {
 */
 
 function loadHistory()  { try { var s=localStorage.getItem('mandiHistory'); return s?JSON.parse(s):{};} catch(e){return{};} }
-function saveHistory(h) { try { localStorage.setItem('mandiHistory',JSON.stringify(h)); } catch(e){} }
+function saveHistory(h) { try { localStorage.setItem('mandiHistory',JSON.stringify(h)); } catch(e){} if (typeof fvJsonPush === 'function') fvJsonPush('history', h); }
 
 function initHistory() {
   // Pre-load historical mandi run data — seeds missing dates only
@@ -6395,15 +6397,17 @@ function fvSyncSeed() {
 
 function fvStartSyncPolling() {
   if (fvSyncTimer) { clearInterval(fvSyncTimer); fvSyncTimer = null; }
-  if (fvSyncEnabled()) fvSyncTimer = setInterval(function(){ fvSyncPull(); if (typeof fvBuyPull === 'function') fvBuyPull(); }, 15000);
+  if (fvSyncEnabled()) fvSyncTimer = setInterval(function(){ fvSyncPull(); if (typeof fvBuyPull === 'function') fvBuyPull(); if (typeof fvSharedPullAll === 'function') fvSharedPullAll(); if (typeof fvCOpull === 'function' && _fvActiveId() === 'viewOrders') fvCOpull(); }, 15000);
 }
 
 function fvSyncStart() {
   if (!fvSyncEnabled()) return;
   fvSyncSeed();
   if (typeof fvBuySeed === 'function') fvBuySeed();
+  if (typeof fvSharedSeed === 'function') fvSharedSeed();
   setTimeout(fvSyncPull, 700);
   if (typeof fvBuyPull === 'function') setTimeout(fvBuyPull, 900);
+  if (typeof fvSharedPullAll === 'function') setTimeout(fvSharedPullAll, 1200);
   fvStartSyncPolling();
   fvRenderSync();
 }
@@ -6413,10 +6417,42 @@ function fvRenderSync() {
   if (fvSyncEnabled()) {
     el.innerHTML = '<div class="acct-row">☁️ Live sync ON — secured by your login'
       + ' <button class="acct-logout" onclick="fvSyncPull()">⟳ refresh</button></div>'
-      + '<div style="font-size:11px;color:#6b7280;margin-top:6px;">Stock syncs across all signed-in team devices — changes appear within ~15 seconds. Only your 6 accounts can read or write it.</div>';
+      + '<div style="font-size:11px;color:#6b7280;margin-top:6px;">Everything syncs across all signed-in team devices — buy list, orders, prices, products, stock & spend appear within ~15 seconds. Only your 6 accounts can read or write it.</div>';
   } else {
     el.innerHTML = '<div style="font-size:12px;color:#6b7280;">🔒 Live sync turns on automatically when you log in. It\'s locked to your team accounts only.</div>';
   }
+}
+
+/* ── Team sync for EVERY input store ──────────────────────────────────────────
+   Sell prices, added products, the Done/bought records and run history now sync
+   across all logged-in devices (on top of buy list, stock, customers/orders).
+   Keyed objects (sell, run state) use PATCH so two people don't clobber each
+   other; lists with nested arrays (products, history) are stored as a JSON
+   string to survive Firebase. Pulls overwrite local + re-render. Same login lock. */
+function fvBlobOn(){ return (typeof fvSyncEnabled==='function') && fvSyncEnabled() && typeof fvFbToken==='function'; }
+function fvBlobSend(node, obj, method){
+  if(!fvBlobOn()) return;
+  fvFbToken().then(function(tok){ fetch(FV_FB.databaseURL+'/'+node+'.json?auth='+tok,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(obj==null?(method==='PUT'?{}:{}):obj)}).catch(function(){}); }).catch(function(){});
+}
+function fvBlobGet(node){
+  if(!fvBlobOn()) return Promise.resolve(undefined);
+  return fvFbToken().then(function(tok){ return fetch(FV_FB.databaseURL+'/'+node+'.json?auth='+tok,{cache:'no-store'}); }).then(function(r){ return (r&&r.ok)?r.json():undefined; }).catch(function(){ return undefined; });
+}
+function fvJsonPush(node, val){ fvBlobSend(node, { json: JSON.stringify(val) }, 'PUT'); }
+function fvJsonGet(node){ return fvBlobGet(node).then(function(d){ if(d&&typeof d.json==='string'){ try{ return JSON.parse(d.json); }catch(e){} } return undefined; }); }
+var _fvActiveId = function(){ var a=document.querySelector('.view.active'); return a?a.id:''; };
+
+function fvSellPull(){ return fvBlobGet('sell').then(function(d){ if(d&&typeof d==='object'){ try{localStorage.setItem('mandiSell',JSON.stringify(d));}catch(e){} if(_fvActiveId()==='viewSell'&&typeof buildSellView==='function') buildSellView(); } }); }
+function fvStatePull(){ return fvBlobGet('runstate').then(function(d){ if(d&&typeof d==='object'){ state=d; try{localStorage.setItem('mandiRun2',JSON.stringify(d));}catch(e){} if(typeof fvBuyRerender==='function')fvBuyRerender(); var id=_fvActiveId(); if(id==='viewTotals'&&typeof buildTotals==='function')buildTotals(); else if(id==='viewSell'&&typeof buildSellView==='function')buildSellView(); else if(id==='viewList'&&typeof buildList==='function')buildList(); } }); }
+function fvCustomProdPull(){ return fvJsonGet('customproducts').then(function(arr){ if(Array.isArray(arr)){ try{localStorage.setItem('mandiCustomProducts',JSON.stringify(arr));}catch(e){} if(typeof rebuildProducts==='function')rebuildProducts(); if(_fvActiveId()==='viewList'&&typeof buildList==='function')buildList(); } }); }
+function fvHistoryPull(){ return fvJsonGet('history').then(function(h){ if(h&&typeof h==='object'){ try{localStorage.setItem('mandiHistory',JSON.stringify(h));}catch(e){} } }); }
+function fvSharedPullAll(){ if(!fvBlobOn())return; fvSellPull(); fvStatePull(); fvCustomProdPull(); fvHistoryPull(); }
+function fvSharedSeed(){
+  if(!fvBlobOn())return;
+  fvBlobGet('sell').then(function(d){ if(d==null){ var l=(typeof loadSell==='function')?loadSell():null; if(l&&Object.keys(l).length) fvBlobSend('sell',l,'PATCH'); } });
+  fvBlobGet('runstate').then(function(d){ if(d==null){ if(typeof state==='object'&&state&&Object.keys(state).length) fvBlobSend('runstate',state,'PATCH'); } });
+  fvBlobGet('customproducts').then(function(d){ if(d==null){ var c=(typeof loadCustomProducts==='function')?loadCustomProducts():null; if(c&&c.length) fvJsonPush('customproducts',c); } });
+  fvBlobGet('history').then(function(d){ if(d==null){ var h=(typeof loadHistory==='function')?loadHistory():null; if(h&&Object.keys(h).length) fvJsonPush('history',h); } });
 }
 
 /* ─── Finance data: kept OUT of the public files and loaded from Firebase,
