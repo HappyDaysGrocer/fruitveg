@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v109';
+var APP_BUILD = 'v110';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7898,7 +7898,7 @@ function fvFinEyeBarHTML(targetView){
   var bl = fvBlurAmountsOn();
   var btnStyle = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid #15662f;background:#eafaf0;color:#15662f;border-radius:999px;font-size:13px;font-weight:800;cursor:pointer;';
   return '<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:2px 0 8px;">'
-    + '<button id="fvBlurBtn" onclick="fvToggleBlurAmounts()" style="' + btnStyle + '">' + (bl ? '👁️ Show amounts' : '🫥 Blur amounts') + '</button>'
+    + '<button id="fvBlurBtn" onclick="fvToggleBlurAmounts()" style="' + btnStyle + '">' + (bl ? '👁️ Show amounts' : '🙈 Hide amounts') + '</button>'
     + '<button onclick="fvFinHide()" style="' + btnStyle + '">🙈 Hide numbers</button></div>';
 }
 function fvFinHide(){
@@ -7913,6 +7913,12 @@ function fvFinHide(){
    is safe from over-the-shoulder eyes. Scoped to the finance views only. */
 function fvBlurAmountsOn(){ try { return localStorage.getItem('fvBlurAmounts') === '1'; } catch(e){ return false; } }
 function fvSetBlurAmounts(on){ try { localStorage.setItem('fvBlurAmounts', on ? '1' : '0'); } catch(e){} }
+function fvDotsFor_(s){
+  var neg = (s.charAt(0) === '-') ? '-' : '';
+  var pre = (s.indexOf('$') >= 0) ? '$' : '';
+  var suf = (s.indexOf('%') >= 0) ? '%' : '';
+  return neg + pre + '•••' + suf;   // number shown as bullet dots, keep $/%/- context
+}
 function fvMaskAmounts_(root){
   if (!root) return; window._fvMasking = true;
   try {
@@ -7931,8 +7937,9 @@ function fvMaskAmounts_(root){
         found = true;
         if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
         var s = document.createElement('span'); s.className = 'fv-amt-blur';
-        s.style.cssText = 'filter:blur(6px);-webkit-filter:blur(6px);cursor:pointer;user-select:none;';
-        s.title = 'Tap "Show amounts" to reveal'; s.textContent = m[0];
+        s.setAttribute('data-amt', m[0]);
+        s.style.cssText = 'cursor:pointer;user-select:none;letter-spacing:1px;color:#9ca3af;';
+        s.title = 'Tap "Show amounts" to reveal'; s.textContent = fvDotsFor_(m[0]);
         frag.appendChild(s); last = m.index + m[0].length;
       }
       if (!found) return;
@@ -7945,14 +7952,14 @@ function fvMaskAmounts_(root){
 function fvUnmaskAmounts_(root){
   if (!root) return; window._fvMasking = true;
   try { var sp = root.querySelectorAll('span.fv-amt-blur');
-    Array.prototype.forEach.call(sp, function(s){ if (s.parentNode) s.parentNode.replaceChild(document.createTextNode(s.textContent), s); });
+    Array.prototype.forEach.call(sp, function(s){ var orig = s.getAttribute('data-amt'); if (s.parentNode) s.parentNode.replaceChild(document.createTextNode(orig != null ? orig : s.textContent), s); });
   } catch(e){}
   window._fvMasking = false;
 }
 function fvToggleBlurAmounts(){
   var on = !fvBlurAmountsOn(); fvSetBlurAmounts(on);
   ['viewSpend','viewPL'].forEach(function(id){ var el = document.getElementById(id); if (el){ if (on) fvMaskAmounts_(el); else fvUnmaskAmounts_(el); } });
-  var b = document.getElementById('fvBlurBtn'); if (b) b.innerHTML = on ? '👁️ Show amounts' : '🫥 Blur amounts';
+  var b = document.getElementById('fvBlurBtn'); if (b) b.innerHTML = on ? '👁️ Show amounts' : '🙈 Hide amounts';
 }
 function fvBlurObserve_(){
   if (window._fvBlurObserver) return;
