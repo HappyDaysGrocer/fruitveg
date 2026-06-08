@@ -1653,7 +1653,7 @@ function saveState() {
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v91';
+var APP_BUILD = 'v92';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5375,6 +5375,23 @@ function fvPLNetPanelHTML(selMonth){
 var EPOS_SALES = { src:'SalesBreakdown_2026_06_08', start:'2026-02-25', end:'2026-06-07', days:56,
   salesIncVAT:25327.86, salesExVAT:24741.99, items:6331, trans:1564, avgPerDay:452.28,
   badDays:6, cleanDays:50, cleanSalesIncVAT:19429.09, cleanMargin:11481.63, cleanMarginPerc:0.591 };
+/* Earliest → latest date across ALL data we hold (so Expenses & P&L always
+   show the period they cover — no guessing, no duplicate analyses). */
+function fvDataDateRange(){
+  var min=null, max=null;
+  function consider(d){ if(!d)return; d=String(d).slice(0,10); if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return; if(!min||d<min)min=d; if(!max||d>max)max=d; }
+  if (typeof EPOS_SALES!=='undefined' && EPOS_SALES){ consider(EPOS_SALES.start); consider(EPOS_SALES.end); }
+  if (typeof BANK_TX!=='undefined' && BANK_TX) BANK_TX.forEach(function(t){ consider(t.d); });
+  if (typeof STMT_EXPENSES!=='undefined' && STMT_EXPENSES) STMT_EXPENSES.forEach(function(e){ consider(e.d); });
+  if (typeof SHOP_INVOICES!=='undefined' && SHOP_INVOICES) SHOP_INVOICES.forEach(function(iv){ consider(iv.d); });
+  try { var ep=loadEPOS(); Object.keys(ep||{}).forEach(function(k){ consider(k); }); } catch(e){}
+  return { min:min, max:max };
+}
+function fvDateRangeBannerHTML(){
+  var r=fvDataDateRange(); if(!r.min||!r.max) return '';
+  var f=function(d){ return new Date(d+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}); };
+  return '<div style="background:#0d4420;color:#fff;border-radius:10px;padding:9px 12px;margin-bottom:8px;font-size:12px;font-weight:700;text-align:center;">📅 Data covers ' + f(r.min) + ' → ' + f(r.max) + '</div>';
+}
 function fvEposSalesCardHTML(){
   if (typeof EPOS_SALES === 'undefined') return '';
   var s = EPOS_SALES;
@@ -5396,6 +5413,7 @@ function fvEposSalesCardHTML(){
 function buildPLView() {
   var pv = document.getElementById('viewPL');
   pv.innerHTML = '';
+  if (typeof fvDateRangeBannerHTML === 'function') { var drb = fvDateRangeBannerHTML(); if (drb) { var drd = document.createElement('div'); drd.innerHTML = drb; pv.appendChild(drd); } }
   var epos = loadEPOS();
   var dates = Object.keys(epos).sort().reverse();
 
@@ -6003,7 +6021,8 @@ function buildSpendView() {
   supList.forEach(function(g){ g.income = supIncome[g.name] || 0; g.profit = g.income - g.spend; });
 
   var net = income - totalPurch;
-  var html = (typeof fvJanSummaryHTML === 'function' ? fvJanSummaryHTML() : '')
+  var html = (typeof fvDateRangeBannerHTML === 'function' ? fvDateRangeBannerHTML() : '')
+    + (typeof fvJanSummaryHTML === 'function' ? fvJanSummaryHTML() : '')
     + '<div class="grand-card" style="background:linear-gradient(135deg,#15662f,#0d4420);color:#fff;text-align:left;padding:16px 18px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="color:#bbf7d0;font-size:13px;">💰 Money IN — shop sales (90d)</span><strong style="font-size:20px;">$' + income.toFixed(2) + '</strong></div>'
     + '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;color:#fde68a;"><span>💸 Money OUT — total</span><strong>−$' + totalPurch.toFixed(2) + (unknownCount ? ' +' : '') + '</strong></div>'
