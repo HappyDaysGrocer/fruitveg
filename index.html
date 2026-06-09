@@ -3143,6 +3143,14 @@ function fvCOcustSave(c){ var o=fvCOloadCust(); o[c.id]=c; try{localStorage.setI
 function fvCOcustDel(id){ var o=fvCOloadCust(); delete o[id]; try{localStorage.setItem('mandiCustomers',JSON.stringify(o));}catch(e){} fvCOpatch('customers',id,null); }
 function fvCOordSave(ord){ var o=fvCOloadOrders(); o[ord.id]=ord; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',ord.id,ord); }
 function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',id,null); }
+// True while the user is mid-entry (on a form view, or focused in any field).
+// We must NOT redraw the Orders view then, or it wipes what they're typing.
+function fvCOisEditing_(){
+  if(fvCO && (fvCO.view==='cust' || fvCO.view==='tiers')) return true;
+  var a=document.activeElement;
+  if(a){ var t=(a.tagName||'').toUpperCase(); if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable) return true; }
+  return false;
+}
 function fvCOpull(){
   if(!fvCOsyncOn()) return Promise.resolve();
   return fvFbToken().then(function(tok){
@@ -3152,10 +3160,13 @@ function fvCOpull(){
       fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
     ]).then(function(res){
       var changed=false;
-      if(res[0]!==undefined && res[0]!==null){ try{localStorage.setItem('mandiCustomers',JSON.stringify(res[0]));changed=true;}catch(e){} }
-      if(res[1]!==undefined && res[1]!==null){ try{localStorage.setItem('mandiCustOrders',JSON.stringify(res[1]));changed=true;}catch(e){} }
-      if(res[2]!==undefined && res[2]!==null){ try{localStorage.setItem('mandiTiers',JSON.stringify(res[2]));changed=true;}catch(e){} }
-      var v=document.getElementById('viewOrders'); if(changed && v && v.classList.contains('active') && typeof fvCORender==='function') fvCORender();
+      // Only treat it as a real change if the value actually differs (stops needless redraws).
+      if(res[0]!==undefined && res[0]!==null){ var s0=JSON.stringify(res[0]); if(s0!==localStorage.getItem('mandiCustomers')){ try{localStorage.setItem('mandiCustomers',s0);}catch(e){} changed=true; } }
+      if(res[1]!==undefined && res[1]!==null){ var s1=JSON.stringify(res[1]); if(s1!==localStorage.getItem('mandiCustOrders')){ try{localStorage.setItem('mandiCustOrders',s1);}catch(e){} changed=true; } }
+      if(res[2]!==undefined && res[2]!==null){ var s2=JSON.stringify(res[2]); if(s2!==localStorage.getItem('mandiTiers')){ try{localStorage.setItem('mandiTiers',s2);}catch(e){} changed=true; } }
+      // Don't redraw while the user is entering data — preserves the new-customer form.
+      var v=document.getElementById('viewOrders');
+      if(changed && v && v.classList.contains('active') && !fvCOisEditing_() && typeof fvCORender==='function') fvCORender();
     });
   }).catch(function(){});
 }
