@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v113';
+var APP_BUILD = 'v114';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -1863,7 +1863,7 @@ function init() {
   fvAuthGate();   // show the login gate unless already signed in on this device
   if (typeof fvRenderDrive === 'function') fvRenderDrive();
   if (typeof fvRenderSync === 'function') fvRenderSync();
-  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); if (typeof fvBuySeed === 'function') fvBuySeed(); if (typeof fvBuyPull === 'function') setTimeout(fvBuyPull, 900); fvStartSyncPolling(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); }
+  if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) { fvSyncPull(); if (typeof fvBuySeed === 'function') fvBuySeed(); if (typeof fvBuyPull === 'function') setTimeout(fvBuyPull, 900); fvStartSyncPolling(); if (typeof fvFinanceLoad === 'function') fvFinanceLoad(); if (typeof fvCatalogLoad === 'function') fvCatalogLoad(); }
   window.addEventListener('focus', function(){ if (typeof fvSyncEnabled === 'function' && fvSyncEnabled()) fvSyncPull(); });
 }
 
@@ -3130,11 +3130,13 @@ function fvCOpull(){
   return fvFbToken().then(function(tok){
     return Promise.all([
       fetch(FV_FB.databaseURL+'/customers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
-      fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
+      fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
+      fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
     ]).then(function(res){
       var changed=false;
       if(res[0]!==undefined && res[0]!==null){ try{localStorage.setItem('mandiCustomers',JSON.stringify(res[0]));changed=true;}catch(e){} }
       if(res[1]!==undefined && res[1]!==null){ try{localStorage.setItem('mandiCustOrders',JSON.stringify(res[1]));changed=true;}catch(e){} }
+      if(res[2]!==undefined && res[2]!==null){ try{localStorage.setItem('mandiTiers',JSON.stringify(res[2]));changed=true;}catch(e){} }
       var v=document.getElementById('viewOrders'); if(changed && v && v.classList.contains('active') && typeof fvCORender==='function') fvCORender();
     });
   }).catch(function(){});
@@ -3142,7 +3144,19 @@ function fvCOpull(){
 
 function fvCOunit(name){ var pi=(typeof extractPackInfo==='function')?extractPackInfo(name):null; if(pi&&pi.unit==='kg')return 'kg'; if(pi&&pi.unit&&pi.unit!=='each')return pi.unit; return 'ea'; }
 function fvCOprodIndexByKey(key){ for(var i=0;i<PRODUCTS.length;i++){ if(orderKey(PRODUCTS[i])===key) return i; } return -1; }
-function fvCOpriceFor(custId,key){ var c=fvCOloadCust()[custId]; if(c&&c.prices&&c.prices[key]!=null) return c.prices[key]; var i=fvCOprodIndexByKey(key); if(i>=0 && PRODUCTS[i][7]!=null) return PRODUCTS[i][7]; return ''; }
+/* ── Price tiers (Hybrid pricing): a named rule reused across customers ──
+   A tier is a rule, not a frozen list, so prices follow live cost/sell.
+   COST = PRODUCTS[i][6], SELL = PRODUCTS[i][7].  Backward-compatible:
+   tier logic only runs when a customer has c.tierId set. */
+var FV_TIER_DEFAULTS={retail:{id:'retail',name:'Retail (walk-in)',rule:{type:'shop'}},cafe:{id:'cafe',name:'Cafe',rule:{type:'shopAdj',pct:-10}},restaurant:{id:'restaurant',name:'Restaurant',rule:{type:'costPlus',pct:20}},agedcare:{id:'agedcare',name:'Aged care',rule:{type:'costPlus',pct:12}},wholesale:{id:'wholesale',name:'Wholesale',rule:{type:'costPlus',pct:8}}};
+function fvTierLoad(){ try{ var t=JSON.parse(localStorage.getItem('mandiTiers')||'null'); if(t&&typeof t==='object'&&Object.keys(t).length) return t; }catch(e){} return JSON.parse(JSON.stringify(FV_TIER_DEFAULTS)); }
+function fvTierPatch(t){ if(!fvCOsyncOn())return; fvFbToken().then(function(tok){ fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)}).catch(function(){}); }).catch(function(){}); }
+function fvTierSave(t){ try{ localStorage.setItem('mandiTiers',JSON.stringify(t)); }catch(e){} fvTierPatch(t); }
+function fvTierRound(n){ if(n==null||isNaN(n))return n; var m=(localStorage.getItem('mandiTierRound')||'cent'); return (m==='5c')?Math.round(n*20)/20:Math.round(n*100)/100; }
+function fvTierRuleWords(r){ if(!r)return''; if(r.type==='shop')return 'Shop price (same as the shop)'; if(r.type==='shopAdj')return 'Shop price '+(((r.pct||0)>=0)?'+':'')+(r.pct||0)+'%'; if(r.type==='costPlus')return 'Cost + '+(r.pct||0)+'%'; if(r.type==='manual')return 'Type each price'; return ''; }
+function fvTierRuleFor(custId){ var c=fvCOloadCust()[custId]||{}; if(!c.tierId)return null; var t=fvTierLoad(); return (t[c.tierId]&&t[c.tierId].rule)||{type:'shop'}; }
+function fvTierPrice(custId,key){ var rule=fvTierRuleFor(custId); if(!rule)return null; var i=fvCOprodIndexByKey(key); if(i<0)return ''; var cost=PRODUCTS[i][6], sell=PRODUCTS[i][7]; if(rule.type==='manual')return ''; if(rule.type==='shopAdj')return (sell!=null)?fvTierRound(+sell*(1+(rule.pct||0)/100)):''; if(rule.type==='costPlus'){ if(cost==null||cost===''||+cost<=0)return 'SETCOST'; return fvTierRound(+cost*(1+(rule.pct||0)/100)); } return (sell!=null)?fvTierRound(+sell):''; }
+function fvCOpriceFor(custId,key){ var c=fvCOloadCust()[custId]; if(c&&c.tierId){ return fvTierPrice(custId,key); } if(c&&c.prices&&c.prices[key]!=null) return c.prices[key]; var i=fvCOprodIndexByKey(key); if(i>=0 && PRODUCTS[i][7]!=null) return PRODUCTS[i][7]; return ''; }
 function fvCOorderTotal(ord){ var t=0; (ord.lines||[]).forEach(function(l){ t+=(l.qty||0)*(l.price||0); }); return t; }
 function fvCOopenOrder(custId){ var o=fvCOloadOrders(),k=Object.keys(o); for(var i=0;i<k.length;i++){ if(o[k[i]].custId===custId && o[k[i]].status==='open') return o[k[i]]; } return null; }
 function fvCOensureOpen(custId){ var ord=fvCOopenOrder(custId); if(!ord){ ord={id:fvCOid('o'),custId:custId,date:fvCOtoday(),status:'open',lines:[]}; fvCOordSave(ord); } return ord; }
@@ -3184,7 +3198,7 @@ function fvCOprint(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var c=fv
   var w=window.open('','_blank'); if(!w){ alert('Allow pop-ups to print, or use Copy/Email.'); return; } w.document.write(html); w.document.close(); setTimeout(function(){ try{w.focus();w.print();}catch(e){} },350); }
 
 function fvCOnav(view,custId){ fvCO.view=view; if(custId!==undefined)fvCO.custId=custId; fvCORender(); var mc=document.getElementById('mainContent'); if(mc)mc.scrollTop=0; }
-function fvCOnewCust(){ var c={id:fvCOid('c'),name:'',address:'',phone:'',contact:'',prices:{}}; fvCO.custId=c.id; fvCO._draft=c; fvCO.view='cust'; fvCORender(); }
+function fvCOnewCust(){ var c={id:fvCOid('c'),name:'',address:'',phone:'',contact:'',prices:{},tierId:'retail'}; fvCO.custId=c.id; fvCO._draft=c; fvCO.view='cust'; fvCORender(); }
 function fvCOeditCust(id){ fvCO.custId=id; fvCO._draft=null; fvCO.view='cust'; fvCORender(); }
 function fvCOsaveCustForm(){
   var name=((document.getElementById('coName')||{}).value||'').trim();
@@ -3194,12 +3208,13 @@ function fvCOsaveCustForm(){
   existing.address=((document.getElementById('coAddr')||{}).value||'').trim();
   existing.phone=((document.getElementById('coPhone')||{}).value||'').trim();
   existing.contact=((document.getElementById('coContact')||{}).value||'').trim();
+  var _tsel=document.getElementById('coTier'); if(_tsel) existing.tierId=_tsel.value; else if(existing.tierId==null) existing.tierId='retail';
   if(!existing.prices)existing.prices={};
   fvCOcustSave(existing); fvCO._draft=null; fvCOnav('order',id);
 }
 function fvCOdelCustConfirm(id){ var c=fvCOloadCust()[id]||{}; if(!confirm('Delete '+(c.name||'this customer')+'? Their past orders stay in history.'))return; fvCOcustDel(id); fvCOnav('list'); }
 function fvCOopenCust(id){ fvCOensureOpen(id); fvCOnav('order',id); }
-function fvCOprodPick(){ var sel=document.getElementById('coProdSel'),prEl=document.getElementById('coPrice'),lbl=document.getElementById('coUnitLbl'); if(!sel)return; var idx=parseInt(sel.value,10); if(isNaN(idx))return; var p=PRODUCTS[idx]; if(!p)return; if(prEl){ var price=fvCOpriceFor(fvCO.custId,orderKey(p)); prEl.value=(price===''?'':price); } if(lbl)lbl.textContent=fvCOunit(p[3]); }
+function fvCOprodPick(){ var sel=document.getElementById('coProdSel'),prEl=document.getElementById('coPrice'),lbl=document.getElementById('coUnitLbl'); if(!sel)return; var idx=parseInt(sel.value,10); if(isNaN(idx))return; var p=PRODUCTS[idx]; if(!p)return; if(prEl){ var price=fvCOpriceFor(fvCO.custId,orderKey(p)); prEl.value=((typeof price==='number')?price:''); } if(lbl)lbl.textContent=fvCOunit(p[3]); }
 function fvCOprodSel(sel){ if(sel && sel.value==='__ADD__'){ sel.value=''; fvCOaddNewProductInline(); return; } fvCOprodPick(); }
 function fvCOaddNewProductInline(){
   if(typeof fvAddProductOpen!=='function'){ alert('Add a product from the List tab’s + Add buttons.'); return; }
@@ -3222,15 +3237,18 @@ function fvCOaddItem(){
   var price=parseFloat(prEl&&prEl.value); if(isNaN(price))price=0;
   var ord=fvCOensureOpen(fvCO.custId),key=orderKey(p),unit=fvCOunit(p[3]),found=null;
   (ord.lines||[]).forEach(function(l){ if(l.key===key)found=l; });
-  if(found){ found.qty=(found.qty||0)+qty; found.price=price; } else { ord.lines.push({key:key,name:p[3],sup:p[0],unit:unit,qty:qty,price:price}); }
-  var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[key]=price; fvCOcustSave(c); }
+  var _tp=fvCOpriceFor(fvCO.custId,key); var _src=((typeof _tp==='number')&&Math.abs(_tp-price)<0.005)?'tier':'manual';
+  if(found){ found.qty=(found.qty||0)+qty; found.price=price; found.src=_src; } else { ord.lines.push({key:key,name:p[3],sup:p[0],unit:unit,qty:qty,price:price,src:_src}); }
+  var c=fvCOloadCust()[fvCO.custId]; if(c && _src==='manual'){ if(!c.prices)c.prices={}; c.prices[key]=price; fvCOcustSave(c); }
   fvCOordSave(ord); fvCORender();
 }
 function fvCOlineDel(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord)return; ord.lines.splice(i,1); fvCOordSave(ord); fvCORender(); }
 function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; ord.lines[i].qty=parseFloat(val)||0; fvCOordSave(ord); fvCORender(); }
-function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
-function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; ord.status='completed'; ord.completed=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
-function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=l.price; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:l.price}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
+function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; ord.lines[i].src='manual'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
+function fvCOlineToTier(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var tp=fvCOpriceFor(ord.custId,ord.lines[i].key); if(typeof tp!=='number'){ alert('No tier price yet — this product has no cost set. Type a price, or set the cost in the catalogue.'); return; } ord.lines[i].price=tp; ord.lines[i].src='tier'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c&&c.prices&&c.prices[ord.lines[i].key]!=null){ delete c.prices[ord.lines[i].key]; fvCOcustSave(c); } fvCORender(); }
+function fvCOsetTier(custId,tierId){ var c=fvCOloadCust()[custId]; if(!c)return; c.tierId=tierId; fvCOcustSave(c); var ord=fvCOopenOrder(custId); if(ord){ (ord.lines||[]).forEach(function(l){ if(l.src==='manual')return; var tp=fvCOpriceFor(custId,l.key); if(typeof tp==='number'){ l.price=tp; l.src='tier'; } }); fvCOordSave(ord); } fvCORender(); }
+function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); ord.status='completed'; ord.completed=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
+function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var price=l.price, s=l.src; if(s==='tier'){ var tp=fvCOpriceFor(src.custId,l.key); if(typeof tp==='number')price=tp; } var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=price; found.src=s; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:price,src:s}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
   var agg=fvCObulk(),n=0,m=fvBuyLoad();
   // PURCHASING: whole boxes (round up) for kg products; for unit products use the count.
@@ -3247,6 +3265,7 @@ function fvCORender(){
   else if(v==='bulk') ov.innerHTML=fvCOrenderBulk();
   else if(v==='pick') ov.innerHTML=fvCOrenderPick();
   else if(v==='history') ov.innerHTML=fvCOrenderHistory();
+  else if(v==='tiers') ov.innerHTML=fvCOrenderTiers();
   else ov.innerHTML=fvCOrenderList();
 }
 function fvCObackBtn(view,label,cust){ return '<div style="margin-bottom:8px;"><button onclick="fvCOnav(\''+view+'\''+(cust?',\''+cust+'\'':'')+')" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;padding:4px 0;">‹ '+label+'</button></div>'; }
@@ -3268,7 +3287,8 @@ function fvCOrenderList(){
   var h='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
     +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button>'
-    +'<button onclick="fvCOnewSupplier()" style="flex:1;min-width:140px;padding:11px;background:#7a4f1d;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏪 New supplier</button></div>';
+    +'<button onclick="fvCOnewSupplier()" style="flex:1;min-width:140px;padding:11px;background:#7a4f1d;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏪 New supplier</button>'
+    +'<button onclick="fvCOnav(\'tiers\')" style="flex:1;min-width:140px;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏷️ Price tiers</button></div>';
   h += (typeof fvCOShopListHTML === 'function' ? fvCOShopListHTML() : '');   // List-selected items show here too
   if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one, or your shop buy list shows above.</div>';
   ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
@@ -3284,6 +3304,12 @@ function fvCOrenderList(){
   });
   return h;
 }
+function fvCOtierSelectHTML(cur,domid){ var t=fvTierLoad(); var o='<option value="">— no tier (type each price) —</option>'; Object.keys(t).forEach(function(k){ o+='<option value="'+k+'"'+(k===cur?' selected':'')+'>'+fvEsc(t[k].name)+' — '+fvEsc(fvTierRuleWords(t[k].rule))+'</option>'; }); return '<select id="'+domid+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'+o+'</select>'; }
+function fvCOtierBarHTML(c){ var t=fvTierLoad(); var cur=c.tierId||''; var opts='<option value="">— no tier (type prices) —</option>'; Object.keys(t).forEach(function(k){ opts+='<option value="'+k+'"'+(k===cur?' selected':'')+'>'+fvEsc(t[k].name)+'</option>'; }); var capt=(cur&&t[cur])?('<div style="font-size:11px;color:#6b7280;margin:-2px 0 8px;">'+fvEsc(fvTierRuleWords(t[cur].rule))+'</div>'):''; return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap;"><span style="font-size:11px;color:#374151;font-weight:700;">Pricing</span><select onchange="fvCOsetTier(\''+c.id+'\',this.value)" style="flex:1;min-width:120px;padding:7px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;">'+opts+'</select><button onclick="fvCOnav(\'tiers\')" title="Edit price tiers" style="font-size:13px;color:#1c4587;background:#eef2ff;border:none;border-radius:7px;padding:6px 9px;font-weight:700;cursor:pointer;">⚙︎</button></div>'+capt; }
+function fvCOlineChip(c,custId,oid,l,i){ if(!c||!c.tierId)return ''; var tp=fvCOpriceFor(custId,l.key); if(tp==='SETCOST'||(typeof tp!=='number')){ return '<span title="This product has no cost set" style="font-size:10px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:3px 5px;white-space:nowrap;">⚠ SET COST</span>'; } if(l.src==='manual'){ return '<button onclick="fvCOlineToTier(\''+oid+'\','+i+')" title="Tap to use the tier price" style="font-size:10px;color:#1c4587;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:3px 5px;cursor:pointer;white-space:nowrap;">↺ '+fvCOmoney(tp)+'</button>'; } return '<span title="Priced by the tier" style="font-size:10px;color:#15803d;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:6px;padding:3px 5px;white-space:nowrap;">tier ✓</span>'; }
+function fvCOrenderTiers(){ var t=fvTierLoad(); var round=(localStorage.getItem('mandiTierRound')||'cent'); var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">🏷️ Price tiers</div><div style="font-size:12px;color:#6b7280;margin-bottom:10px;">A tier is a pricing rule you reuse across customers. Edit the % to match your real prices.</div>'; Object.keys(t).forEach(function(k){ var r=t[k].rule||{type:'shop'}; var showPc=(r.type==='shopAdj'||r.type==='costPlus'); h+='<div style="border:1px solid #e5e7eb;border-radius:9px;padding:9px;margin-bottom:8px;"><input id="tnm_'+k+'" value="'+fvEsc(t[k].name||'').replace(/"/g,'&quot;')+'" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;font-weight:700;margin-bottom:6px;"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><select id="tty_'+k+'" onchange="fvCOtierTypeChg(\''+k+'\')" style="padding:7px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;"><option value="shop"'+(r.type==='shop'?' selected':'')+'>Shop price</option><option value="shopAdj"'+(r.type==='shopAdj'?' selected':'')+'>Shop price ± %</option><option value="costPlus"'+(r.type==='costPlus'?' selected':'')+'>Cost + %</option><option value="manual"'+(r.type==='manual'?' selected':'')+'>Type each price</option></select><input id="tpc_'+k+'" type="number" inputmode="numeric" value="'+(r.pct!=null?r.pct:'')+'" placeholder="%" style="width:70px;padding:7px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;'+(showPc?'':'display:none;')+'"><span style="font-size:12px;color:#6b7280;">%</span></div></div>'; }); h+='<div style="display:flex;gap:8px;align-items:center;margin:10px 0;"><span style="font-size:12px;color:#374151;font-weight:700;">Round to</span><select id="tround" style="padding:7px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;"><option value="cent"'+(round==='cent'?' selected':'')+'>nearest 1c</option><option value="5c"'+(round==='5c'?' selected':'')+'>nearest 5c</option></select></div><button onclick="fvCOsaveTiers()" style="width:100%;padding:12px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:800;cursor:pointer;">Save tiers</button></div>'; return h; }
+function fvCOtierTypeChg(k){ var ty=(document.getElementById('tty_'+k)||{}).value; var pc=document.getElementById('tpc_'+k); if(pc) pc.style.display=(ty==='shopAdj'||ty==='costPlus')?'':'none'; }
+function fvCOsaveTiers(){ var t=fvTierLoad(),out={}; Object.keys(t).forEach(function(k){ var nm=(((document.getElementById('tnm_'+k)||{}).value)||t[k].name||k).trim(); var ty=((document.getElementById('tty_'+k)||{}).value)||'shop'; var pc=parseFloat((document.getElementById('tpc_'+k)||{}).value); var rule={type:ty}; if(ty==='shopAdj'||ty==='costPlus') rule.pct=isNaN(pc)?0:pc; out[k]={id:k,name:nm,rule:rule}; }); var rd=((document.getElementById('tround')||{}).value)||'cent'; try{localStorage.setItem('mandiTierRound',rd);}catch(e){} fvTierSave(out); alert('✅ Price tiers saved.'); fvCOnav('list'); }
 function fvCOrenderCust(){
   var id=fvCO.custId,saved=fvCOloadCust()[id],c=saved||fvCO._draft||{id:id};
   function f(lbl,fid,val,ph,type){ return '<div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;">'+lbl+'</div><input id="'+fid+'" type="'+(type||'text')+'" value="'+fvEsc(val||'').replace(/"/g,'&quot;')+'" placeholder="'+ph+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;"></div>'; }
@@ -3293,6 +3319,7 @@ function fvCOrenderCust(){
     +f('Address','coAddr',c.address,'Street, suburb')
     +f('Phone','coPhone',c.phone,'04xx xxx xxx','tel')
     +f('Contact person','coContact',c.contact,'Who you deal with')
+    +'<div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;">Price tier</div>'+fvCOtierSelectHTML(c.tierId||'retail','coTier')+'<div style="font-size:11px;color:#6b7280;margin-top:4px;">Sets this customer’s default pricing. You can still change any line on the order. <span onclick="fvCOnav(\'tiers\')" style="color:#1c4587;font-weight:700;cursor:pointer;">Edit tiers ›</span></div></div>'
     +'<button onclick="fvCOsaveCustForm()" style="width:100%;padding:12px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:800;cursor:pointer;margin-top:4px;">Save &amp; take order ›</button>'
     +(saved?'<button onclick="fvCOdelCustConfirm(\''+id+'\')" style="width:100%;padding:9px;background:none;color:#b91c1c;border:none;font-size:12px;cursor:pointer;margin-top:6px;">Delete this customer</button>':'')
     +'</div>';
@@ -3304,19 +3331,20 @@ function fvCOrenderOrder(){
   var opts='<option value="">— pick a product —</option><option value="__ADD__">➕ Add a product not listed…</option>';
   Object.keys(groups).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}).forEach(function(s){ var g=groups[s]; opts+='<optgroup label="'+fvEsc(s)+(g[0].p[1]?' (stall '+fvEsc(g[0].p[1])+')':'')+'">'; g.forEach(function(x){ opts+='<option value="'+x.i+'">'+fvEsc(x.p[3])+'</option>'; }); opts+='</optgroup>'; });
   var linesHtml='',total=0; var _bk=fvCOboughtKeys();
-  (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt; var bought=!!_bk[l.key];
+  (ord.lines||[]).forEach(function(l,i){ var lt=(l.qty||0)*(l.price||0); total+=lt; var bought=!!_bk[l.key]; var chip=fvCOlineChip(c,id,ord.id,l,i);
     linesHtml+='<div style="border-top:1px solid #eef0f2;padding:9px 0;'+(bought?'background:#ecfdf5;border-radius:8px;':'')+'">'
-      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+(bought?'<span title="Bought at the market">✅ </span>':'')+fvEsc(l.name)+'</span>'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+(bought?'<span title="Bought at the market">✅ </span>':'')+fvEsc(l.name)+((c&&c.tierId&&l.src==='manual')?' <span style="font-size:9px;color:#b45309;font-weight:700;">· manual</span>':'')+'</span>'
       +'<button onclick="fvCOlineDel(\''+ord.id+'\','+i+')" style="background:none;border:none;color:#b91c1c;font-size:16px;cursor:pointer;">✕</button></div>'
-      +'<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">'
+      +'<div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">'
       +'<input type="number" inputmode="decimal" value="'+(l.qty||0)+'" onchange="fvCOlineQty(\''+ord.id+'\','+i+',this.value)" style="width:62px;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;"><span style="font-size:12px;color:#6b7280;">'+fvEsc(l.unit||'')+'</span>'
-      +'<span style="font-size:12px;color:#6b7280;">× $</span><input type="number" inputmode="decimal" value="'+(l.price||0)+'" onchange="fvCOlinePrice(\''+ord.id+'\','+i+',this.value)" style="width:72px;padding:8px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;">'
+      +chip+'<span style="font-size:12px;color:#6b7280;">$</span><input type="number" inputmode="decimal" value="'+(l.price||0)+'" onchange="fvCOlinePrice(\''+ord.id+'\','+i+',this.value)" style="width:68px;padding:8px;border:1px solid '+(l.src==='manual'?'#f59e0b':'#cbd5e1')+';border-radius:7px;font-size:14px;">'
       +'<span style="margin-left:auto;font-weight:700;font-size:14px;">'+fvCOmoney(lt)+'</span></div></div>';
   });
   return fvCObackBtn('list','All customers')
     +'<div class="manage-card"><div style="font-weight:800;font-size:16px;color:#0d4420;">'+fvEsc(c.name)+'</div>'
     +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
-    +'<div style="font-size:11px;color:#9ca3af;margin-bottom:8px;">Order '+fvEsc(ord.date||'')+'</div>'
+    +'<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Order '+fvEsc(ord.date||'')+'</div>'
+    +fvCOtierBarHTML(c)
     +'<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-bottom:8px;">'
     +'<select id="coProdSel" onchange="fvCOprodSel(this)" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:8px;">'+opts+'</select>'
     +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
@@ -6702,6 +6730,7 @@ function buildSpendView() {
   html += fvCapitalButtonHTML();
   html += fvCashflowButtonHTML();
   html += fvFinanceButtonHTML();
+  html += fvCatalogButtonHTML();
   html += '<input id="spendSearch" type="text" placeholder="Search a supplier…" oninput="renderSpendRows()" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin:0 0 8px;">';
   html += '<div id="spendList"></div>';
   html += '<button class="inv-add-btn" style="margin:10px 0 0;background:#1c4587;" onclick="window.open(FV_INVOICE_FOLDER,\'_blank\')">📂 View all invoices in Google Drive</button>';
@@ -7256,7 +7285,7 @@ function fvSecurityCheck(){
   if (typeof FV_FB === 'undefined'){ alert('Config missing.'); return; }
   var base = FV_FB.databaseURL;
   function probe(path){ return fetch(base + '/' + path + '.json', { cache:'no-store' }).then(function(r){ return { p:path, s:r.status }; }).catch(function(){ return { p:path, s:'net' }; }); }
-  Promise.all([probe('finance'), probe('stock')]).then(function(res){
+  Promise.all([probe('finance'), probe('stock'), probe('catalog')]).then(function(res){
     var lines = res.map(function(x){ var locked = (x.s === 401 || x.s === 403); return (locked ? '🔒 LOCKED' : '⚠️ OPEN (' + x.s + ')') + ' — /' + x.p; }).join('\n');
     var allLocked = res.every(function(x){ return x.s === 401 || x.s === 403; });
     alert((allLocked ? '✅ SAFE — strangers cannot read your data without a team login.' : '🚨 NOT LOCKED YET — publish the Firebase database rules now (steps are in the lockdown guide).') + '\n\n' + lines);
@@ -7265,6 +7294,69 @@ function fvSecurityCheck(){
 function fvFinanceButtonHTML(){
   if (!fvSession || fvSession.role !== 'owner') return '';
   return '<button onclick="fvFinanceUpload()" style="width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px;border:1px solid #1c4587;background:#eef2ff;color:#1c4587;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">☁️ Move finance data to secure cloud (owner)</button>';
+}
+
+/* ─── Catalogue & sales data: same lock as finance ───────────────────────────
+   epos90.js (sales/cost/margin) and shopProducts.js (buy/sell prices) are
+   sensitive. This moves them into the locked Firebase /catalog node so prices,
+   costs and margins only load AFTER login, for the 6 allow-listed accounts
+   (the same "firewall" rules that protect /finance). Until the owner runs the
+   one-time upload, the static files still populate the app, so nothing breaks. */
+var FV_CATALOG_KEYS = ['EPOS90','SHOP_PRODUCTS'];
+function fvCatalogCollect_(){
+  var o = {};
+  FV_CATALOG_KEYS.forEach(function(k){ if (typeof window[k] !== 'undefined' && window[k] !== null) o[k] = window[k]; });
+  return o;
+}
+function fvCatalogApply_(d){
+  if (!d || typeof d !== 'object') return false;
+  var any = false;
+  if (d.EPOS90 && typeof d.EPOS90 === 'object' && !Array.isArray(d.EPOS90)) { window.EPOS90 = d.EPOS90; any = true; }
+  if (Array.isArray(d.SHOP_PRODUCTS)) { window.SHOP_PRODUCTS = d.SHOP_PRODUCTS; any = true; }
+  return any;
+}
+// Make freshly-loaded catalogue/sales data take effect. Safe whether the static
+// files are still present (re-merge is de-duped → no-op) or already stubbed.
+function fvCatalogWire_(){
+  try {
+    if (typeof SHOP_PRODUCTS !== 'undefined' && SHOP_PRODUCTS && SHOP_PRODUCTS.length && typeof PRODUCTS !== 'undefined') {
+      var have = {}; PRODUCTS.forEach(function(p){ have[p[0]+'||'+p[3]] = true; });
+      SHOP_PRODUCTS.forEach(function(p){ var k = p[0]+'||'+p[3]; if (!have[k]) { PRODUCTS.push(p); have[k] = true; } });
+    }
+  } catch(e){}
+  try { if (typeof loadEPOS90Preload === 'function') loadEPOS90Preload(); } catch(e){}
+  try { var lv = document.getElementById('viewList'); if (lv && lv.classList.contains('active') && typeof buildList === 'function') buildList(); } catch(e){}
+  try { var pv = document.getElementById('viewPL'); if (pv && pv.classList.contains('active') && typeof buildPLView === 'function') buildPLView(); } catch(e){}
+}
+// After login: pull catalogue/sales from the locked cloud (only logged-in team can read it).
+function fvCatalogLoad(){
+  if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()) return Promise.resolve(false);
+  if (typeof fvJsonGet !== 'function') return Promise.resolve(false);
+  // Stored as a {json:"..."} string blob (arrays-of-arrays + nulls mangle in RTDB).
+  return fvJsonGet('catalog').then(function(d){
+    var ok = fvCatalogApply_(d);
+    if (ok) fvCatalogWire_();
+    return ok;
+  }).catch(function(){ return false; });
+}
+// Owner: move catalogue/sales into the locked cloud (mirrors fvFinanceUpload).
+function fvCatalogUpload(){
+  if (!fvSession || fvSession.role !== 'owner'){ alert('Only the owner account can do this.'); return; }
+  if (typeof fvSyncEnabled !== 'function' || !fvSyncEnabled()){ alert('Please log in first (the secure cloud needs your login).'); return; }
+  var payload = fvCatalogCollect_();
+  var has = (payload.SHOP_PRODUCTS && payload.SHOP_PRODUCTS.length) || (payload.EPOS90 && payload.EPOS90.items);
+  if (!has){ alert('No catalogue/sales data is loaded to upload — it may already be in the secure cloud.'); return; }
+  if (!confirm('Move your prices, costs and sales data to the secure cloud? Only your 6 logins will be able to read it.')) return;
+  fvFbToken().then(function(tok){
+    return fetch(FV_FB.databaseURL + '/catalog.json?auth=' + tok, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ json: JSON.stringify(payload) }) });
+  }).then(function(r){
+    if (r && r.ok){ alert('✅ Done. Prices & sales now load from the secure cloud after login. (Static files can now be removed.)'); }
+    else { alert('Upload failed (' + (r ? r.status : 'no response') + '). Did you publish the Firebase rules?'); }
+  }).catch(function(e){ alert('Upload failed: ' + (e && e.message ? e.message : e)); });
+}
+function fvCatalogButtonHTML(){
+  if (!fvSession || fvSession.role !== 'owner') return '';
+  return '<button onclick="fvCatalogUpload()" style="width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px;border:1px solid #1c4587;background:#eef2ff;color:#1c4587;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">🏷️ Move prices &amp; sales to secure cloud (owner)</button>';
 }
 
 /* ─── BACK TO TOP ───────────────────────────────────────────────────────── */
@@ -8225,12 +8317,14 @@ function fvLoginSuccess(found, p, rem, fbAlready){
       window._fvSyncBroken = false;
       if (typeof fvSyncStart === 'function') fvSyncStart();
       if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
+      if (typeof fvCatalogLoad === 'function') fvCatalogLoad();
       if (typeof fvSyncBannerRefresh === 'function') fvSyncBannerRefresh();
       var lv = document.getElementById('viewList'); if (lv && lv.classList.contains('active') && typeof buildList === 'function') buildList();
     }).catch(function(){});
   } else {
     if (typeof fvSyncStart === 'function') fvSyncStart();
     if (typeof fvFinanceLoad === 'function') fvFinanceLoad();
+    if (typeof fvCatalogLoad === 'function') fvCatalogLoad();
   }
   // first login on this device: nudge them to set their own password
   if (!fvOwnPwSet(found.user)) setTimeout(function(){ fvChangePwOpen(true); }, 700);
