@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v122';
+var APP_BUILD = 'v123';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3294,6 +3294,25 @@ function fvCOaddItem(){
   fvCOordSave(ord); fvCORender();
 }
 /* ── AI import: turn a typed/dictated list OR a photo into order lines ──────── */
+// Shrink a photo (camera shots can be many MB) to a ~1280px JPEG before sending —
+// smaller payload = faster and far less likely to hit a 503/overload.
+function fvDownscaleImage_(file, maxDim, cb){
+  try {
+    var url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){
+      var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height||1;
+      var scale=Math.min(1, maxDim/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+      var c=document.createElement('canvas'); c.width=cw; c.height=ch;
+      c.getContext('2d').drawImage(img,0,0,cw,ch);
+      try{ URL.revokeObjectURL(url); }catch(e){}
+      try{ var du=c.toDataURL('image/jpeg',0.82); var m=/^data:([^;]+);base64,(.*)$/.exec(du); cb(m?{mediaType:m[1],base64:m[2]}:null); }
+      catch(e){ cb(null); }
+    };
+    img.onerror=function(){ try{URL.revokeObjectURL(url);}catch(e){} cb(null); };
+    img.src=url;
+  } catch(e){ cb(null); }
+}
 function fvCOaiImport(){
   if(!fvCO.custId || !fvCOloadCust()[fvCO.custId]){ alert("Open a customer's order first."); return; }
   var ov=document.getElementById('fvCOaiOverlay');
@@ -3383,14 +3402,16 @@ function fvCOaiRun(){
     fvCORender();
     if(!res.miss.length) setTimeout(fvCOaiClose, 1300);
   }
-  function fail(e){ if(status) status.textContent='AI error: '+(e&&e.message?e.message:e); if(go) go.disabled=false; }
+  function fail(e){ var m=(e&&e.message)?e.message:String(e); if(/\b5\d\d\b/.test(m)) m='the AI service is busy right now — give it a few seconds and try again'; if(status) status.textContent='⚠️ '+m; if(go) go.disabled=false; }
   function call(parts){ fvAICall(FV_ORDER_SYS, parts, 1200).then(function(t){ return fvParseJSON(t); }).then(finish).catch(fail); }
   if(file){
-    var rd=new FileReader();
-    rd.onload=function(){ var m=/^data:([^;]+);base64,(.*)$/.exec(rd.result||''); if(!m){ fail(new Error('could not read image')); return; }
-      var parts=[{image:{mediaType:m[1],base64:m[2]}}, {text: (text ? fvSplitItemsText_(text) + '\n\n' : '') + 'This image is a produce order list (one item per line, e.g. "2 bunch basil"). Read EVERY line and return the JSON for all items.'}]; call(parts); };
-    rd.onerror=function(){ fail(new Error('could not read image')); };
-    rd.readAsDataURL(file);
+    if(status) status.textContent='🖼️ Preparing photo…';
+    fvDownscaleImage_(file, 1280, function(img){
+      if(!img){ fail(new Error('could not read image')); return; }
+      if(status) status.textContent='🤖 Reading…';
+      var parts=[{image:img}, {text: (text ? fvSplitItemsText_(text) + '\n\n' : '') + 'This image is a produce order list (one item per line, e.g. "2 bunch basil"). Read EVERY line and return the JSON for all items.'}];
+      call(parts);
+    });
   } else { call([{text: fvSplitItemsText_(text)}]); }
 }
 function fvCOlineDel(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord)return; ord.lines.splice(i,1); fvCOordSave(ord); fvCORender(); }
@@ -8024,6 +8045,20 @@ function fvParseJSON(txt) {
 
 // Low-level call to whichever provider is connected.
 // parts = [{text:'…'} | {image:{mediaType, base64}}]. Resolves to the response text.
+// Retry transient AI failures (503 "overloaded", other 5xx, dropped connections)
+// with a short backoff — free models especially return 503 under load.
+function fvFetchRetry(url, opts, tries){
+  tries = tries || 3;
+  return fetch(url, opts).then(function(r){
+    if (!r.ok && r.status >= 500 && tries > 1) {
+      return new Promise(function(res){ setTimeout(res, 1400); }).then(function(){ return fvFetchRetry(url, opts, tries - 1); });
+    }
+    return r;
+  }, function(err){
+    if (tries > 1) return new Promise(function(res){ setTimeout(res, 1400); }).then(function(){ return fvFetchRetry(url, opts, tries - 1); });
+    throw err;
+  });
+}
 function fvAICall(systemPrompt, parts, maxTokens) {
   var key = fvGetKey();
   if (!key) return Promise.reject(new Error('no AI key'));
@@ -8038,7 +8073,7 @@ function fvAICall(systemPrompt, parts, maxTokens) {
         ? { type: 'image', source: { type: 'base64', media_type: p.image.mediaType, data: p.image.base64 } }
         : { type: 'text', text: p.text || '' };
     });
-    return fetch('https://api.anthropic.com/v1/messages', {
+    return fvFetchRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' },
       body: JSON.stringify({ model: model, max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content: content }] })
@@ -8053,7 +8088,7 @@ function fvAICall(systemPrompt, parts, maxTokens) {
   var gparts = parts.map(function(p){
     return p.image ? { inline_data: { mime_type: p.image.mediaType, data: p.image.base64 } } : { text: p.text || '' };
   });
-  return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+  return fvFetchRetry('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
