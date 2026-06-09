@@ -1303,7 +1303,7 @@
 <!-- Bottom nav -->
 <div class="bottom-nav">
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
-  <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store</button>
+  <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store/Stocktake</button>
   <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Expenses</button>
   <button class="nav-btn"        id="navPL"      onclick="showView('PL')"><span class="nav-icon">📊</span>P&amp;L</button>
   <button class="nav-btn"        id="navHistory" onclick="showView('History')"><span class="nav-icon">🕐</span>History</button>
@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v126';
+var APP_BUILD = 'v127';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6995,7 +6995,7 @@ function buildStoreView() {
         .map(function(c){ var e = fvEsc(c).replace(/"/g,'&quot;'); return '<option value="' + e + '">' + fvEsc(c) + '</option>'; }).join('');
   v.innerHTML =
     '<div class="manage-card">'
-    + '<div class="manage-title">🏬 Store — product lookup</div>'
+    + '<div class="manage-title">🏬 Store / Stocktake</div>'
     + '<div style="display:flex;gap:8px;margin:0 0 10px;">'
     +   '<button class="inv-add-btn" style="margin:0;flex:1;" onclick="fvScanBarcode()">📷 Scan barcode</button>'
     +   '<button class="inv-add-btn" style="margin:0;flex:1;background:#7c3aed;" onclick="fvStockTakeStart()">📋 Stock Take</button>'
