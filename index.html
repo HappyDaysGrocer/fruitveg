@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v120';
+var APP_BUILD = 'v121';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3319,13 +3319,41 @@ function fvCOaiImport(){
   var im=document.getElementById('fvCOaiImg'); if(im) im.value='';
 }
 function fvCOaiClose(){ var ov=document.getElementById('fvCOaiOverlay'); if(ov) ov.style.display='none'; }
+// Singular/plural variants of the last word, so "strawberry" also tries "strawberries".
+function fvCOpluralVariants_(nm){
+  var v=[nm]; var parts=String(nm).trim().split(/\s+/); var last=parts[parts.length-1]||'';
+  var pl=/y$/i.test(last)?last.replace(/y$/i,'ies'):(/(s|x|z|ch|sh)$/i.test(last)?last+'es':last+'s');
+  if(pl.toLowerCase()!==last.toLowerCase()) v.push(parts.slice(0,-1).concat(pl).join(' '));
+  if(/s$/i.test(last)&&last.length>3){ var sg=last.replace(/ies$/i,'y').replace(/s$/i,''); v.push(parts.slice(0,-1).concat(sg).join(' ')); }
+  return v;
+}
+// Robust product pick for AI order import: tolerant of the fuzzyMatch "clear winner"
+// guard (which the duplicate Mandi/EPOS catalogue entries trip). Considers strong
+// candidates (score>=15) across plural variants, prefers the most complete match,
+// then the cleanest (shortest) product name — which favours real produce over
+// long grocery/sauce names. Returns a PRODUCTS index, or -1.
+function fvCOpickMatch_(nm){
+  if(typeof fuzzyMatch!=='function') return -1;
+  var pool=[];
+  fvCOpluralVariants_(nm).forEach(function(v){
+    var mr=fuzzyMatch(v);
+    if(mr && mr.alternatives) mr.alternatives.forEach(function(a){ if(a.score>=15) pool.push(a); });
+  });
+  if(!pool.length) return -1;
+  var byIdx={}; pool.forEach(function(a){ if(!byIdx[a.idx]||a.score>byIdx[a.idx].score) byIdx[a.idx]=a; });
+  var c=Object.keys(byIdx).map(function(k){ return byIdx[k]; });
+  var maxFrac=Math.max.apply(null, c.map(function(a){ return a.fraction||0; }));
+  c=c.filter(function(a){ return (a.fraction||0)>=maxFrac-0.001; });
+  c.sort(function(a,b){ if(b.score!==a.score) return b.score-a.score; return String(PRODUCTS[a.idx][3]||'').length - String(PRODUCTS[b.idx][3]||'').length; });
+  return c[0].idx;
+}
 function fvCOaiAddItems(items){
   var ord=fvCOensureOpen(fvCO.custId), added=0, miss=[];
   (items||[]).forEach(function(it){
     var nm=(it && it.name ? String(it.name) : '').trim(); if(!nm) return;
-    var mr=(typeof fuzzyMatch==='function')?fuzzyMatch(nm):null;
-    if(mr && mr.matched && PRODUCTS[mr.matched.idx]){
-      var p=PRODUCTS[mr.matched.idx], key=orderKey(p);
+    var idx=fvCOpickMatch_(nm);
+    if(idx>=0 && PRODUCTS[idx]){
+      var p=PRODUCTS[idx], key=orderKey(p);
       var qty=(it.qty===0||it.qty)?Number(it.qty):1; if(isNaN(qty)||qty<=0) qty=1;
       var tp=fvCOpriceFor(fvCO.custId,key); var price=(typeof tp==='number')?tp:((p[7]!=null)?+p[7]:0);
       var src=(typeof tp==='number')?'tier':'manual', found=null;
