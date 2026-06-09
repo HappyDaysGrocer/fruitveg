@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v119';
+var APP_BUILD = 'v120';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7812,6 +7812,13 @@ function assistSend() {
   assistAddMsg(q, 'user');
   inp.value = '';
 
+  // If a customer's order is open, a pasted/typed item list drops straight into THAT order.
+  if (typeof fvCO !== 'undefined' && fvCO && fvCO.view === 'order' && fvCO.custId
+      && typeof fvCOloadCust === 'function' && fvCOloadCust()[fvCO.custId]
+      && fvAssistLooksLikeList_(q)) {
+    fvAssistAddToOpenOrder_(q, viaVoice); return;
+  }
+
   // No AI key → use the built-in rule-based brain.
   if (!fvGetKey()) { assistHandleRuleBased(q, viaVoice); return; }
 
@@ -7854,6 +7861,50 @@ function assistSend() {
     assistAddMsg("⚠️ AI hiccup (" + ((e && e.message) || 'unavailable') + ") — using basic mode for this one.", 'bot');
     assistHandleRuleBased(q, viaVoice);
   });
+}
+
+// Does the assistant message look like an order list (not a question)?
+function fvAssistLooksLikeList_(q){
+  q = String(q || '');
+  if (/\?/.test(q)) return false;
+  if (/^\s*(what|how|why|when|where|who|which|is|are|can|could|do|does|did|show|tell|explain|help|hi|hey|hello|thanks)\b/i.test(q)) return false;
+  if (/\n/.test(q.trim())) return true;            // multi-line paste = a list
+  if (/[,;]/.test(q) && /\d/.test(q)) return true; // "2 banana, 5 potato"
+  if (/^\s*\d/.test(q)) return true;               // starts with a quantity
+  return false;
+}
+// No-AI fallback: split a message into {qty,unit,name} items using the line parser.
+function fvLocalParseItems_(q){
+  return String(q).split(/[\n,;]+/).map(function(s){
+    s = s.trim(); if (!s) return null;
+    var p = (typeof parseLine === 'function') ? parseLine(s) : { name: s };
+    return (p && p.name) ? { qty: p.qty, unit: p.unit, name: p.name } : null;
+  }).filter(Boolean);
+}
+// Add the items in a message straight into the currently-open customer order.
+function fvAssistAddToOpenOrder_(q, viaVoice){
+  var custName = (fvCOloadCust()[fvCO.custId] || {}).name || 'this';
+  function apply(items){
+    var res = fvCOaiAddItems(items || []);
+    if (typeof fvCORender === 'function') fvCORender();
+    var msg;
+    if (!res.added && (!res.miss || !res.miss.length)) {
+      msg = "Hmm, I couldn't pull any items out of that.";
+    } else {
+      msg = '✅ Added ' + res.added + ' item' + (res.added !== 1 ? 's' : '') + " to " + custName + "'s order.";
+      if (res.miss && res.miss.length) msg += '  Not recognised: ' + res.miss.join(', ') + ' — add those manually.';
+    }
+    assistAddMsg(msg, 'bot');
+    if (viaVoice) assistSpeak(msg);
+    setTimeout(closeAssistant, 1600);
+  }
+  if (fvGetKey() && typeof fvExtractOrder === 'function') {
+    var thinking = assistAddThinking();
+    fvExtractOrder(q).then(function(data){ assistRemoveThinking(thinking); apply(data && data.items && data.items.length ? data.items : fvLocalParseItems_(q)); })
+      .catch(function(){ assistRemoveThinking(thinking); apply(fvLocalParseItems_(q)); });
+  } else {
+    apply(fvLocalParseItems_(q));
+  }
 }
 
 /* ─── SMART AI BRAIN ───────────────────────────────────────────────────────
