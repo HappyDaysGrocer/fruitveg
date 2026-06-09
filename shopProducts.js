@@ -622,5 +622,6 @@ var SHOP_PRODUCTS = [
   // Added 2026-06-09 (owner request) — order options for customers (set price per order/tier)
   ['A-B',null,null,'Basil Bunch',null,null,null,null,false,null],
   ['S-Z',null,null,'Tomatoes Box (10kg)',null,null,null,null,false,null],
-  ['P-R',null,null,'Paneer Fresh 1kg',null,null,12,13,false,'9369998096190']
+  ['P-R',null,null,'Paneer Fresh 1kg',null,null,12,13,false,'9369998096190'],
+  ['P-R',null,null,'Potato Peeled 10kg Bag',null,16,1.6,null,false,null]
 ];
