@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v114';
+var APP_BUILD = 'v115';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2136,6 +2136,8 @@ function fvLiveEnsureTimer(){
 // List sub-view: 'mandi' = market-stall suppliers; 'grocery' = all other suppliers.
 var fvListMode = (function(){ try { return localStorage.getItem('fvListMode') || 'mandi'; } catch(e){ return 'mandi'; } })();
 function fvSetListMode(m){ fvListMode = (m === 'grocery' ? 'grocery' : (m === 'menu' ? 'menu' : 'mandi')); try { localStorage.setItem('fvListMode', fvListMode); } catch(e){} buildList(); var mc = document.getElementById('mainContent'); if (mc) mc.scrollTop = 0; }
+var fvListSort = (function(){ try { return localStorage.getItem('fvListSort') || 'stall'; } catch(e){ return 'stall'; } })();
+function fvSetListSort(s){ fvListSort = (s === 'name' ? 'name' : 'stall'); try { localStorage.setItem('fvListSort', fvListSort); } catch(e){} buildList(); var mc = document.getElementById('mainContent'); if (mc) mc.scrollTop = 0; }
 function fvSupIsMandi(s){ return (s != null && String(s).trim() !== ''); }   // has a stall = Mandi
 
 /* ─── Café menu costings (baked from the EPOS catalogue, 2026-05-04) ─────────
@@ -2367,6 +2369,13 @@ function buildList() {
   if (_sb && typeof _fvActiveId === 'function' && _fvActiveId() === 'viewList') _sb.style.display = (mode === 'menu') ? 'none' : 'block';
   if (mode === 'menu') { fvRenderCafeMenu(container); if (typeof fvBuyRenderSummary === 'function') fvBuyRenderSummary(); return; }
 
+  // Sort toggle: group by stall/category, or flat product A–Z
+  var sortWrap = document.createElement('div');
+  sortWrap.style.cssText = 'display:flex;gap:6px;align-items:center;margin:0 0 8px;';
+  function fvSortBtn(key, label){ var on = (fvListSort === key); return '<button onclick="fvSetListSort(\'' + key + '\')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid ' + (on?'#1c4587':'#cbd5e1') + ';background:' + (on?'#1c4587':'#fff') + ';color:' + (on?'#fff':'#374151') + ';">' + label + '</button>'; }
+  sortWrap.innerHTML = '<span style="font-size:11px;color:#6b7280;font-weight:700;white-space:nowrap;">Sort</span>' + fvSortBtn('stall','🏷️ By stall') + fvSortBtn('name','🔤 A–Z product');
+  container.appendChild(sortWrap);
+
   // Keep only the suppliers for the chosen sub-tab
   suppliers = suppliers.filter(function(s){ return (mode === 'grocery') ? !fvSupIsMandi(s.stall) : fvSupIsMandi(s.stall); });
   if (!suppliers.length) {
@@ -2393,8 +2402,17 @@ function buildList() {
     }; })(s.name));
     strip.appendChild(btn);
   });
-  container.appendChild(strip);
+  if (fvListSort !== 'name') container.appendChild(strip);
 
+  if (fvListSort === 'name') {
+    // Flat A–Z list of every product in this mode, with a stall/supplier hint per row
+    var _items = [];
+    PRODUCTS.forEach(function(p, i){ if (!p[3]) return; var isM = fvSupIsMandi(p[1]); if (mode === 'grocery' ? isM : !isM) return; _items.push({ p:p, i:i }); });
+    _items.sort(function(a, b){ return String(a.p[3]||'').toLowerCase().localeCompare(String(b.p[3]||'').toLowerCase()); });
+    var _flat = document.createElement('div'); _flat.className = 'product-list';
+    _items.forEach(function(it){ var r = makeRow(it.p, it.i); var sd = r.querySelector('.product-detail'); if (sd){ var tag = (it.p[1] ? ('stall ' + it.p[1] + ' · ') : '') + (it.p[0] || ''); sd.innerHTML = '<span style="color:#9ca3af;">' + fvEsc(tag) + '</span>' + (sd.innerHTML ? (' · ' + sd.innerHTML) : ''); } _flat.appendChild(r); });
+    container.appendChild(_flat);
+  } else
   suppliers.forEach(function(supObj) {
     var sup   = supObj.name;
     var stall = supObj.stall;
@@ -3269,15 +3287,16 @@ function fvCORender(){
   else ov.innerHTML=fvCOrenderList();
 }
 function fvCObackBtn(view,label,cust){ return '<div style="margin-bottom:8px;"><button onclick="fvCOnav(\''+view+'\''+(cust?',\''+cust+'\'':'')+')" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;padding:4px 0;">‹ '+label+'</button></div>'; }
+function fvCObuyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); if(typeof buyListAdj==='function'){ buyListAdj(idx,delta,e); } else { var m=fvBuyLoad(); var q=Math.max(0,(m[idx]||0)+delta); if(q===0)delete m[idx]; else m[idx]=q; if(typeof fvBuySave==='function')fvBuySave(); if(typeof fvBuyPush==='function')fvBuyPush(idx,q); } if(typeof fvCORender==='function')fvCORender(); }
 function fvCOShopListHTML(){
   if (typeof fvBuyLoad !== 'function') return '';
   var m = fvBuyLoad(), items = [];
-  Object.keys(m).forEach(function(idx){ if (m[idx] > 0 && PRODUCTS[idx]) items.push({ name:PRODUCTS[idx][3], q:m[idx], sup:PRODUCTS[idx][0] }); });
+  Object.keys(m).forEach(function(idx){ if (m[idx] > 0 && PRODUCTS[idx]) items.push({ name:PRODUCTS[idx][3], q:m[idx], sup:PRODUCTS[idx][0], idx:idx }); });
   if (!items.length) return '';
-  var rows = items.map(function(s){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:3px 0;"><span>' + fvEsc(s.name) + ' <span style="color:#9ca3af;">· ' + fvEsc(s.sup) + '</span></span><span style="font-weight:700;">' + s.q + '</span></div>'; }).join('');
+  var rows = items.map(function(s){ return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#374151;padding:4px 0;"><span style="flex:1;min-width:0;">' + fvEsc(s.name) + ' <span style="color:#9ca3af;">· ' + fvEsc(s.sup) + '</span></span><span style="display:inline-flex;align-items:center;gap:6px;flex:none;"><button type="button" onclick="fvCObuyAdj(' + s.idx + ',-1,event)" style="width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">−</button><span style="font-weight:700;min-width:18px;text-align:center;">' + s.q + '</span><button type="button" onclick="fvCObuyAdj(' + s.idx + ',1,event)" style="width:24px;height:24px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">+</button></span></div>'; }).join('');
   return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</span></div>'
-    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Selected on the List tab with the +/− buttons</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Adjust here or on the List tab — they stay in sync.</div>'
     + rows
     + '<button onclick="fvCOnav(\'bulk\')" style="width:100%;padding:8px;background:#15662f;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-top:8px;">See full purchasing list ›</button></div>';
 }
