@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v137';
+var APP_BUILD = 'v138';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3711,7 +3711,16 @@ function fvCOrenderHistory(){
   if(top.length){ h+='<div class="order-summary-card"><div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">What they usually buy</div>'; top.forEach(function(n){ h+='<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:2px 0;"><span>'+fvEsc(n)+'</span><span style="font-weight:700;">'+buy[n]+'</span></div>'; }); h+='</div>'; }
   hist.forEach(function(o){ var tot=fvCOorderTotal(o),ex=!!o.excluded;
     h+='<div class="order-summary-card"'+(ex?' style="opacity:.6;"':'')+'><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#1c4587;">'+fvEsc(o.completed||o.date||'')+(ex?' <span style="font-size:10px;color:#b91c1c;font-weight:800;">· NOT COUNTED</span>':'')+'</span><span style="font-weight:800;">'+fvCOmoney(tot)+'</span></div>'
-      +'<div style="font-size:11px;color:#6b7280;margin-top:3px;">'+(o.lines||[]).map(function(l){return fvEsc(l.name)+' '+l.qty+fvEsc(l.unit||'');}).join(', ')+'</div>'
+      +(function(){
+        // Neat invoice-style line items: numbered, alphabetical, qty × price, line total
+        var ls=(o.lines||[]).slice().sort(function(a,b){ return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase()); });
+        if(!ls.length) return '';
+        var b='<div class="hist-inv-hdr" style="padding:8px 0 4px;"><span class="hist-inv-num">#</span><span class="hist-inv-name">Item</span><span class="hist-inv-qty">Qty × Price</span><span class="hist-inv-total">Total</span></div>';
+        ls.forEach(function(l,ii){ var q=l.qty||0,pr=(l.price!=null?+l.price:0),u=(l.unit&&l.unit!=='ea')?(' '+l.unit):'';
+          b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span><span class="hist-inv-qty">'+q+fvEsc(u)+' × $'+pr.toFixed(2)+'</span><span class="hist-inv-total">$'+(q*pr).toFixed(2)+'</span></div>'; });
+        b+='<div class="hist-inv-foot" style="padding:7px 0 2px;"><span class="hist-inv-num"></span><span class="hist-inv-name">TOTAL · '+ls.length+' item'+(ls.length!==1?'s':'')+'</span><span class="hist-inv-qty"></span><span class="hist-inv-total">'+fvCOmoney(tot)+'</span></div>';
+        return b;
+      })()
       +'<div style="display:flex;gap:8px;margin-top:8px;"><button onclick="fvCOreuse(\''+o.id+'\')" style="flex:1;padding:8px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">♻️ Reuse this order</button><button onclick="fvCOcopy(\''+o.id+'\')" style="flex:1;padding:8px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copy</button></div>'
       +(owner?('<div style="display:flex;gap:8px;margin-top:6px;"><button onclick="fvCOhistExclude(\''+o.id+'\')" style="flex:1;padding:7px;background:#fff;color:#b45309;border:1px solid #fed7aa;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">'+(ex?'✓ Count again':'🚫 Don’t count')+'</button><button onclick="fvCOhistRemove(\''+o.id+'\')" style="flex:1;padding:7px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🗑 Remove</button></div>'):'')
       +'</div>';
