@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v127';
+var APP_BUILD = 'v128';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5631,6 +5631,33 @@ function renderHistory(query) {
   }
 }
 
+// Find a product's CURRENT index in PRODUCTS by its (historical) name.
+function fvFindListIdx_(pname){
+  if (typeof PRODUCTS === 'undefined') return -1;
+  for (var i=0;i<PRODUCTS.length;i++){ var n=(typeof getProductName==='function')?getProductName(i):PRODUCTS[i][3]; if (n===pname || PRODUCTS[i][3]===pname) return i; }
+  var lp=String(pname||'').toLowerCase();
+  for (var j=0;j<PRODUCTS.length;j++){ if (String(PRODUCTS[j][3]||'').toLowerCase()===lp) return j; }
+  return -1;
+}
+// Jump from History back to this product on the List (switch Mandi/Grocery mode as
+// needed so the row is visible, scroll to it, briefly highlight it).
+function fvHistToList(idx){
+  idx = parseInt(idx,10);
+  if (isNaN(idx) || idx<0 || typeof PRODUCTS==='undefined' || !PRODUCTS[idx]){ if (typeof showView==='function') showView('List'); return; }
+  if (typeof fvSetListMode==='function' && typeof fvListMode!=='undefined'){
+    var want = (typeof fvSupIsMandi==='function' && fvSupIsMandi(PRODUCTS[idx][1])) ? 'mandi' : 'grocery';
+    if (fvListMode !== want) fvSetListMode(want);   // rebuilds the list in the right mode
+  }
+  if (typeof showView==='function') showView('List');
+  setTimeout(function(){
+    var el = document.getElementById('row'+idx);
+    if (el){
+      el.scrollIntoView({ behavior:'smooth', block:'center' });
+      var old = el.style.background; el.style.transition='background .3s'; el.style.background='#fde68a';
+      setTimeout(function(){ el.style.background = old || ''; }, 1800);
+    }
+  }, 240);
+}
 function renderByProduct(hist, dates, q, container) {
   // Determine if the query matches any PRODUCT NAME — if so, product matches take
   // priority (so "banana" shows Bananas, not avocados from "Arcella Bananas").
@@ -5722,6 +5749,7 @@ function renderByProduct(hist, dates, q, container) {
     var body = document.createElement('div');
     body.className = 'hist-acc-body' + (isOpen ? ' open' : '');
 
+    var jumpIdx = (typeof fvFindListIdx_ === 'function') ? fvFindListIdx_(pname) : -1;
     entries.forEach(function(entry, ei) {
       var item = entry.item;
       var prevEntry = entries[ei + 1];
@@ -5736,7 +5764,9 @@ function renderByProduct(hist, dates, q, container) {
       var row = document.createElement('div');
       row.className = 'hist-entry';
       row.innerHTML =
-        '<span class="hist-date">' + dateLabel + '</span>' +
+        (jumpIdx >= 0
+          ? '<span class="hist-date" style="color:#1c4587;text-decoration:underline;cursor:pointer;" title="Open this product on the List" onclick="fvHistToList(' + jumpIdx + ')">' + dateLabel + ' ↗</span>'
+          : '<span class="hist-date">' + dateLabel + '</span>') +
         '<span class="hist-supplier">' + item.supplier + ' · ' + item.buyer + '</span>' +
         '<span class="hist-qty">' + item.qty + '×</span>' +
         '<span class="hist-price">$' + item.price.toFixed(2) + '</span>' +
