@@ -614,5 +614,9 @@ var SHOP_PRODUCTS = [
   ['Water',null,null,'cocobella coconut water straight up 1L',null,null,3.5,5,false,'9336243003166'],
   ['Water',null,null,'San Pellegrino sparkling natural mineral water 750ml x 12 pack',null,null,3,4,false,'8002270011054'],
   ['Yogurt',null,null,'COYO Coconut Yoghurt Greek Style 500g',null,null,6.16,11.5,false,'9351851001946'],
-  ['Yogurt',null,null,'COYO Coconut Yoghurt Natural 500g',null,null,6.16,11.5,false,'9351851000109']
+  ['Yogurt',null,null,'COYO Coconut Yoghurt Natural 500g',null,null,6.16,11.5,false,'9351851000109'],
+  // Added 2026-06-09 from DailySales — produce that sold but wasn't in the catalogue
+  ['C-G',null,null,'Cabbage',null,null,null,1.99,false,null],
+  ['C-G',null,null,'Garlic Peeled',null,null,3,5.5,false,null],
+  ['P-R',null,null,'Papaya Half',null,null,null,2.49,false,null]
 ];
