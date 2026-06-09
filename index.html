@@ -650,6 +650,23 @@
     .hist-trend-down { color: #16a34a; font-size: 10px; }
     .hist-trend-same { color: #6b7280; font-size: 10px; }
 
+    /* ── History "invoice" rows (By Date): #, item, qty × price, total ── */
+    .hist-inv-hdr, .hist-inv-row, .hist-inv-foot {
+      display: grid; grid-template-columns: 24px 1fr auto auto; gap: 8px;
+      align-items: center; padding: 7px 14px;
+    }
+    .hist-inv-row { border-bottom: 1px solid #f3f3f3; }
+    .hist-inv-row:last-of-type { border-bottom: none; }
+    .hist-inv-hdr { font-size: 9.5px; font-weight: 800; color: #9ca3af; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #eef0f2; padding-bottom: 5px; }
+    .hist-inv-num { color: #9ca3af; font-weight: 700; text-align: right; font-size: 12px; }
+    .hist-inv-name { min-width: 0; }
+    .hist-inv-prod { display: block; font-weight: 600; color: #111; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-inv-sup  { display: block; font-size: 10px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-inv-qty   { font-size: 12px; color: #6b7280; white-space: nowrap; text-align: right; }
+    .hist-inv-total { font-weight: 800; color: #0d4420; white-space: nowrap; text-align: right; min-width: 56px; }
+    .hist-inv-foot  { border-top: 2px solid #0d4420; margin-top: 2px; }
+    .hist-inv-foot .hist-inv-name, .hist-inv-foot .hist-inv-total { font-weight: 800; color: #0d4420; font-size: 13px; }
+
     .hist-date-card { background: white; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
     .hist-date-hdr {
       background: #0d1b2a; color: #f4d03f; padding: 10px 14px;
@@ -1835,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v134';
+var APP_BUILD = 'v135';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -5562,7 +5579,7 @@ function initHistory() {
   saveHistory(existing);
 }
 
-var histMode = 'product'; // 'product' | 'date'
+var histMode = 'date'; // 'product' | 'date' — default to the invoice/PO list
 
 function saveRunToHistory() {
   var boughtItems = [];
@@ -5930,28 +5947,26 @@ function renderByDate(hist, dates, q, container) {
     var body = document.createElement('div');
     body.className = 'hist-acc-body' + (isOpen ? ' open' : '');
 
-    // Group by supplier
-    var supMap = {};
-    items.forEach(function(it) {
-      var k = it.supplier + (it.stall && it.stall!=='—' ? ' · Stall ' + it.stall : '');
-      if (!supMap[k]) supMap[k] = [];
-      supMap[k].push(it);
+    // Numbered, alphabetical invoice-style list (like a purchase order)
+    var invHdr = document.createElement('div');
+    invHdr.className = 'hist-inv-hdr';
+    invHdr.innerHTML = '<span class="hist-inv-num">#</span><span class="hist-inv-name">Item</span><span class="hist-inv-qty">Qty × Price</span><span class="hist-inv-total">Total</span>';
+    body.appendChild(invHdr);
+    items.slice().sort(function(a, b){ return String(a.productName||'').toLowerCase().localeCompare(String(b.productName||'').toLowerCase()); }).forEach(function(item, ii) {
+      var supLabel = item.supplier + (item.stall && item.stall!=='—' ? ' · Stall ' + item.stall : '');
+      var row = document.createElement('div');
+      row.className = 'hist-inv-row';
+      row.innerHTML =
+        '<span class="hist-inv-num">' + (ii + 1) + '</span>' +
+        '<span class="hist-inv-name"><span class="hist-inv-prod">' + fvEsc(item.productName) + '</span><span class="hist-inv-sup">' + fvEsc(supLabel) + '</span></span>' +
+        '<span class="hist-inv-qty">' + item.qty + ' × $' + item.price.toFixed(2) + '</span>' +
+        '<span class="hist-inv-total">$' + item.total.toFixed(2) + '</span>';
+      body.appendChild(row);
     });
-    Object.keys(supMap).sort().forEach(function(sup) {
-      var supRow = document.createElement('div');
-      supRow.style.cssText = 'padding:6px 14px 2px;font-size:11px;font-weight:700;color:#1c4587;background:#f0f7ff;';
-      supRow.textContent = sup;
-      body.appendChild(supRow);
-      supMap[sup].forEach(function(item) {
-        var row = document.createElement('div');
-        row.className = 'hist-entry';
-        row.innerHTML =
-          '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + item.productName + '</span>' +
-          '<span class="hist-qty" style="margin-left:8px;">' + item.qty + ' × $' + item.price.toFixed(2) + '</span>' +
-          '<span class="hist-price" style="margin-left:8px;">$' + item.total.toFixed(2) + '</span>';
-        body.appendChild(row);
-      });
-    });
+    var invFoot = document.createElement('div');
+    invFoot.className = 'hist-inv-foot';
+    invFoot.innerHTML = '<span class="hist-inv-num"></span><span class="hist-inv-name">TOTAL · ' + items.length + ' item' + (items.length!==1?'s':'') + '</span><span class="hist-inv-qty"></span><span class="hist-inv-total">$' + dayTotal.toFixed(2) + '</span>';
+    body.appendChild(invFoot);
 
     // Toggle open/close
     hdr.addEventListener('click', function() {
