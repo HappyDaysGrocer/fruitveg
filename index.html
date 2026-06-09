@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v118';
+var APP_BUILD = 'v119';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3293,6 +3293,78 @@ function fvCOaddItem(){
   var c=fvCOloadCust()[fvCO.custId]; if(c && _src==='manual'){ if(!c.prices)c.prices={}; c.prices[key]=price; fvCOcustSave(c); }
   fvCOordSave(ord); fvCORender();
 }
+/* ── AI import: turn a typed/dictated list OR a photo into order lines ──────── */
+function fvCOaiImport(){
+  if(!fvCO.custId || !fvCOloadCust()[fvCO.custId]){ alert("Open a customer's order first."); return; }
+  var ov=document.getElementById('fvCOaiOverlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='fvCOaiOverlay';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML='<div style="background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px;box-sizing:border-box;max-height:85vh;overflow:auto;">'
+      +'<div style="font-size:16px;font-weight:800;margin-bottom:4px;">🤖 Add items by list or photo</div>'
+      +'<div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Paste or dictate the order, and/or attach a photo of a written list. I\'ll match each item to your produce and add it to this order.</div>'
+      +'<textarea id="fvCOaiText" rows="4" placeholder="e.g. 2 boxes bananas, 5kg potatoes, a bunch of coriander" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;"></textarea>'
+      +'<div style="margin-top:8px;font-size:13px;"><label style="font-weight:700;color:#374151;">📷 Photo (optional): </label><input type="file" id="fvCOaiImg" accept="image/*" style="font-size:13px;"></div>'
+      +'<div id="fvCOaiStatus" style="font-size:12px;color:#6b7280;margin-top:8px;min-height:16px;"></div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;">'
+      +'<button onclick="fvCOaiClose()" style="flex:1;padding:12px;border:1px solid #cbd5e1;background:#fff;border-radius:10px;font-weight:700;cursor:pointer;">Cancel</button>'
+      +'<button id="fvCOaiGo" onclick="fvCOaiRun()" style="flex:2;padding:12px;border:none;background:#15662f;color:#fff;border-radius:10px;font-weight:800;cursor:pointer;">Read &amp; add to order</button>'
+      +'</div></div>';
+    ov.addEventListener('click',function(e){ if(e.target===ov) fvCOaiClose(); });
+    document.body.appendChild(ov);
+  }
+  ov.style.display='flex';
+  var s=document.getElementById('fvCOaiStatus'); if(s) s.textContent='';
+  var t=document.getElementById('fvCOaiText'); if(t){ t.value=''; t.focus(); }
+  var im=document.getElementById('fvCOaiImg'); if(im) im.value='';
+}
+function fvCOaiClose(){ var ov=document.getElementById('fvCOaiOverlay'); if(ov) ov.style.display='none'; }
+function fvCOaiAddItems(items){
+  var ord=fvCOensureOpen(fvCO.custId), added=0, miss=[];
+  (items||[]).forEach(function(it){
+    var nm=(it && it.name ? String(it.name) : '').trim(); if(!nm) return;
+    var mr=(typeof fuzzyMatch==='function')?fuzzyMatch(nm):null;
+    if(mr && mr.matched && PRODUCTS[mr.matched.idx]){
+      var p=PRODUCTS[mr.matched.idx], key=orderKey(p);
+      var qty=(it.qty===0||it.qty)?Number(it.qty):1; if(isNaN(qty)||qty<=0) qty=1;
+      var tp=fvCOpriceFor(fvCO.custId,key); var price=(typeof tp==='number')?tp:((p[7]!=null)?+p[7]:0);
+      var src=(typeof tp==='number')?'tier':'manual', found=null;
+      (ord.lines||[]).forEach(function(l){ if(l.key===key) found=l; });
+      if(found){ found.qty=(found.qty||0)+qty; if(!found.price){ found.price=price; found.src=src; } }
+      else { ord.lines.push({key:key,name:p[3],sup:p[0],unit:fvCOunit(p[3]),qty:qty,price:price,src:src}); }
+      added++;
+    } else { miss.push(nm); }
+  });
+  fvCOordSave(ord);
+  return { added: added, miss: miss };
+}
+function fvCOaiRun(){
+  var status=document.getElementById('fvCOaiStatus'), go=document.getElementById('fvCOaiGo');
+  var text=((document.getElementById('fvCOaiText')||{}).value||'').trim();
+  var fileEl=document.getElementById('fvCOaiImg'), file=fileEl&&fileEl.files&&fileEl.files[0];
+  if(!text && !file){ if(status) status.textContent='Type a list or attach a photo first.'; return; }
+  if(typeof fvGetKey==='function' && !fvGetKey()){ if(status) status.textContent='⚠️ Add your AI key first (tap the 🤖 assistant to set it).'; return; }
+  if(go) go.disabled=true; if(status) status.textContent='🤖 Reading…';
+  function finish(data){
+    var items=(data && data.items) ? data.items : [];
+    if(!items.length){ if(status) status.textContent="Couldn't read any items — try clearer text or a sharper photo."; if(go) go.disabled=false; return; }
+    var res=fvCOaiAddItems(items);
+    var msg='✅ Added '+res.added+' item'+(res.added!==1?'s':'')+' to the order.';
+    if(res.miss.length) msg+='  Not recognised: '+res.miss.join(', ')+' — add those manually.';
+    if(status) status.textContent=msg; if(go) go.disabled=false;
+    fvCORender();
+    if(!res.miss.length) setTimeout(fvCOaiClose, 1300);
+  }
+  function fail(e){ if(status) status.textContent='AI error: '+(e&&e.message?e.message:e); if(go) go.disabled=false; }
+  function call(parts){ fvAICall(FV_ORDER_SYS, parts, 1200).then(function(t){ return fvParseJSON(t); }).then(finish).catch(fail); }
+  if(file){
+    var rd=new FileReader();
+    rd.onload=function(){ var m=/^data:([^;]+);base64,(.*)$/.exec(rd.result||''); if(!m){ fail(new Error('could not read image')); return; }
+      var parts=[{image:{mediaType:m[1],base64:m[2]}}, {text: text || 'Read the produce order from this image.'}]; call(parts); };
+    rd.onerror=function(){ fail(new Error('could not read image')); };
+    rd.readAsDataURL(file);
+  } else { call([{text:text}]); }
+}
 function fvCOlineDel(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord)return; ord.lines.splice(i,1); fvCOordSave(ord); fvCORender(); }
 function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; ord.lines[i].qty=parseFloat(val)||0; fvCOordSave(ord); fvCORender(); }
 function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; ord.lines[i].src='manual'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
@@ -3417,6 +3489,7 @@ function fvCOrenderOrder(){
     +'<button id="fvcoOurBtn" onclick="fvCOtoggleOur()" style="font-size:12px;font-weight:700;color:#374151;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;cursor:pointer;">'+(showOur?'🙈 Hide shop price':'👁 Show shop price')+'</button>'
     +'<button id="fvcoOnlyBtn" onclick="fvCOtoggleOnly()" style="font-size:12px;font-weight:700;color:'+(only?'#fff':'#374151')+';background:'+(only?'#1c4587':'#f1f5f9')+';border:1px solid '+(only?'#1c4587':'#cbd5e1')+';border-radius:8px;padding:7px 10px;cursor:pointer;">'+(only?'✓ In this order':'Show all')+'</button>'
     +'<button onclick="fvCOaddNewProductInline()" style="font-size:12px;font-weight:700;color:#7a4f1d;background:#fff;border:1px solid #e7d8c4;border-radius:8px;padding:7px 10px;cursor:pointer;">➕ New product</button>'
+    +'<button onclick="fvCOaiImport()" style="font-size:12px;font-weight:700;color:#1c4587;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:7px 10px;cursor:pointer;">🤖 Add by list/photo</button>'
     +'</div>'
     +'<input id="fvcoSearch" type="search" oninput="fvCOfilter()" placeholder="🔍 Search products…" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:6px;">'
     +'<div id="fvcoList">'+(rowsHtml||'<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No products.</div>')+'</div>'
