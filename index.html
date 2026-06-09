@@ -1835,7 +1835,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v133';
+var APP_BUILD = 'v134';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3166,7 +3166,7 @@ function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.
 // True while the user is mid-entry (on a form view, or focused in any field).
 // We must NOT redraw the Orders view then, or it wipes what they're typing.
 function fvCOisEditing_(){
-  if(fvCO && (fvCO.view==='cust' || fvCO.view==='tiers' || fvCO.view==='order')) return true;
+  if(fvCO && (fvCO.view==='cust' || fvCO.view==='tiers' || fvCO.view==='order' || fvCO.view==='checkout')) return true;
   var a=document.activeElement;
   if(a){ var t=(a.tagName||'').toUpperCase(); if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable) return true; }
   return false;
@@ -3194,7 +3194,7 @@ function fvCOpull(){
         // Never let a 15s background sync clobber the order the user is actively editing — keep
         // THIS device's copy of the open order so a +/- tap can't be reverted by a stale cloud
         // read that arrives before our PATCH lands.
-        if(fvCO && fvCO.view==='order' && fvCO.custId){ Object.keys(loc1).forEach(function(k){ if(loc1[k] && loc1[k].custId===fvCO.custId && loc1[k].status==='open') merged1[k]=loc1[k]; }); }
+        if(fvCO && (fvCO.view==='order'||fvCO.view==='checkout') && fvCO.custId){ Object.keys(loc1).forEach(function(k){ if(loc1[k] && loc1[k].custId===fvCO.custId && loc1[k].status==='open') merged1[k]=loc1[k]; }); }
         var s1=JSON.stringify(merged1);
         if(s1!==localStorage.getItem('mandiCustOrders')){ try{localStorage.setItem('mandiCustOrders',s1);}catch(e){} changed=true; }
       }
@@ -3459,6 +3459,7 @@ function fvCORender(){
   var v=fvCO.view||'list';
   if(v==='cust') ov.innerHTML=fvCOrenderCust();
   else if(v==='order') ov.innerHTML=fvCOrenderOrder();
+  else if(v==='checkout') ov.innerHTML=fvCOrenderCheckout();
   else if(v==='bulk') ov.innerHTML=fvCOrenderBulk();
   else if(v==='pick') ov.innerHTML=fvCOrenderPick();
   else if(v==='history') ov.innerHTML=fvCOrenderHistory();
@@ -3492,7 +3493,7 @@ function fvCOrenderList(){
     h+='<div class="order-summary-card">'
       +'<div onclick="fvCOopenCust(\''+id+'\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">'
       +'<span style="font-weight:700;color:#1c4587;font-size:15px;">'+fvEsc(c.name||'(no name)')+'</span>'
-      +'<span style="font-size:12px;color:#15803d;font-weight:700;display:flex;gap:6px;align-items:center;">'+((open&&oc)?fvCOstageBadge_(open):'')+'<span>'+(oc?oc+' item'+(oc!==1?'s':'')+' ›':'take order ›')+'</span></span></div>'
+      +'<span style="font-size:12px;color:#15803d;font-weight:700;">'+(oc?oc+' item'+(oc!==1?'s':'')+' ›':'take order ›')+'</span></div>'
       +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;margin-top:2px;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
       +'<div style="display:flex;gap:8px;margin-top:8px;">'
       +'<button onclick="fvCOeditCust(\''+id+'\')" style="flex:1;padding:7px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Details</button>'
@@ -3520,42 +3521,51 @@ function fvCOrenderCust(){
     +(saved?'<button onclick="fvCOdelCustConfirm(\''+id+'\')" style="width:100%;padding:9px;background:none;color:#b91c1c;border:none;font-size:12px;cursor:pointer;margin-top:6px;">Delete this customer</button>':'')
     +'</div>';
 }
-// ── Order fulfilment workflow: Checking → Packing → Loading (then Ready) ──
-// ord.stage advances 'checking' → 'packing' → 'loading' → 'done'. Stored on the order so it
-// syncs to the whole team (checker → packer → loader all see the live stage).
-var FVCO_STAGES=[
-  {key:'checking',label:'Checking',icon:'🔍',doneWord:'Checked',next:'Packing'},
-  {key:'packing', label:'Packing', icon:'📦',doneWord:'Packed', next:'Loading'},
-  {key:'loading', label:'Loading', icon:'🚚',doneWord:'Loaded', next:''}
-];
-function fvCOstageIdx_(ord){ var s=ord&&ord.stage; if(s==='done'||s==='loaded')return FVCO_STAGES.length; for(var i=0;i<FVCO_STAGES.length;i++){ if(FVCO_STAGES[i].key===s)return i; } return 0; }
-function fvCOstageBadge_(ord){
-  var idx=fvCOstageIdx_(ord);
-  if(idx>=FVCO_STAGES.length) return '<span style="background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;white-space:nowrap;">✓ Ready</span>';
-  var st=FVCO_STAGES[idx], bg=(idx===0?'#fef3c7':(idx===1?'#dbeafe':'#ffedd5')), col=(idx===0?'#92400e':(idx===1?'#1e40af':'#9a3412'));
-  return '<span style="background:'+bg+';color:'+col+';font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;white-space:nowrap;">'+st.icon+' '+st.label+'</span>';
+// ── Order footer (Copy / Email / Print / Complete) — shared by the picker & checkout ──
+function fvCOorderFooterHTML(ord){
+  return '<div class="buylist-foot"><div class="buylist-foot-btns">'
+    +'<button class="buylist-fbtn" onclick="fvCOcopy(\''+ord.id+'\')">📋 Copy</button>'
+    +'<button class="buylist-fbtn" onclick="fvCOemail(\''+ord.id+'\')">✉️ Email</button>'
+    +'<button class="buylist-fbtn" onclick="fvCOprint(\''+ord.id+'\')">🖨️ Print</button></div>'
+    +'<button onclick="fvCOcomplete(\''+ord.id+'\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">✓ Mark completed → history</button></div>';
 }
-function fvCOstageHTML(ord){
-  var curIdx=fvCOstageIdx_(ord), seg='';
-  for(var i=0;i<FVCO_STAGES.length;i++){
-    var st=FVCO_STAGES[i], state=(i<curIdx?'done':(i===curIdx?'cur':'todo'));
-    var bg=(state==='done'?'#15662f':(state==='cur'?'#f59e0b':'#e5e7eb')), col=(state==='todo'?'#6b7280':'#fff');
-    seg+='<div style="flex:1;text-align:center;padding:6px 3px;border-radius:7px;background:'+bg+';color:'+col+';font-size:11px;font-weight:800;white-space:nowrap;">'+(state==='done'?'✓ ':st.icon+' ')+st.label+'</div>';
-    if(i<FVCO_STAGES.length-1) seg+='<div style="align-self:center;color:#9ca3af;font-weight:800;font-size:12px;">›</div>';
-  }
-  var btn;
-  if(curIdx<FVCO_STAGES.length){ var s2=FVCO_STAGES[curIdx];
-    btn='<button onclick="fvCOstageAdvance(\''+ord.id+'\')" style="width:100%;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;margin-top:8px;">✓ '+s2.doneWord+(s2.next?(' — start '+s2.next):' — all done')+'</button>';
-  } else {
-    btn='<div style="text-align:center;padding:10px;background:#dcfce7;border:1px solid #86efac;border-radius:9px;color:#15803d;font-size:13px;font-weight:800;margin-top:8px;">✓ Checked · Packed · Loaded — ready to go</div>';
-  }
-  var back=(curIdx>0)?'<div style="text-align:center;margin-top:6px;"><span onclick="fvCOstageBack(\''+ord.id+'\')" style="color:#9ca3af;font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline;">↩ back a step</span></div>':'';
-  return '<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;margin:8px 0;">'
-    +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:6px;">📋 Fulfilment progress</div>'
-    +'<div style="display:flex;gap:4px;align-items:stretch;">'+seg+'</div>'+btn+back+'</div>';
+// ── Checkout / review page: edit qty & price per line, remove items, then complete. ──
+// Index-based on the order's (normalised) lines array; each edit saves + re-renders.
+function fvCOckQty(j,delta){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var q=Math.max(0,(l.qty||0)+delta); if(q===0){ ord.lines.splice(j,1); } else { l.qty=q; } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+function fvCOckPrice(j,val){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var pr=parseFloat(val); if(isNaN(pr)||pr<0)pr=0; l.price=pr; l.src='manual'; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[l.key]=pr; fvCOcustSave(c); } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+function fvCOckRemove(j){ var ord=fvCOensureOpen(fvCO.custId); if(ord.lines&&ord.lines[j]){ ord.lines.splice(j,1); fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); } }
+function fvCOckRowHTML_(l,j){
+  var qty=l.qty||0, price=(l.price!=null?l.price:0), lt=qty*price, nm=l.name||l.key;
+  return '<div style="border-top:1px solid #eef0f2;padding:11px 4px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+      +'<span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:#111;">'+fvEsc(nm)+'</span>'
+      +'<span style="font-size:14px;font-weight:800;color:#0d4420;white-space:nowrap;">'+fvCOmoney(lt)+'</span>'
+      +'<button type="button" onclick="fvCOckRemove('+j+')" title="Remove item" style="background:none;border:none;color:#b91c1c;font-size:17px;cursor:pointer;padding:0 2px;line-height:1;">✕</button>'
+    +'</div>'
+    +'<div style="display:flex;gap:7px;align-items:center;margin-top:8px;flex-wrap:wrap;">'
+      +'<span style="font-size:11px;color:#6b7280;font-weight:700;">Qty</span>'
+      +'<button type="button" onclick="fvCOckQty('+j+',-1)" style="width:34px;height:34px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;">−</button>'
+      +'<span style="min-width:26px;text-align:center;font-weight:800;font-size:15px;">'+qty+'</span>'
+      +'<button type="button" onclick="fvCOckQty('+j+',1)" style="width:34px;height:34px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:8px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;">+</button>'
+      +'<span style="font-size:11px;color:#6b7280;font-weight:700;margin-left:8px;">Price $</span>'
+      +'<input type="number" inputmode="decimal" step="0.01" value="'+(price?price:'')+'" onchange="fvCOckPrice('+j+',this.value)" style="width:84px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
+    +'</div></div>';
 }
-function fvCOstageAdvance(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var idx=fvCOstageIdx_(ord); ord.stage=((idx+1>=FVCO_STAGES.length)?'done':FVCO_STAGES[idx+1].key); ord.stageAt=fvCOtoday(); fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
-function fvCOstageBack(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; var idx=fvCOstageIdx_(ord); var p=Math.min(Math.max(0,idx-1),FVCO_STAGES.length-1); ord.stage=FVCO_STAGES[p].key; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+function fvCOrenderCheckout(){
+  var id=fvCO.custId,c=fvCOloadCust()[id]; if(!c) return fvCOrenderList();
+  var ord=fvCOopenOrder(id)||fvCOensureOpen(id);
+  var rows='', n=0, total=0;
+  (ord.lines||[]).forEach(function(l,j){ if((l.qty||0)<=0)return; n++; total+=(l.qty||0)*(l.price||0); rows+=fvCOckRowHTML_(l,j); });
+  var head=fvCObackBtn('order','Back — add more products')
+    +'<div class="manage-card"><div style="font-weight:800;font-size:17px;color:#0d4420;">🧾 Review order</div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-bottom:2px;">'+fvEsc(c.name)+(ord.date?(' · '+fvEsc(ord.date)):'')+'</div>';
+  if(!n) return head+'<div style="color:#9ca3af;font-size:14px;padding:20px 4px;text-align:center;">No items yet.<br>Tap <strong>‹ Back</strong> to add products.</div></div>';
+  return head+rows
+    +'<div style="display:flex;justify-content:space-between;border-top:2px solid #0d4420;padding-top:10px;margin-top:10px;font-weight:800;font-size:16px;"><span>TOTAL · '+n+' item'+(n!==1?'s':'')+'</span><span>'+fvCOmoney(total)+'</span></div>'
+    +'<button onclick="fvCOnav(\'order\')" style="width:100%;padding:11px;background:#fff;color:#15662f;border:1px solid #15662f;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;margin-top:10px;">＋ Add more products</button>'
+    +'</div>'
+    +fvCOorderFooterHTML(ord);
+}
 function fvCOrenderOrder(){
   var id=fvCO.custId,c=fvCOloadCust()[id]; if(!c) return fvCOrenderList();
   var ord=fvCOopenOrder(id)||fvCOensureOpen(id);
@@ -3593,7 +3603,6 @@ function fvCOrenderOrder(){
     +((c.contact||c.phone)?'<div style="font-size:11px;color:#6b7280;">'+fvEsc([c.contact,c.phone].filter(Boolean).join(' · '))+'</div>':'')
     +'<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Order '+fvEsc(ord.date||'')+'</div>'
     +fvCOtierBarHTML(c)
-    +fvCOstageHTML(ord)
     +'<div style="display:flex;gap:6px;align-items:center;margin:6px 0;flex-wrap:wrap;">'
     +'<button id="fvcoOurBtn" onclick="fvCOtoggleOur()" style="font-size:12px;font-weight:700;color:#374151;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;cursor:pointer;">'+(showOur?'🙈 Hide shop price':'👁 Show shop price')+'</button>'
     +'<button id="fvcoOnlyBtn" onclick="fvCOtoggleOnly()" style="font-size:12px;font-weight:700;color:'+(only?'#fff':'#374151')+';background:'+(only?'#1c4587':'#f1f5f9')+';border:1px solid '+(only?'#1c4587':'#cbd5e1')+';border-radius:8px;padding:7px 10px;cursor:pointer;">'+(only?'✓ In this order':'Show all')+'</button>'
@@ -3603,11 +3612,7 @@ function fvCOrenderOrder(){
     +'<input id="fvcoSearch" type="search" oninput="fvCOfilter()" placeholder="🔍 Search products…" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:6px;">'
     +'<div id="fvcoList">'+(rowsHtml||'<div style="color:#9ca3af;font-size:13px;padding:8px 0;">No products.</div>')+'</div>'
     +'<div style="display:flex;justify-content:space-between;border-top:2px solid #0d4420;padding-top:8px;margin-top:8px;font-weight:800;"><span>TOTAL<span id="coOrdCount" style="font-size:11px;color:#6b7280;font-weight:600;"></span></span><span id="coOrdTotal">'+fvCOmoney(fvCOorderTotal(ord))+'</span></div></div>'
-    +'<div class="buylist-foot"><div class="buylist-foot-btns">'
-    +'<button class="buylist-fbtn" onclick="fvCOcopy(\''+ord.id+'\')">📋 Copy</button>'
-    +'<button class="buylist-fbtn" onclick="fvCOemail(\''+ord.id+'\')">✉️ Email</button>'
-    +'<button class="buylist-fbtn" onclick="fvCOprint(\''+ord.id+'\')">🖨️ Print</button></div>'
-    +'<button onclick="fvCOcomplete(\''+ord.id+'\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">✓ Mark completed → history</button></div>';
+    +'<button onclick="fvCOnav(\'checkout\')" style="width:100%;padding:13px;background:#15662f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;margin-top:8px;">🧾 Review order →</button>';
 }
 function fvCOorderRow_(idx){ var p=PRODUCTS[idx]; if(!p)return null; var key=p[0]+'||'+p[3]; var ord=fvCOensureOpen(fvCO.custId); var line=null; (ord.lines||[]).forEach(function(l){ if(l.key===key)line=l; }); return {p:p,key:key,ord:ord,line:line}; }
 function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); var r=fvCOorderRow_(idx); if(!r){ if(typeof fvCORender==='function')fvCORender(); return; } var p=r.p,ord=r.ord,line=r.line; if(ord&&!Array.isArray(ord.lines))fvCOnormLines(ord); var cur=line?(line.qty||0):0,nq=Math.max(0,cur+delta);
