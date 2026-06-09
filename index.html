@@ -331,8 +331,10 @@
     .stall-strip {
       display: flex; gap: 6px; overflow-x: auto; padding: 7px 6px 7px;
       scrollbar-width: none; -ms-overflow-style: none;
-      /* Sticky quick-links: stays pinned at the top while scrolling (top set by JS) */
-      position: sticky; top: 107px; z-index: 97;
+      /* Sticky quick-links: stays pinned at the very top of the scroll pane while scrolling.
+         (#mainContent is the scroller and the header sits ABOVE it, so top:0 = flush under
+         the header. The old 107px parked it mid-page until JS overrode it.) */
+      position: sticky; top: 0; z-index: 97;
       background: #15662f; margin: 0 -6px 6px; /* full-bleed green bar */
       box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
@@ -1833,7 +1835,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v128';
+var APP_BUILD = 'v129';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2375,6 +2377,12 @@ function buildList() {
   function fvSortBtn(key, label){ var on = (fvListSort === key); return '<button onclick="fvSetListSort(\'' + key + '\')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid ' + (on?'#1c4587':'#cbd5e1') + ';background:' + (on?'#1c4587':'#fff') + ';color:' + (on?'#fff':'#374151') + ';">' + label + '</button>'; }
   sortWrap.innerHTML = '<span style="font-size:11px;color:#6b7280;font-weight:700;white-space:nowrap;">Sort</span>' + fvSortBtn('stall','🏷️ By stall') + fvSortBtn('name','🔤 A–Z product');
   container.appendChild(sortWrap);
+
+  // New supplier — quick add (moved here from the Orders tab)
+  var supAddWrap = document.createElement('div');
+  supAddWrap.style.cssText = 'margin:0 0 8px;';
+  supAddWrap.innerHTML = '<button onclick="fvCOnewSupplier()" style="width:100%;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #e7d8c4;background:#fff;color:#7a4f1d;">🏪 New supplier</button>';
+  container.appendChild(supAddWrap);
 
   // Keep only the suppliers for the chosen sub-tab
   suppliers = suppliers.filter(function(s){ return (mode === 'grocery') ? !fvSupIsMandi(s.stall) : fvSupIsMandi(s.stall); });
@@ -3146,7 +3154,7 @@ function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.
 // True while the user is mid-entry (on a form view, or focused in any field).
 // We must NOT redraw the Orders view then, or it wipes what they're typing.
 function fvCOisEditing_(){
-  if(fvCO && (fvCO.view==='cust' || fvCO.view==='tiers')) return true;
+  if(fvCO && (fvCO.view==='cust' || fvCO.view==='tiers' || fvCO.view==='order')) return true;
   var a=document.activeElement;
   if(a){ var t=(a.tagName||'').toUpperCase(); if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||a.isContentEditable) return true; }
   return false;
@@ -3170,7 +3178,12 @@ function fvCOpull(){
       }
       if(res[1]!==undefined && res[1]!==null && typeof res[1]==='object'){
         var loc1={}; try{loc1=JSON.parse(localStorage.getItem('mandiCustOrders')||'{}');}catch(e){}
-        var s1=JSON.stringify(Object.assign({}, loc1, res[1]));
+        var merged1=Object.assign({}, loc1, res[1]);
+        // Never let a 15s background sync clobber the order the user is actively editing — keep
+        // THIS device's copy of the open order so a +/- tap can't be reverted by a stale cloud
+        // read that arrives before our PATCH lands.
+        if(fvCO && fvCO.view==='order' && fvCO.custId){ Object.keys(loc1).forEach(function(k){ if(loc1[k] && loc1[k].custId===fvCO.custId && loc1[k].status==='open') merged1[k]=loc1[k]; }); }
+        var s1=JSON.stringify(merged1);
         if(s1!==localStorage.getItem('mandiCustOrders')){ try{localStorage.setItem('mandiCustOrders',s1);}catch(e){} changed=true; }
       }
       if(res[2]!==undefined && res[2]!==null){ var s2=JSON.stringify(res[2]); if(s2!==localStorage.getItem('mandiTiers')){ try{localStorage.setItem('mandiTiers',s2);}catch(e){} changed=true; } }
@@ -3452,15 +3465,13 @@ function fvCOShopListHTML(){
     + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</span></div>'
     + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Adjust here or on the List tab — they stay in sync.</div>'
     + rows
-    + '<button onclick="fvCOnav(\'bulk\')" style="width:100%;padding:8px;background:#15662f;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-top:8px;">See full purchasing list ›</button></div>';
+    + '</div>';
 }
 function fvCOrenderList(){
   var custs=fvCOloadCust(),orders=fvCOloadOrders();
   var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
   var h='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
-    +'<button onclick="fvCOnav(\'bulk\')" style="flex:1;min-width:140px;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🛒 Bulk buy list</button>'
-    +'<button onclick="fvCOnewSupplier()" style="flex:1;min-width:140px;padding:11px;background:#7a4f1d;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏪 New supplier</button>'
     +'<button onclick="fvCOnav(\'tiers\')" style="flex:1;min-width:140px;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏷️ Price tiers</button></div>';
   h += (typeof fvCOShopListHTML === 'function' ? fvCOShopListHTML() : '');   // List-selected items show here too
   if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one, or your shop buy list shows above.</div>';
