@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v139';
+var APP_BUILD = 'v140';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3464,7 +3464,7 @@ function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.li
 function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; ord.lines[i].src='manual'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
 function fvCOlineToTier(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var tp=fvCOpriceFor(ord.custId,ord.lines[i].key); if(typeof tp!=='number'){ alert('No tier price yet — this product has no cost set. Type a price, or set the cost in the catalogue.'); return; } ord.lines[i].price=tp; ord.lines[i].src='tier'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c&&c.prices&&c.prices[ord.lines[i].key]!=null){ delete c.prices[ord.lines[i].key]; fvCOcustSave(c); } fvCORender(); }
 function fvCOsetTier(custId,tierId){ var c=fvCOloadCust()[custId]; if(!c)return; c.tierId=tierId; fvCOcustSave(c); var ord=fvCOopenOrder(custId); if(ord){ (ord.lines||[]).forEach(function(l){ if(l.src==='manual')return; var tp=fvCOpriceFor(custId,l.key); if(typeof tp==='number'){ l.price=tp; l.src='tier'; } }); fvCOordSave(ord); } fvCORender(); }
-function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
+function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); fvCOordSave(ord); fvCOnav('history',ord.custId); }
 function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var price=l.price, s=l.src; if(s==='tier'){ var tp=fvCOpriceFor(src.custId,l.key); if(typeof tp==='number')price=tp; } var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=price; found.src=s; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:price,src:s}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
   var agg=fvCObulk(),n=0,m=fvBuyLoad();
@@ -3549,6 +3549,12 @@ function fvCOorderFooterHTML(ord){
     +'<button class="buylist-fbtn" onclick="fvCOprint(\''+ord.id+'\')">🖨️ Print</button></div>'
     +'<button onclick="fvCOcomplete(\''+ord.id+'\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">✓ Mark completed → history</button></div>';
 }
+// Back-dating: orders can be dated up to 1 WEEK back (for entering last week's paper
+// orders), never into the future. The chosen date becomes the completed date in history.
+function fvCOdateMin_(){ var d=new Date(); d.setDate(d.getDate()-7); function z(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; var min=fvCOdateMin_(),max=fvCOtoday();
+  if(v<min||v>max){ alert('Orders can only be back-dated up to 1 week ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
+  var ord=fvCOensureOpen(fvCO.custId); ord.date=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
 // ── Checkout / review page: edit qty & price per line, remove items, then complete. ──
 // Index-based on the order's (normalised) lines array; each edit saves + re-renders.
 function fvCOckQty(j,delta){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var q=Math.max(0,(l.qty||0)+delta); if(q===0){ ord.lines.splice(j,1); } else { l.qty=q; } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
@@ -3584,7 +3590,12 @@ function fvCOrenderCheckout(){
   (ord.lines||[]).forEach(function(l,j){ if((l.qty||0)<=0)return; n++; total+=(l.qty||0)*(l.price||0); rows+=fvCOckRowHTML_(l,j); });
   var head=fvCObackBtn('order','Back — add more products')
     +'<div class="manage-card"><div style="font-weight:800;font-size:17px;color:#0d4420;">🧾 Review order</div>'
-    +'<div style="font-size:12px;color:#6b7280;margin-bottom:2px;">'+fvEsc(c.name)+(ord.date?(' · '+fvEsc(ord.date)):'')+'</div>';
+    +'<div style="font-size:12px;color:#6b7280;margin-bottom:2px;">'+fvEsc(c.name)+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin:6px 0 4px;flex-wrap:wrap;">'
+      +'<span style="font-size:12px;font-weight:700;color:#374151;">📅 Order date</span>'
+      +'<input type="date" value="'+fvEsc(ord.date||'')+'" min="'+fvCOdateMin_()+'" max="'+fvCOtoday()+'" onchange="fvCOckDate(this.value)" style="flex:1;min-width:140px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">'
+      +'<span style="font-size:10px;color:#9ca3af;">back-date up to 1 week</span>'
+    +'</div>';
   if(!n) return head+'<div style="color:#9ca3af;font-size:14px;padding:20px 4px;text-align:center;">No items yet.<br>Tap <strong>‹ Back</strong> to add products.</div></div>';
   return head+rows
     +'<div style="display:flex;justify-content:space-between;border-top:2px solid #0d4420;padding-top:10px;margin-top:10px;font-weight:800;font-size:16px;"><span>TOTAL · '+n+' item'+(n!==1?'s':'')+'</span><span>'+fvCOmoney(total)+'</span></div>'
