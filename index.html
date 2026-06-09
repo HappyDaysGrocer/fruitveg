@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v121';
+var APP_BUILD = 'v122';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3388,10 +3388,10 @@ function fvCOaiRun(){
   if(file){
     var rd=new FileReader();
     rd.onload=function(){ var m=/^data:([^;]+);base64,(.*)$/.exec(rd.result||''); if(!m){ fail(new Error('could not read image')); return; }
-      var parts=[{image:{mediaType:m[1],base64:m[2]}}, {text: text || 'Read the produce order from this image.'}]; call(parts); };
+      var parts=[{image:{mediaType:m[1],base64:m[2]}}, {text: (text ? fvSplitItemsText_(text) + '\n\n' : '') + 'This image is a produce order list (one item per line, e.g. "2 bunch basil"). Read EVERY line and return the JSON for all items.'}]; call(parts); };
     rd.onerror=function(){ fail(new Error('could not read image')); };
     rd.readAsDataURL(file);
-  } else { call([{text:text}]); }
+  } else { call([{text: fvSplitItemsText_(text)}]); }
 }
 function fvCOlineDel(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord)return; ord.lines.splice(i,1); fvCOordSave(ord); fvCORender(); }
 function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; ord.lines[i].qty=parseFloat(val)||0; fvCOordSave(ord); fvCORender(); }
@@ -7902,8 +7902,16 @@ function fvAssistLooksLikeList_(q){
   return false;
 }
 // No-AI fallback: split a message into {qty,unit,name} items using the line parser.
+// A single-line text box (and some pastes) flatten a multi-line list into one
+// run-on string. Each list item starts with a quantity, so re-insert a line break
+// before every number that follows a letter — turning the flat string back into lines.
+function fvSplitItemsText_(t){
+  t = String(t || '');
+  if (/\n/.test(t)) return t;                       // already has line breaks
+  return t.replace(/([^\d\s])\s+(?=\d)/g, '$1\n');  // "...basil 1kg apple..." -> "...basil\n1kg apple..."
+}
 function fvLocalParseItems_(q){
-  return String(q).split(/[\n,;]+/).map(function(s){
+  return fvSplitItemsText_(q).split(/[\n,;]+/).map(function(s){
     s = s.trim(); if (!s) return null;
     var p = (typeof parseLine === 'function') ? parseLine(s) : { name: s };
     return (p && p.name) ? { qty: p.qty, unit: p.unit, name: p.name } : null;
@@ -7912,6 +7920,7 @@ function fvLocalParseItems_(q){
 // Add the items in a message straight into the currently-open customer order.
 function fvAssistAddToOpenOrder_(q, viaVoice){
   var custName = (fvCOloadCust()[fvCO.custId] || {}).name || 'this';
+  q = fvSplitItemsText_(q);   // restore line breaks lost by the single-line input / paste
   function apply(items){
     var res = fvCOaiAddItems(items || []);
     if (typeof fvCORender === 'function') fvCORender();
