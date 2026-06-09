@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v138';
+var APP_BUILD = 'v139';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3708,29 +3708,31 @@ function fvCOrenderHistory(){
   // Excluded ("not counted") orders are left out of the usual-buys tally.
   var buy={}; hist.forEach(function(o){ if(o.excluded)return; (o.lines||[]).forEach(function(l){ buy[l.name]=(buy[l.name]||0)+(l.qty||0); }); });
   var top=Object.keys(buy).sort(function(a,b){return buy[b]-buy[a];}).slice(0,8);
-  if(top.length){ h+='<div class="order-summary-card"><div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">What they usually buy</div>'; top.forEach(function(n){ h+='<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:2px 0;"><span>'+fvEsc(n)+'</span><span style="font-weight:700;">'+buy[n]+'</span></div>'; }); h+='</div>'; }
+  function niceDate(s){ try{ var d=new Date(String(s)+'T00:00:00'); if(isNaN(d))return s; return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getFullYear(); }catch(e){ return s; } }
+  function niceQty(q){ return (Math.round(q*100)/100).toString(); }
+  if(top.length){ h+='<div class="order-summary-card"><div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">What they usually buy</div>'; top.forEach(function(n,ti){ h+='<div style="display:flex;gap:8px;font-size:12px;color:#374151;padding:3px 0;border-top:'+(ti?'1px solid #f3f3f3':'none')+';"><span style="color:#9ca3af;font-weight:700;min-width:18px;text-align:right;">'+(ti+1)+'</span><span style="flex:1;min-width:0;">'+fvEsc(n)+'</span><span style="font-weight:700;">'+niceQty(buy[n])+'</span></div>'; }); h+='</div>'; }
   hist.forEach(function(o){ var tot=fvCOorderTotal(o),ex=!!o.excluded;
-    h+='<div class="order-summary-card"'+(ex?' style="opacity:.6;"':'')+'><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#1c4587;">'+fvEsc(o.completed||o.date||'')+(ex?' <span style="font-size:10px;color:#b91c1c;font-weight:800;">· NOT COUNTED</span>':'')+'</span><span style="font-weight:800;">'+fvCOmoney(tot)+'</span></div>'
+    h+='<div class="order-summary-card"'+(ex?' style="opacity:.6;"':'')+'><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#1c4587;">🧾 '+fvEsc(niceDate(o.completed||o.date||''))+(ex?' <span style="font-size:10px;color:#b91c1c;font-weight:800;">· NOT COUNTED</span>':'')+'</span><span style="font-weight:800;">'+fvCOmoney(tot)+'</span></div>'
       +(function(){
         // Neat invoice-style line items: numbered, alphabetical, qty × price, line total
         var ls=(o.lines||[]).slice().sort(function(a,b){ return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase()); });
         if(!ls.length) return '';
         var b='<div class="hist-inv-hdr" style="padding:8px 0 4px;"><span class="hist-inv-num">#</span><span class="hist-inv-name">Item</span><span class="hist-inv-qty">Qty × Price</span><span class="hist-inv-total">Total</span></div>';
         ls.forEach(function(l,ii){ var q=l.qty||0,pr=(l.price!=null?+l.price:0),u=(l.unit&&l.unit!=='ea')?(' '+l.unit):'';
-          b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span><span class="hist-inv-qty">'+q+fvEsc(u)+' × $'+pr.toFixed(2)+'</span><span class="hist-inv-total">$'+(q*pr).toFixed(2)+'</span></div>'; });
+          b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span><span class="hist-inv-qty">'+niceQty(q)+fvEsc(u)+' × $'+pr.toFixed(2)+'</span><span class="hist-inv-total">$'+(q*pr).toFixed(2)+'</span></div>'; });
         b+='<div class="hist-inv-foot" style="padding:7px 0 2px;"><span class="hist-inv-num"></span><span class="hist-inv-name">TOTAL · '+ls.length+' item'+(ls.length!==1?'s':'')+'</span><span class="hist-inv-qty"></span><span class="hist-inv-total">'+fvCOmoney(tot)+'</span></div>';
         return b;
       })()
       +'<div style="display:flex;gap:8px;margin-top:8px;"><button onclick="fvCOreuse(\''+o.id+'\')" style="flex:1;padding:8px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">♻️ Reuse this order</button><button onclick="fvCOcopy(\''+o.id+'\')" style="flex:1;padding:8px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copy</button></div>'
-      +(owner?('<div style="display:flex;gap:8px;margin-top:6px;"><button onclick="fvCOhistExclude(\''+o.id+'\')" style="flex:1;padding:7px;background:#fff;color:#b45309;border:1px solid #fed7aa;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">'+(ex?'✓ Count again':'🚫 Don’t count')+'</button><button onclick="fvCOhistRemove(\''+o.id+'\')" style="flex:1;padding:7px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🗑 Remove</button></div>'):'')
+      +(owner?('<div style="margin-top:6px;"><button onclick="fvCOhistExclude(\''+o.id+'\')" style="width:100%;padding:7px;background:#fff;color:#b45309;border:1px solid #fed7aa;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">'+(ex?'✓ Count again':'🚫 Don’t count this order')+'</button></div>'):'')
       +'</div>';
   });
-  if(!owner) h+='<div style="text-align:center;font-size:11px;color:#9ca3af;padding:10px 4px;">🔒 Saved orders are permanent. Ask the owner to exclude or remove one.</div>';
+  h+='<div style="text-align:center;font-size:11px;color:#9ca3af;padding:10px 4px;">🔒 Saved orders are permanent — they can’t be deleted from the phone.</div>';
   return h;
 }
-// Owner-only: exclude a saved order from counts, or permanently remove it. Staff cannot.
+// Saved orders are PERMANENT — there is deliberately no delete anywhere in the app.
+// The owner can only toggle "don't count" so a record stays but is left out of tallies.
 function fvCOhistExclude(oid){ if(typeof fvIsOwner!=='function'||!fvIsOwner()){ alert('🔒 Only the owner can change this.'); return; } var o=fvCOloadOrders(),ord=o[oid]; if(!ord)return; ord.excluded=!ord.excluded; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
-function fvCOhistRemove(oid){ if(typeof fvIsOwner!=='function'||!fvIsOwner()){ alert('🔒 Only the owner can remove a saved order.'); return; } if(!confirm('Permanently remove this saved order from history? This cannot be undone.'))return; var o=fvCOloadOrders(); if(o[oid]){ delete o[oid]; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} } if(typeof fvCOpatch==='function')fvCOpatch('custorders',oid,null); if(typeof fvCORender==='function')fvCORender(); }
 
 function buildOrdersView(){ var ov=document.getElementById('viewOrders'); if(!ov)return; if(typeof fvCORender==='function') return fvCORender(); }
 function buildOrdersView_OLD() {
