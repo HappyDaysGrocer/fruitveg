@@ -1305,10 +1305,10 @@
 <!-- Bottom nav -->
 <div class="bottom-nav">
   <button class="nav-btn active" id="navList"   onclick="showView('List')"><span class="nav-icon">📋</span>List</button>
+  <button class="nav-btn"        id="navHistory" onclick="showView('History')"><span class="nav-icon">🕐</span>History</button>
   <button class="nav-btn"        id="navStore"  onclick="showView('Store')"><span class="nav-icon">🏬</span>Store/Stocktake</button>
   <button class="nav-btn"        id="navSpend"  onclick="showView('Spend')"><span class="nav-icon">💸</span>Expenses</button>
   <button class="nav-btn"        id="navPL"      onclick="showView('PL')"><span class="nav-icon">📊</span>P&amp;L</button>
-  <button class="nav-btn"        id="navHistory" onclick="showView('History')"><span class="nav-icon">🕐</span>History</button>
   <button class="nav-btn"        id="navManage"  onclick="showView('Manage')"><span class="nav-icon">⚙️</span>Manage</button>
 </div>
 
@@ -1835,7 +1835,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v129';
+var APP_BUILD = 'v130';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -9244,25 +9244,36 @@ function fvShowUpdateBar(newv) {
   bar.id = 'fvUpdateBar';
   bar.textContent = '🔄 New version ' + newv + ' is ready — tap to update';
   bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#15662f;color:#fff;font:600 15px/1.35 -apple-system,system-ui,sans-serif;padding:15px 16px;text-align:center;box-shadow:0 -3px 14px rgba(0,0,0,.28);cursor:pointer;';
-  bar.addEventListener('click', function () {
-    bar.textContent = 'Updating…';
-    var done = function () { location.replace('index.html?v=' + Date.now()); }; // cache-busted = guaranteed fresh
-    if (window.caches && caches.keys) {
-      caches.keys().then(function (ks) {
-        return Promise.all(ks.map(function (k) { return caches.delete(k); }));
-      }).then(done, done);
-    } else { done(); }
-  });
+  bar.addEventListener('click', fvApplyUpdate);
   document.body.appendChild(bar);
 }
 
-function fvCheckUpdate() {
+// Clear caches and hard-reload to the freshest copy. Guarded so it only runs once.
+var _fvUpdateApplied = false;
+function fvApplyUpdate() {
+  if (_fvUpdateApplied) return; _fvUpdateApplied = true;
+  var b = document.getElementById('fvUpdateBar'); if (b) b.textContent = 'Updating…';
+  var done = function () { location.replace('index.html?v=' + Date.now()); }; // cache-busted = guaranteed fresh
+  if (window.caches && caches.keys) {
+    caches.keys().then(function (ks) {
+      return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+    }).then(done, done);
+  } else { done(); }
+}
+
+function fvCheckUpdate(auto) {
   if (typeof APP_BUILD === 'undefined') return;
   fetch('index.html?cb=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.text(); })
     .then(function (t) {
       var m = t.match(/APP_BUILD\s*=\s*'([^']+)'/);
-      if (m && m[1] && m[1] !== APP_BUILD) fvShowUpdateBar(m[1]);
+      if (!(m && m[1] && m[1] !== APP_BUILD)) return;
+      // A newer build is live. Auto-apply when it's safe (user isn't typing into a field) so
+      // nobody gets stuck on an old cached copy; otherwise show the one-tap bar so an
+      // in-progress entry isn't interrupted.
+      var typing = false;
+      try { var a = document.activeElement; if (a) { var tg = (a.tagName || '').toUpperCase(); typing = (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT' || a.isContentEditable); } } catch (e) {}
+      if (auto && !typing) fvApplyUpdate(); else fvShowUpdateBar(m[1]);
     })
     .catch(function () {});
 }
@@ -9281,10 +9292,10 @@ if ('serviceWorker' in navigator) {
 }
 
 // Look for a newer build on open, whenever the app regains focus, and hourly.
-window.addEventListener('load', function () { setTimeout(fvCheckUpdate, 1500); });
-document.addEventListener('visibilitychange', function () { if (!document.hidden) fvCheckUpdate(); });
-window.addEventListener('focus', fvCheckUpdate);
-setInterval(fvCheckUpdate, 60 * 60 * 1000);
+window.addEventListener('load', function () { setTimeout(function(){ fvCheckUpdate(true); }, 1500); });
+document.addEventListener('visibilitychange', function () { if (!document.hidden) fvCheckUpdate(true); });
+window.addEventListener('focus', function(){ fvCheckUpdate(true); });
+setInterval(function(){ fvCheckUpdate(false); }, 60 * 60 * 1000);
 </script>
 </body>
 </html>
