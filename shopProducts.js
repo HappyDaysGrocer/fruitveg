@@ -618,5 +618,9 @@ var SHOP_PRODUCTS = [
   // Added 2026-06-09 from DailySales — produce that sold but wasn't in the catalogue
   ['C-G',null,null,'Cabbage',null,null,null,1.99,false,null],
   ['C-G',null,null,'Garlic Peeled',null,null,3,5.5,false,null],
-  ['P-R',null,null,'Papaya Half',null,null,null,2.49,false,null]
+  ['P-R',null,null,'Papaya Half',null,null,null,2.49,false,null],
+  // Added 2026-06-09 (owner request) — order options for customers (set price per order/tier)
+  ['A-B',null,null,'Basil Bunch',null,null,null,null,false,null],
+  ['S-Z',null,null,'Tomatoes Box (10kg)',null,null,null,null,false,null],
+  ['P-R',null,null,'Paneer Fresh 1kg',null,null,12,13,false,'9369998096190']
 ];
