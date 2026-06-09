@@ -357,7 +357,7 @@ var SHOP_PRODUCTS = [
   ['H-O',null,null,'Onion Red 10kg Bag',null,null,8,14.99,false,'1204583672'],
   ['H-O',null,null,'Onion Red loose /kg',null,null,3,3.99,false,'5140711763'],
   ['H-O',null,null,'Onion Spring Bunch',null,null,1,2.49,false,'3612825745'],
-  ['H-O',null,null,'Orange Navel Bags 3kg',null,null,1.2,5.99,false,'3687734237,9323425000013'],
+  ['H-O',null,null,'Orange Navel Bags 3kg',null,null,3.6,5.99,false,'3687734237,9323425000013'],
   ['H-O',null,null,'Oranges Naval /kg',null,null,2.33,3.49,false,'1357031581'],
   ['Honey',null,null,'HONEY SQUEEZE 375ML(12) , 850020 EATEO',null,null,4.99,8,false,'9349912000632'],
   ['Ice Cream',null,null,'Connoisseur Ice Cream Classic Vanilla Tub',null,null,6,7.8,false,'9310080108437'],
