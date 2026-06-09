@@ -1835,7 +1835,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v132';
+var APP_BUILD = 'v133';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3609,8 +3609,8 @@ function fvCOrenderOrder(){
     +'<button class="buylist-fbtn" onclick="fvCOprint(\''+ord.id+'\')">🖨️ Print</button></div>'
     +'<button onclick="fvCOcomplete(\''+ord.id+'\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">✓ Mark completed → history</button></div>';
 }
-function fvCOorderRow_(idx){ var p=PRODUCTS[idx]; var key=p[0]+'||'+p[3]; var ord=fvCOensureOpen(fvCO.custId); var line=null; (ord.lines||[]).forEach(function(l){ if(l.key===key)line=l; }); return {p:p,key:key,ord:ord,line:line}; }
-function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); var r=fvCOorderRow_(idx),p=r.p,ord=r.ord,line=r.line; if(ord&&!Array.isArray(ord.lines))fvCOnormLines(ord); var cur=line?(line.qty||0):0,nq=Math.max(0,cur+delta);
+function fvCOorderRow_(idx){ var p=PRODUCTS[idx]; if(!p)return null; var key=p[0]+'||'+p[3]; var ord=fvCOensureOpen(fvCO.custId); var line=null; (ord.lines||[]).forEach(function(l){ if(l.key===key)line=l; }); return {p:p,key:key,ord:ord,line:line}; }
+function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); var r=fvCOorderRow_(idx); if(!r){ if(typeof fvCORender==='function')fvCORender(); return; } var p=r.p,ord=r.ord,line=r.line; if(ord&&!Array.isArray(ord.lines))fvCOnormLines(ord); var cur=line?(line.qty||0):0,nq=Math.max(0,cur+delta);
   if(nq===0){ if(line)ord.lines.splice(ord.lines.indexOf(line),1); }
   else if(line){ line.qty=nq; }
   else { var box=document.getElementById('cop'+idx),typed=box?parseFloat(box.value):NaN,tp=fvCOpriceFor(fvCO.custId,r.key),price,src;
@@ -3620,11 +3620,11 @@ function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); v
   fvCOordSave(ord);
   var qs=document.getElementById('coq'+idx); if(qs)qs.textContent=nq;
   var row=document.getElementById('cor'+idx); if(row){ if(nq>0){ row.style.background='#f0fdf4'; row.style.borderRadius='8px'; } else { row.style.background=''; row.style.borderRadius=''; if(window._fvCOonlyOrder)row.style.display='none'; } }
-  var box2=document.getElementById('cop'+idx); if(box2&&box2.value===''){ var ln=fvCOorderRow_(idx).line; if(ln&&ln.price)box2.value=ln.price; }
+  var box2=document.getElementById('cop'+idx); if(box2&&box2.value===''){ var _r2=fvCOorderRow_(idx),ln=_r2&&_r2.line; if(ln&&ln.price)box2.value=ln.price; }
   fvCOupdTotal();
 }
-function fvCOpriceSet(idx,val){ var r=fvCOorderRow_(idx),pr=parseFloat(val); if(isNaN(pr))pr=0; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=pr; fvCOcustSave(c); } if(r.line){ r.line.price=pr; r.line.src='manual'; fvCOordSave(r.ord); var box=document.getElementById('cop'+idx); if(box)box.style.borderColor='#f59e0b'; fvCOupdTotal(); } }
-function fvCOsetShop(idx,e){ if(e&&e.stopPropagation)e.stopPropagation(); var p=PRODUCTS[idx],sell=(p[7]!=null)?+p[7]:0; var box=document.getElementById('cop'+idx); if(box){ box.value=sell; box.style.borderColor='#f59e0b'; } var r=fvCOorderRow_(idx); var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=sell; fvCOcustSave(c); } if(r.line){ r.line.price=sell; r.line.src='manual'; fvCOordSave(r.ord); fvCOupdTotal(); } }
+function fvCOpriceSet(idx,val){ var r=fvCOorderRow_(idx); if(!r)return; var pr=parseFloat(val); if(isNaN(pr))pr=0; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=pr; fvCOcustSave(c); } if(r.line){ r.line.price=pr; r.line.src='manual'; fvCOordSave(r.ord); var box=document.getElementById('cop'+idx); if(box)box.style.borderColor='#f59e0b'; fvCOupdTotal(); } }
+function fvCOsetShop(idx,e){ if(e&&e.stopPropagation)e.stopPropagation(); var p=PRODUCTS[idx]; if(!p)return; var sell=(p[7]!=null)?+p[7]:0; var box=document.getElementById('cop'+idx); if(box){ box.value=sell; box.style.borderColor='#f59e0b'; } var r=fvCOorderRow_(idx); if(!r)return; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=sell; fvCOcustSave(c); } if(r.line){ r.line.price=sell; r.line.src='manual'; fvCOordSave(r.ord); fvCOupdTotal(); } }
 function fvCOupdTotal(){ var ord=fvCOopenOrder(fvCO.custId),t=ord?fvCOorderTotal(ord):0; var el=document.getElementById('coOrdTotal'); if(el)el.textContent=fvCOmoney(t); var cc=document.getElementById('coOrdCount'); if(cc){ var n=ord?(ord.lines||[]).filter(function(l){return (l.qty||0)>0;}).length:0; cc.textContent=n?(' · '+n+' item'+(n!==1?'s':'')):''; } }
 function fvCOtoggleOur(){ window._fvCOshowOur=!window._fvCOshowOur; var els=document.querySelectorAll('.fvco-our'); for(var i=0;i<els.length;i++){ els[i].style.display=window._fvCOshowOur?'':'none'; } var b=document.getElementById('fvcoOurBtn'); if(b)b.textContent=window._fvCOshowOur?'🙈 Hide shop price':'👁 Show shop price'; }
 function fvCOtoggleOnly(){ window._fvCOonlyOrder=!window._fvCOonlyOrder; var b=document.getElementById('fvcoOnlyBtn'); if(b){ b.textContent=window._fvCOonlyOrder?'✓ In this order':'Show all'; b.style.background=window._fvCOonlyOrder?'#1c4587':'#f1f5f9'; b.style.color=window._fvCOonlyOrder?'#fff':'#374151'; b.style.borderColor=window._fvCOonlyOrder?'#1c4587':'#cbd5e1'; } fvCOfilter(); }
