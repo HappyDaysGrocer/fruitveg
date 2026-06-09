@@ -1833,7 +1833,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v117';
+var APP_BUILD = 'v118';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3383,7 +3383,12 @@ function fvCOrenderOrder(){
   var showOur=!!window._fvCOshowOur, only=!!window._fvCOonlyOrder;
   var rule=null; if(c.tierId){ var _t=fvTierLoad(); rule=(_t[c.tierId]&&_t[c.tierId].rule)||{type:'shop'}; }
   function tierPx(p){ if(!rule)return null; var cost=p[6],sell=p[7]; if(rule.type==='manual')return ''; if(rule.type==='shopAdj')return (sell!=null)?fvTierRound(+sell*(1+(rule.pct||0)/100)):''; if(rule.type==='costPlus'){ if(cost==null||cost===''||+cost<=0)return 'SETCOST'; return fvTierRound(+cost*(1+(rule.pct||0)/100)); } return (sell!=null)?fvTierRound(+sell):''; }
-  var items=[]; PRODUCTS.forEach(function(p,i){ if(!p[3])return; items.push({p:p,i:i,key:p[0]+'||'+p[3]}); });
+  // Orders picker shows ONLY the produce categories (A-B, C-G, H-O, P-R, S-Z) — the
+  // grocery/cafe EPOS lines and the Mandi buy-suppliers are hidden here — but anything
+  // already on this customer's open order is always kept so existing lines stay editable.
+  var items=[]; PRODUCTS.forEach(function(p,i){ if(!p[3])return; var key=p[0]+'||'+p[3];
+    if(!/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(String(p[0]||'')) && !lineByKey[key]) return;
+    items.push({p:p,i:i,key:key}); });
   items.sort(function(a,b){ return String(a.p[3]||'').toLowerCase().localeCompare(String(b.p[3]||'').toLowerCase()); });
   var rowsHtml='';
   items.forEach(function(it){ var p=it.p,i=it.i,key=it.key,line=lineByKey[key],qty=line?(line.qty||0):0;
