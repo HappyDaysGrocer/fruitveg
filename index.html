@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v159';
+var APP_BUILD = 'v160';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3223,7 +3223,8 @@ function fvCOpull(){
       fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
       fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
       fetch(FV_FB.databaseURL+'/costov.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
-      fetch(FV_FB.databaseURL+'/extraprod.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
+      fetch(FV_FB.databaseURL+'/extraprod.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
+      fetch(FV_FB.databaseURL+'/boxsizes.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
     ]).then(function(res){
       var changed=false;
       // MERGE the cloud copy with this device's copy — never REPLACE — so a customer/order
@@ -3259,6 +3260,13 @@ function fvCOpull(){
         Object.keys(res[4]).forEach(function(k){ var r4=res[4][k]; if(r4&&r4.name&&r4.row) mE[String(r4.name).toLowerCase().trim()]=r4; });
         var sE=JSON.stringify(Object.assign({}, locE, mE));
         if(sE!==localStorage.getItem('mandiExtraProducts')){ try{localStorage.setItem('mandiExtraProducts',sE);}catch(e){} fvExtraApply_(); changed=true; }
+      }
+      // Team box sizes (cloud wins per product), then re-roll the boxes.
+      if(res[5]!==undefined && res[5]!==null && typeof res[5]==='object'){
+        var locB=fvBoxOvLoad(), mB={};
+        Object.keys(res[5]).forEach(function(k){ var r5=res[5][k]; if(r5&&r5.name&&+r5.per>0) mB[String(r5.name).toLowerCase().trim()]={per:+r5.per,by:r5.by||'each'}; });
+        var sB=JSON.stringify(Object.assign({}, locB, mB));
+        if(sB!==localStorage.getItem('mandiBoxSizes')){ try{localStorage.setItem('mandiBoxSizes',sB);}catch(e){} changed=true; }
       }
       if(changed && typeof fvPromoteOrderProducts_==='function') fvPromoteOrderProducts_();
       if(changed && typeof fvCOautoBuySync==='function') fvCOautoBuySync();   // synced orders feed the Buy list too
@@ -3440,17 +3448,48 @@ function fvCObulk(){
       agg[l.key].qty+=(l.qty||0); agg[l.key].parts.push({name:(custs[ord.custId]&&custs[ord.custId].name)||'?',qty:l.qty||0}); });
   });
   Object.keys(agg).forEach(function(k){ var a=agg[k];
-    if(a.unit==='kg'){ var bk=fvCOboxKg(a.name,a.key); if(bk){
-      a.boxKg=bk;
-      a.buyBoxes=Math.max(1,Math.ceil(a.qty/bk));               // PURCHASING: round up to whole boxes
-      a.spareKg=Math.round((a.buyBoxes*bk - a.qty)*10)/10;      // left over after the restaurants get theirs
-    } } });
+    var bd=(typeof fvBoxDef_==='function')?fvBoxDef_(a.name,a.key):null;
+    if(bd && bd.per>0){
+      a.boxPer=bd.per; a.boxUnit=bd.by;
+      a.buyBoxes=Math.max(1,Math.ceil((a.qty||0)/bd.per));        // round UP to whole boxes
+      a.spare=Math.round((a.buyBoxes*bd.per-(a.qty||0))*100)/100; // left over after restaurants
+      if(bd.by==='kg'){ a.boxKg=bd.per; a.spareKg=a.spare; }      // keep legacy fields
+    }
+  });
   return agg;
 }
 /* Box size (kg per box). The product name usually carries it — e.g. "(15kg box)",
    "(13kg box)", "18 kg" — and FV_BOXKG fills the gaps from the market spreadsheet. */
 var FV_BOXKG = {"Louis||Kiwifruit NZ Green /kg (per box)":9,"Gazzola Farms||Cucumbers Continental XXL (per box)":15,"Latorre's||Cucumbers Lebanese Small /kg (per box)":10,"Latorre's||Eggplant /kg (per box)":7,"Latorre's||Capsicum Red /kg (per box)":10,"Latorre's||Capsicum Green Large /kg (per box)":10,"Latorre's||Tomatoes Roma /kg (per box)":10,"Latorre's||Beans Rugby /kg (per box)":10,"Independent Produce||Pears Packham /kg (per box)":13,"IFP 85 (Dave)||Tomatoes Truss /kg (per box)":5,"IFP 85 (Dave)||Cucumbers Continental XXL (per box)":15,"IFP 85 (Dave)||Grapes White Seedless /kg (per box)":10,"IFP 85 (Dave)||Grapes Red Seedless /kg (per box)":10,"C & S Ponte||Ginger /kg (per kg loose)":10,"C & S Ponte||Pumpkin Jap /kg (per each)":28.9,"C & S Ponte||Pumpkin Butternut /kg (per each)":24,"C & S Ponte||Watermelon Seedless /kg (per each)":33.5,"BRP 59 (Andrew)||Mushrooms White Cup /kg":4,"BRP 59 (Andrew)||Mushrooms White Flat /kg":4,"BRP 59 (Andrew)||Mushrooms Brown /kg":3,"TEN Farm (Chris)||Papaya Red /kg":8};
 function fvCOboxKg(name,key){ var m=String(name).match(/(\d+\.?\d*)\s*kg/i); if(m) return parseFloat(m[1]); if(key && FV_BOXKG[key]!=null) return FV_BOXKG[key]; return null; }
+/* ── Box-conversion engine: roll up the restaurants' demand → whole boxes to buy at the
+   Mandi (the owner's example: 5kg + 7kg apples = 12kg, apples come in 12kg boxes → buy 1).
+   `per` = how many of the SELL unit (kg / pieces / bunches / punnets) make ONE box. Broad
+   name rules below + owner overrides (mandiBoxSizes, editable in-app and synced). ── */
+var FV_BOX_DEFS=[
+  {re:/\bapple/i, per:12, by:'kg'},                 // owner: apples come in 12kg boxes
+  {re:/\bzucchini/i, per:10, by:'kg'},
+  {re:/strawberr/i, per:12, by:'punnet'},
+  {re:/\bcos\b/i, per:10, by:'each'},               // cos lettuce, 10 heads/box
+  {re:/\bbasil\b|\bcoriander\b|\bmint\b|\bparsley\b|\bdill\b|\bchive\b|\bchervil\b|\boregano\b|\brosemary\b|\bsage\b|\btarragon\b|\bthyme\b|fenugreek|methi/i, per:10, by:'bunch'} // herbs: deck of 10 bunches
+];
+function fvBoxUnitOf_(name){ var n=String(name||''); if(/\/\s*kg/i.test(n))return 'kg'; if(/punnet|pnt|250g/i.test(n))return 'punnet'; if(/bunch/i.test(n))return 'bunch'; return 'each'; }
+function fvBoxUnitLabel_(by,plural){ return by==='kg'?'kg':(by==='punnet'?(plural?' punnets':' punnet'):(by==='bunch'?(plural?' bunches':' bunch'):(plural?' pieces':' piece'))); }
+function fvBoxOvLoad(){ try{ return JSON.parse(localStorage.getItem('mandiBoxSizes')||'{}'); }catch(e){ return {}; } }
+function fvBoxDef_(name, key){
+  var n=String(name||'').toLowerCase().trim();
+  var ov=fvBoxOvLoad(); if(ov[n] && +ov[n].per>0) return {per:+ov[n].per, by:ov[n].by||fvBoxUnitOf_(name)};   // owner-set wins
+  for(var i=0;i<FV_BOX_DEFS.length;i++){ if(FV_BOX_DEFS[i].re.test(name)) return {per:FV_BOX_DEFS[i].per, by:FV_BOX_DEFS[i].by}; }
+  var bk=fvCOboxKg(name,key); if(bk>0) return {per:bk, by:'kg'};
+  return null;
+}
+function fvBoxSet(name, per){ var n=String(name||'').toLowerCase().trim(); var v=parseFloat(per); if(!(v>0))return false;
+  var by=fvBoxUnitOf_(name); var m=fvBoxOvLoad(); m[n]={per:v,by:by}; try{localStorage.setItem('mandiBoxSizes',JSON.stringify(m));}catch(e){}
+  if(typeof fvCOpatch==='function') fvCOpatch('boxsizes', n.replace(/[.#$\/\[\]]/g,'_'), {name:n,per:v,by:by});
+  if(typeof fvCOautoBuySync==='function') fvCOautoBuySync(); if(typeof fvCORender==='function')fvCORender(); return true; }
+function fvBoxPromptIdx(idx){ var p=(idx>=0)?PRODUCTS[idx]:null; if(!p)return; var nm=p[3]; var cur=fvBoxDef_(nm,p[0]+'||'+p[3]);
+  var lbl=fvBoxUnitLabel_(fvBoxUnitOf_(nm),true).trim()||'units';
+  var ans=prompt('1 box of "'+nm+'" = how many '+lbl+' at the Mandi?', (cur&&cur.per)?cur.per:''); if(ans==null)return; fvBoxSet(nm, ans); }
 function fvCOexportText(ord){
   var c=fvCOloadCust()[ord.custId]||{},L=[];
   L.push('HAPPY DAYS FRUIT VEG & GROCER');
@@ -3809,7 +3848,16 @@ function fvCOBuyRowsHTML(query){
     var compLine=comp?('<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+fvEsc(comp)+'</span>'):'';
     var restLine='';
     if(r.rest){ var a=r.rest; var parts=(a.parts||[]).map(function(pt){ return fvEsc(pt.name)+' '+(Math.round((pt.qty||0)*100)/100)+fvEsc(a.unit||''); }).join(', ');
-      restLine='<span style="display:block;font-size:10px;color:#1c4587;margin-top:1px;">🍽️ '+parts+(a.boxKg?(' · need '+(Math.round((a.qty||0)*10)/10)+'kg ('+a.boxKg+'kg/box'+((a.buyBoxes!=null&&a.spareKg>0)?(', '+a.spareKg+'kg spare'):'')+')'):'')+'</span>'; }
+      var boxPhrase='';
+      if(a.buyBoxes!=null && a.boxPer){
+        var ku=(a.boxUnit==='kg')?'kg':fvBoxUnitLabel_(a.boxUnit,true);
+        var needTxt=(Math.round((a.qty||0)*100)/100)+ku;
+        var spareTxt=(a.spare>0)?(', '+a.spare+ku+' spare'):'';
+        boxPhrase=' · need '+needTxt+' → <strong style="color:#0d4420;">buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'')+'</strong> ('+a.boxPer+ku+'/box'+spareTxt+')';
+      } else if(r.idx>=0){
+        boxPhrase=' · <span onclick="event.stopPropagation();fvBoxPromptIdx('+r.idx+')" style="color:#b45309;font-weight:700;text-decoration:underline;cursor:pointer;">📦 set box size</span>';
+      }
+      restLine='<span style="display:block;font-size:10px;color:#1c4587;margin-top:1px;">🍽️ '+parts+boxPhrase+'</span>'; }
     var boughtLine=bought?('<span style="display:block;font-size:10px;color:#15803d;font-weight:800;margin-top:1px;">✓ Bought '+(st.qty||0)+' × '+fvCOmoney(st.price||0)+(st.buyer?(' · '+fvEsc(st.buyer)):'')+'</span>'):'';
     var right;
     if(r.idx>=0){ right='<span style="display:inline-flex;align-items:center;gap:6px;flex:none;">'
