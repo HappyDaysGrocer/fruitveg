@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v141';
+var APP_BUILD = 'v142';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3491,12 +3491,29 @@ function fvCObuyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); i
 function fvCOShopListHTML(){
   if (typeof fvBuyLoad !== 'function') return '';
   var m = fvBuyLoad(), items = [];
-  Object.keys(m).forEach(function(idx){ if (m[idx] > 0 && PRODUCTS[idx]) items.push({ name:PRODUCTS[idx][3], q:m[idx], sup:PRODUCTS[idx][0], idx:idx }); });
+  Object.keys(m).forEach(function(idx){ if (m[idx] > 0 && PRODUCTS[idx]) items.push({ name:PRODUCTS[idx][3], q:m[idx], sup:PRODUCTS[idx][0], stall:PRODUCTS[idx][1], idx:idx }); });
   if (!items.length) return '';
-  var rows = items.map(function(s){ return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#374151;padding:4px 0;"><span style="flex:1;min-width:0;">' + fvEsc(s.name) + ' <span style="color:#9ca3af;">· ' + fvEsc(s.sup) + '</span></span><span style="display:inline-flex;align-items:center;gap:6px;flex:none;"><button type="button" onclick="fvCObuyAdj(' + s.idx + ',-1,event)" style="width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">−</button><span style="font-weight:700;min-width:18px;text-align:center;">' + s.q + '</span><button type="button" onclick="fvCObuyAdj(' + s.idx + ',1,event)" style="width:24px;height:24px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">+</button></span></div>'; }).join('');
+  // Market-run order: numeric stalls first (ascending), then the rest by company name.
+  items.sort(function(a,b){ var sa=parseInt(a.stall),sb=parseInt(b.stall),aN=!isNaN(sa),bN=!isNaN(sb);
+    if(aN&&bN&&sa!==sb)return sa-sb; if(aN&&!bN)return -1; if(!aN&&bN)return 1;
+    var s=String(a.sup||'').localeCompare(String(b.sup||'')); return s!==0?s:String(a.name||'').localeCompare(String(b.name||'')); });
+  var nBought=0;
+  var rows = items.map(function(s){
+    // Mirror the List page: once a buy is CONFIRMED there (Done), show it green + ✓ here.
+    var st=(typeof state==='object'&&state)?state[s.idx]:null, bought=!!(st&&st.status==='bought');
+    if(bought)nBought++;
+    var badge=(s.stall&&!isNaN(parseInt(s.stall)))?('<span class="stall-badge" style="margin-right:6px;font-size:11px;min-width:26px;">'+fvEsc(String(s.stall))+'</span>'):'';
+    var boughtLine=bought?('<span style="display:block;font-size:10px;color:#15803d;font-weight:800;margin-top:1px;">✓ Bought '+(st.qty||0)+' × '+fvCOmoney(st.price||0)+(st.buyer?(' · '+fvEsc(st.buyer)):'')+'</span>'):'';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8f5ec;')+'">'
+      +'<span style="flex:1;min-width:0;">'+badge+'<span style="font-weight:600;color:#111;">'+fvEsc(s.name)+'</span>'
+      +'<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+fvEsc(s.sup||'')+'</span>'+boughtLine+'</span>'
+      +'<span style="display:inline-flex;align-items:center;gap:6px;flex:none;">'
+      +(bought?'<span style="font-size:16px;">✅</span>':'')
+      +'<button type="button" onclick="fvCObuyAdj(' + s.idx + ',-1,event)" style="width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">−</button><span style="font-weight:700;min-width:18px;text-align:center;">' + s.q + '</span><button type="button" onclick="fvCObuyAdj(' + s.idx + ',1,event)" style="width:24px;height:24px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">+</button></span></div>';
+  }).join('');
   return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</span></div>'
-    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Adjust here or on the List tab — they stay in sync.</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">'+(nBought?nBought+' of '+items.length+' bought ✓':items.length+' item'+(items.length!==1?'s':''))+'</span></div>'
+    + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Stall order, same as your market run. Confirmed buys on the List turn green here.</div>'
     + rows
     + '</div>';
 }
