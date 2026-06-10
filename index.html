@@ -1853,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v151';
+var APP_BUILD = 'v152';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3186,7 +3186,20 @@ function fvCOsyncOn(){ return (typeof fvSyncEnabled==='function') && fvSyncEnabl
 function fvCOpatch(node,id,rec){ if(!fvCOsyncOn()) return; fvFbToken().then(function(tok){ var b={}; b[id]=rec; fetch(FV_FB.databaseURL+'/'+node+'.json?auth='+tok,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).catch(function(){}); }).catch(function(){}); }
 function fvCOcustSave(c){ var o=fvCOloadCust(); o[c.id]=c; try{localStorage.setItem('mandiCustomers',JSON.stringify(o));}catch(e){} fvCOpatch('customers',c.id,c); }
 function fvCOcustDel(id){ var o=fvCOloadCust(); delete o[id]; try{localStorage.setItem('mandiCustomers',JSON.stringify(o));}catch(e){} fvCOpatch('customers',id,null); }
-function fvCOordSave(ord){ var o=fvCOloadOrders(); o[ord.id]=ord; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',ord.id,ord); }
+function fvCOordSave(ord){ var o=fvCOloadOrders(); o[ord.id]=ord; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',ord.id,ord); if(typeof fvCOautoBuySync==='function')fvCOautoBuySync(); }
+/* Restaurant orders feed the Buy list AUTOMATICALLY: whatever the open customer
+   orders need (whole boxes for kg products) is pushed into the market buy list.
+   Quantities are only ever RAISED to meet demand — manual numbers never lowered. */
+function fvCOautoBuySync(){
+  try{
+    if(typeof fvCObulk!=='function'||typeof fvBuyLoad!=='function') return;
+    var agg=fvCObulk(), m=fvBuyLoad(), changed=false;
+    Object.keys(agg).forEach(function(k){ var a=agg[k], idx=fvCOprodIndexByKey(k); if(idx<0) return;
+      var need=(a.buyBoxes!=null&&a.buyBoxes>0)?a.buyBoxes:Math.ceil(a.qty||0);
+      if(need>0 && (m[idx]||0)<need){ m[idx]=need; changed=true; if(typeof fvBuyPush==='function')fvBuyPush(idx,need); } });
+    if(changed){ if(typeof fvBuySave==='function')fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); }
+  }catch(e){}
+}
 function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',id,null); }
 // True while the user is mid-entry (on a form view, or focused in any field).
 // We must NOT redraw the Orders view then, or it wipes what they're typing.
@@ -3232,6 +3245,7 @@ function fvCOpull(){
         var sC=JSON.stringify(Object.assign({}, locC, mC));
         if(sC!==localStorage.getItem('mandiCostOv')){ try{localStorage.setItem('mandiCostOv',sC);}catch(e){} fvCostOvApply(); changed=true; }
       }
+      if(changed && typeof fvCOautoBuySync==='function') fvCOautoBuySync();   // synced orders feed the Buy list too
       // Don't redraw while the user is entering data — preserves the new-customer form.
       var v=document.getElementById('viewOrders');
       if(changed && v && v.classList.contains('active') && !fvCOisEditing_() && typeof fvCORender==='function') fvCORender();
@@ -3253,27 +3267,31 @@ function fvCostSet(key,val){ var v=parseFloat(val); if(isNaN(v)||v<0) return fal
   if(typeof fvCOpatch==='function') fvCOpatch('costov', String(key).replace(/[.#$\/\[\]]/g,'_'), {key:key,cost:v});
   return true; }
 fvCostOvApply();   // apply saved costs over the merged catalogue on every load
-/* ── One-time seeded order: Shanikas pickup WED 11 JUN 2026 (owner sent the order
-   sheet to Claude, 10 Jun). Created as an OPEN order the first time the app loads,
-   then synced to the team like any other order. Items are matched to the catalogue
-   by name at runtime; matched lines price from her locked prices / tier, unmatched
-   ones come in as custom lines at $0 for review. Idempotent via the fixed id. ── */
+// Products recently added from order sheets — shown with a NEW tag in orders until priced.
+var FV_NEW_PRODUCTS={'asparagus bunch':1,'beans green /kg':1,'broccolini bunch':1,'carrots dutch bunch':1,
+  'chilli long red 100g':1,'eggplant each':1,'mushroom cups 4kg box':1,'snow pea shoots punnet 100g':1};
+function fvNewChip_(name){ return (typeof FV_NEW_PRODUCTS==='object'&&FV_NEW_PRODUCTS[String(name||'').toLowerCase()])?' <span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle;">NEW</span>':''; }
+/* ── One-time seeded order: Shanikas pickup WED 11 JUN 2026 (owner's order sheet).
+   Created as an OPEN order once per dataset, then synced like any other order.
+   All 20 items resolve to real catalogue products (the 8 NEW ones were added to
+   shopProducts.js); prices come from her locked prices / tier, NEW ones at $0
+   for review. Idempotent via the fixed id. ── */
 function fvSeedShanikas0611(){
   try{
     var SEED_ID='o_seed_shanikas_20260611';
     var orders=fvCOloadOrders();
     if(orders[SEED_ID]){
       if(typeof fvCOsyncOn==='function' && fvCOsyncOn() && !window._fvSeedPushed){ window._fvSeedPushed=true; fvCOordSave(orders[SEED_ID]); }
-      return !!window._fvSeedPushed || !(typeof fvCOsyncOn==='function' && !fvCOsyncOn());
+      return !!window._fvSeedPushed;
     }
     var custs=fvCOloadCust(), cid=null;
     Object.keys(custs).forEach(function(k){ if(!cid && String(custs[k].name||'').toLowerCase().indexOf('shanika')>=0) cid=k; });
     if(!cid) return false;                                   // customer not on this device yet — retry
-    var ITEMS=[['Basil Bunch',2],['Apples Granny Smith /kg',2],['Asparagus Bunch',4],['Brocolini',4],
+    var ITEMS=[['Basil Bunch',2],['Apples Granny Smith /kg',2],['Asparagus Bunch',4],['Broccolini Bunch',4],
       ['Capsicum Red /kg',1],['Tomato Cherry Punnets',2],['Chilli Long Red 100g',1],['Lettuce Baby Cos Twin Pack',2],
       ['Carrots Dutch Bunch',2],['Mushroom Cups 4kg Box',1],['Snow Pea Shoots Punnet 100g',1],['Potato Washed 5kg Bag',1],
       ['Rocket Box',1],['Rosemary Bunch',1],['Salad Mix Box',1],['Spinach Baby Box',1],
-      ['Strawberries 250g',1],['Zucchini /kg',1],['Eggplants Each',2],['Beans Green /kg',1]];
+      ['Strawberries 250g',1],['Zucchini /kg',1],['Eggplant Each',2],['Beans Green /kg',1]];
     function normS(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
     function toksS(s){ return normS(s).split(' ').filter(Boolean).map(function(w){ return w.replace(/ies$/,'y').replace(/(oes|ses)$/,'o').replace(/s$/,''); }); }
     function findIdx(name){
@@ -3294,8 +3312,10 @@ function fvSeedShanikas0611(){
       if(idx>=0){ key=PRODUCTS[idx][0]+'||'+PRODUCTS[idx][3]; name=PRODUCTS[idx][3]; }
       else { key='Custom||'+it[0]; name=it[0]; }
       var tp=(typeof fvCOpriceFor==='function')?fvCOpriceFor(cid,key):'';
-      return { key:key, name:name, sup:key.split('||')[0], unit:(typeof fvCOunit==='function')?fvCOunit(name):'ea',
+      var ln={ key:key, name:name, sup:key.split('||')[0], unit:(typeof fvCOunit==='function')?fvCOunit(name):'ea',
                qty:it[1], price:(typeof tp==='number')?tp:0, src:(typeof tp==='number')?'tier':'seed' };
+      if(FV_NEW_PRODUCTS[String(name).toLowerCase()]) ln.isNew=true;
+      return ln;
     });
     var ord={ id:SEED_ID, custId:cid, status:'open', date:'2026-06-11', lines:lines, seeded:true };
     fvCOordSave(ord);
@@ -3303,12 +3323,18 @@ function fvSeedShanikas0611(){
     return !!window._fvSeedPushed;
   }catch(e){ return false; }
 }
-if(!fvSeedShanikas0611()){
-  window._fvSeedT=setInterval(function(){
-    window._fvSeedTries=(window._fvSeedTries||0)+1;
-    if(fvSeedShanikas0611() || window._fvSeedTries>60){ clearInterval(window._fvSeedT); }
-  },20000);
-}
+// Run the seed only after the WHOLE script has loaded (it uses tier pricing, whose
+// data is declared further down) — an immediate call here would throw and silently
+// fail, which is exactly why the v151 seed never appeared.
+setTimeout(function(){
+  if(!fvSeedShanikas0611()){
+    window._fvSeedT=setInterval(function(){
+      window._fvSeedTries=(window._fvSeedTries||0)+1;
+      if(fvSeedShanikas0611() || window._fvSeedTries>90){ clearInterval(window._fvSeedT); }
+    },20000);
+  }
+  if(typeof fvCOautoBuySync==='function') fvCOautoBuySync();   // restaurant needs → Buy list
+},1200);
 /* ── Price tiers (Hybrid pricing): a named rule reused across customers ──
    A tier is a rule, not a frozen list, so prices follow live cost/sell.
    COST = PRODUCTS[i][6], SELL = PRODUCTS[i][7].  Backward-compatible:
@@ -3326,7 +3352,19 @@ function fvTierPrice(custId,key){ var rule=fvTierRuleFor(custId); if(!rule)retur
 // never been charged for yet.
 function fvCOpriceFor(custId,key){ var c=fvCOloadCust()[custId]; if(c&&c.prices&&c.prices[key]!=null) return c.prices[key]; if(c&&c.tierId){ return fvTierPrice(custId,key); } var i=fvCOprodIndexByKey(key); if(i>=0 && PRODUCTS[i][7]!=null) return PRODUCTS[i][7]; return ''; }
 function fvCOorderTotal(ord){ var t=0; (ord.lines||[]).forEach(function(l){ t+=(l.qty||0)*(l.price||0); }); return t; }
-function fvCOopenOrder(custId){ var o=fvCOloadOrders(),k=Object.keys(o); for(var i=0;i<k.length;i++){ if(o[k[i]].custId===custId && o[k[i]].status==='open') return o[k[i]]; } return null; }
+function fvCOopenOrder(custId){
+  // A customer can end up with more than one open order (e.g. an old empty draft +
+  // a seeded/synced one). Show the LATEST-dated, fullest one so new orders never
+  // hide behind a leftover draft.
+  var o=fvCOloadOrders(),best=null;
+  Object.keys(o).forEach(function(k){ var x=o[k]; if(!x||x.custId!==custId||x.status!=='open')return;
+    if(!best){ best=x; return; }
+    var bd=String(best.date||''), xd=String(x.date||'');
+    if(xd>bd){ best=x; return; }
+    if(xd===bd && (x.lines||[]).length>(best.lines||[]).length) best=x;
+  });
+  return best;
+}
 function fvCOensureOpen(custId){ var ord=fvCOopenOrder(custId); if(!ord){ ord={id:fvCOid('o'),custId:custId,date:fvCOtoday(),status:'open',lines:[]}; fvCOordSave(ord); } return ord; }
 function fvCObulk(){
   var orders=fvCOloadOrders(),custs=fvCOloadCust(),agg={};
@@ -3587,14 +3625,14 @@ function fvCOShopListHTML(){
     var badge=(s.stall&&!isNaN(parseInt(s.stall)))?('<span class="stall-badge" style="margin-right:6px;font-size:11px;min-width:26px;">'+fvEsc(String(s.stall))+'</span>'):'';
     var boughtLine=bought?('<span style="display:block;font-size:10px;color:#15803d;font-weight:800;margin-top:1px;">✓ Bought '+(st.qty||0)+' × '+fvCOmoney(st.price||0)+(st.buyer?(' · '+fvEsc(st.buyer)):'')+'</span>'):'';
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8f5ec;')+'">'
-      +'<span style="flex:1;min-width:0;">'+badge+'<span style="font-weight:600;color:#111;">'+fvEsc(s.name)+'</span>'
+      +'<span style="flex:1;min-width:0;">'+badge+'<span onclick="fvProductHistory('+s.idx+')" title="Tap for this product\'s purchase history" style="font-weight:600;color:#111;cursor:pointer;text-decoration:underline dotted #9ca3af;text-underline-offset:2px;">'+fvEsc(s.name)+'</span>'
       +'<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+fvEsc(s.sup||'')+'</span>'+boughtLine+'</span>'
       +'<span style="display:inline-flex;align-items:center;gap:6px;flex:none;">'
       +(bought?'<span style="font-size:16px;">✅</span>':'')
       +'<button type="button" onclick="fvCObuyAdj(' + s.idx + ',-1,event)" style="width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">−</button><span style="font-weight:700;min-width:18px;text-align:center;">' + s.q + '</span><button type="button" onclick="fvCObuyAdj(' + s.idx + ',1,event)" style="width:24px;height:24px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">+</button></span></div>';
   }).join('');
   return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🏪 Your shop buy list</span><span style="font-size:11px;color:#15803d;font-weight:700;">'+(nBought?nBought+' of '+items.length+' bought ✓':items.length+' item'+(items.length!==1?'s':''))+'</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#0d4420;font-size:14px;">🛒 Buy list — shop items</span><span style="font-size:11px;color:#15803d;font-weight:700;">'+(nBought?nBought+' of '+items.length+' bought ✓':items.length+' item'+(items.length!==1?'s':''))+'</span></div>'
     + '<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Confirmed buys on the List turn green here.</div>'
     + rows
     + '</div>';
@@ -3608,7 +3646,7 @@ function fvCOBulkCardHTML(){
   var items=keys.map(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k);
     var stall=(idx>=0)?PRODUCTS[idx][1]:null, comp=(idx>=0)?PRODUCTS[idx][0]:(a.sup||'');
     if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(String(comp||''))) comp='';   // category, not a company
-    return {a:a,k:k,stall:stall,comp:comp,bought:!!bk[k]}; });
+    return {a:a,k:k,idx:idx,stall:stall,comp:comp,bought:!!bk[k]}; });
   items.sort(fvShopSortFn_(function(x){return x.stall;},function(x){return x.a.name;}));
   var nB=0; items.forEach(function(x){ if(x.bought)nB++; });
   var rows=items.map(function(x){ var a=x.a;
@@ -3617,7 +3655,9 @@ function fvCOBulkCardHTML(){
     var parts=a.parts.map(function(pt){ return fvEsc(pt.name)+' '+(Math.round((pt.qty||0)*100)/100)+fvEsc(a.unit||''); }).join(', ');
     var sub=(x.comp?fvEsc(x.comp)+' · ':'')+(a.boxKg?('need '+(Math.round((a.qty||0)*10)/10)+'kg ('+a.boxKg+'kg/box)'+((a.buyBoxes!=null&&a.spareKg>0)?(' · '+a.spareKg+'kg spare'):'')+' · '):'')+parts;
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(x.bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8eef5;')+'">'
-      +'<span style="flex:1;min-width:0;">'+badge+'<span style="font-weight:600;color:#111;">'+fvEsc(a.name)+'</span>'
+      +'<span style="flex:1;min-width:0;">'+badge+(x.idx>=0
+        ?'<span onclick="fvProductHistory('+x.idx+')" title="Tap for this product\'s purchase history" style="font-weight:600;color:#111;cursor:pointer;text-decoration:underline dotted #9ca3af;text-underline-offset:2px;">'+fvEsc(a.name)+'</span>'
+        :'<span style="font-weight:600;color:#111;">'+fvEsc(a.name)+'</span>')
       +'<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+sub+'</span></span>'
       +'<span style="flex:none;font-weight:800;white-space:nowrap;color:'+(x.bought?'#15803d':'#1c4587')+';">'+(x.bought?'✅ bought':buyTxt)+'</span></div>';
   }).join('');
@@ -3650,7 +3690,7 @@ function fvCOrenderList(){
   // Top tabs: Restaurants/Cafés (customers; New customer + Price tiers live inside) | Shop buy list
   var tab=fvCO.homeTab||'rest';
   function tabBtn(key,label){ var on=(tab===key); return '<button onclick="fvCOhomeTab(\''+key+'\')" style="flex:1;padding:12px 8px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;border:1px solid '+(on?'#15662f':'#cbd5e1')+';background:'+(on?'#15662f':'#fff')+';color:'+(on?'#fff':'#374151')+';">'+label+'</button>'; }
-  var h='<div style="display:flex;gap:6px;margin-bottom:10px;">'+tabBtn('rest','🍽️ Restaurants / Cafés')+tabBtn('shop','🏪 Shop buy list')+'</div>';
+  var h='<div style="display:flex;gap:6px;margin-bottom:10px;">'+tabBtn('rest','🍽️ Restaurants / Cafés')+tabBtn('shop','🛒 Buy list')+'</div>';
   if(tab==='shop'){
     var shop=(typeof fvCOShopListHTML==='function')?fvCOShopListHTML():'';
     var bulk=(typeof fvCOBulkCardHTML==='function')?fvCOBulkCardHTML():'';
@@ -3730,6 +3770,33 @@ function fvCOlineCost_(key){
     for(var j=0;j<PRODUCTS.length;j++){ if(String(PRODUCTS[j][3]||'').toLowerCase()===ln && ok(PRODUCTS[j][6])) return +PRODUCTS[j][6]; } }
   return null;
 }
+// Convert a purchase-history entry to a PER-UNIT cost matching how we SELL the item.
+// Market-run history records the PER-BOX price paid — selling per kg means cost must
+// be box price ÷ kg-per-box (a $60 box of 6kg = $10/kg, NEVER $60/kg). Margins are
+// small; when the conversion can't be made safely we return null rather than guess.
+function fvCOhistUnitCost_(it, wantPerKg){
+  var price=+it.price; if(!(price>0)) return null;
+  if(it.perUnit===true) return price;                         // recorded as a per-unit price (receipt entries)
+  var hn=String(it.productName||'');
+  var anchor=null, ln=hn.toLowerCase();
+  if(typeof PRODUCTS!=='undefined'){ for(var i=0;i<PRODUCTS.length;i++){ if(String(PRODUCTS[i][3]||'').toLowerCase()===ln){ anchor=PRODUCTS[i]; break; } } }
+  if(wantPerKg){
+    if(anchor && +anchor[5]>0 && +anchor[6]>0){
+      // Decide whether the recorded price is a BOX or PER-KG figure: compare which
+      // reference it sits closer to (ratio-wise), then convert box → per-kg.
+      var rBox=Math.abs(Math.log(price/+anchor[5])), rKg=Math.abs(Math.log(price/+anchor[6]));
+      if(rKg<rBox) return price;
+      return price/(+anchor[5]/+anchor[6]);
+    }
+    var kgBox=null, mm=hn.match(/\(([\d.]+)\s*kg/i); if(mm) kgBox=parseFloat(mm[1]);
+    if(kgBox==null && typeof FV_BOXKG==='object'){ var bk=FV_BOXKG[(it.supplier||'')+'||'+hn]; if(+bk>0) kgBox=+bk; }
+    if(kgBox>0) return price/kgBox;
+    return null;                                              // can't convert safely → caller falls back
+  }
+  var upb=null; try{ if(typeof unitsPerBox==='function'&&typeof extractPackInfo==='function') upb=unitsPerBox(extractPackInfo(hn)); }catch(e){}
+  if(upb&&upb>1) return price/upb;                            // box of N units → per-unit
+  return price;
+}
 // ── Date-aware cost: scan the PURCHASE HISTORY and use the price from the buy run
 // CLOSEST to the order's date (owner: "input the purchase price closest associated
 // with the order date"). Exact (normalised) name matches always count; looser
@@ -3755,8 +3822,10 @@ function fvCOhistCost_(line, date){
       var exact=(lt.join(' ')===ht.join(' '));
       var subset=lt.every(function(w){return ht.indexOf(w)>=0;}) || ht.every(function(w){return lt.indexOf(w)>=0;});
       if(!(exact || (isKgLine && /\/\s*kg/i.test(hn) && subset))) return;
+      var unit=fvCOhistUnitCost_(it, isKgLine);               // per-unit, matching how we sell
+      if(unit==null) return;
       var ov=Math.min(lt.length,ht.length)/Math.max(lt.length,ht.length);
-      if(diff<bestDiff || (diff===bestDiff && ov>bestOv)){ bestDiff=diff; bestOv=ov; best=+it.price; }
+      if(diff<bestDiff || (diff===bestDiff && ov>bestOv)){ bestDiff=diff; bestOv=ov; best=unit; }
     });
   });
   return best;
@@ -3830,7 +3899,7 @@ function fvCOckRowHTML_(l,j,ordDate){
       +'<button type="button" onclick="fvCOckQty('+j+',1)" style="width:34px;height:34px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:8px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;">+</button>';
   return '<div style="border-top:1px solid #eef0f2;padding:11px 4px;">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-      +'<span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:#111;">'+fvEsc(nm)+'</span>'
+      +'<span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:#111;">'+fvEsc(nm)+fvNewChip_(nm)+'</span>'
       +'<span style="font-size:14px;font-weight:800;color:#0d4420;white-space:nowrap;">'+fvCOmoney(lt)+'</span>'
       +'<button type="button" onclick="fvCOckRemove('+j+')" title="Remove item" style="background:none;border:none;color:#b91c1c;font-size:17px;cursor:pointer;padding:0 2px;line-height:1;">✕</button>'
     +'</div>'
@@ -3890,7 +3959,7 @@ function fvCOrenderOrder(){
     var nm=(typeof getProductName==='function')?getProductName(i):p[3];
     var our=(sell!=null)?('<span class="fvco-our" style="'+(showOur?'':'display:none;')+'color:#9ca3af;font-size:11px;white-space:nowrap;">shop '+fvCOmoney(sell)+'</span>'):'';
     rowsHtml+='<div data-coidx="'+i+'" data-cokey="'+fvEsc(String(key)).replace(/"/g,'&quot;')+'" data-coname="'+fvEsc(String(p[3]).toLowerCase()).replace(/"/g,'&quot;')+'" id="cor'+i+'" style="display:'+((!only||qty>0)?'block':'none')+';border-top:1px solid #eef0f2;padding:8px 4px;'+(qty>0?'background:#f0fdf4;border-radius:8px;':'')+'">'
-      +'<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+fvEsc(nm)+(isMan?' <span style="font-size:9px;color:#b45309;font-weight:700;">· manual</span>':'')+'</span>'+our+'</div>'
+      +'<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+fvEsc(nm)+fvNewChip_(nm)+(isMan?' <span style="font-size:9px;color:#b45309;font-weight:700;">· manual</span>':'')+'</span>'+our+'</div>'
       +'<div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">'
       +'<button type="button" onclick="fvCOqtyAdj('+i+',-1,event)" style="width:30px;height:30px;border:1px solid #cbd5e1;background:#fff;border-radius:7px;font-size:17px;font-weight:700;line-height:1;cursor:pointer;">−</button>'
       +'<span id="coq'+i+'" style="min-width:22px;text-align:center;font-weight:700;font-size:14px;">'+qty+'</span>'
@@ -5714,18 +5783,18 @@ function importProductList() {
    so they match customer-order lines exactly. */
 var FV_BAKED_HISTORY = {
   '2026-06-09': { label: 'Tue 9 Jun — Cranbourne Market', items: [
-    { productName:'Misc fruit & veg (1)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:30,   total:30 },
-    { productName:'Misc fruit & veg (2)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:28,   total:28 },
-    { productName:'Misc fruit & veg (3)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:23,   total:23 },
-    { productName:'Misc fruit & veg (4)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:18,   total:18 },
-    { productName:'Strawberries 250g',        supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:5.99, total:5.99 },
-    { productName:'Basil Bunch',              supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:3.99, total:7.98 },
-    { productName:'Tomato Cherry Punnets',    supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:4,      price:2.99, total:11.96 },
-    { productName:'Tomatoes Pre-packed /kg',  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3.03,   price:2.49, total:7.53 },
-    { productName:'Parsley',                  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3,      price:2.99, total:8.97 },
-    { productName:'Lettuce Iceberg',          supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:1.99, total:3.98 },
-    { productName:'Watermelon Whole /kg',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:12.38,  price:1.49, total:18.44 },
-    { productName:'Tomatoes Box (10kg)',      supplier:'Cranbourne Market', stall:'—', buyer:'Receipt (handwritten)', qty:1, price:42, total:42 }
+    { productName:'Misc fruit & veg (1)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:30,   total:30,    perUnit:true },
+    { productName:'Misc fruit & veg (2)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:28,   total:28,    perUnit:true },
+    { productName:'Misc fruit & veg (3)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:23,   total:23,    perUnit:true },
+    { productName:'Misc fruit & veg (4)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:18,   total:18,    perUnit:true },
+    { productName:'Strawberries 250g',        supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:5.99, total:5.99,  perUnit:true },
+    { productName:'Basil Bunch',              supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:3.99, total:7.98,  perUnit:true },
+    { productName:'Tomato Cherry Punnets',    supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:4,      price:2.99, total:11.96, perUnit:true },
+    { productName:'Tomatoes Pre-packed /kg',  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3.03,   price:2.49, total:7.53,  perUnit:true },
+    { productName:'Parsley',                  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3,      price:2.99, total:8.97,  perUnit:true },
+    { productName:'Lettuce Iceberg',          supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:1.99, total:3.98,  perUnit:true },
+    { productName:'Watermelon Whole /kg',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:12.38,  price:1.49, total:18.44, perUnit:true },
+    { productName:'Tomatoes Box (10kg)',      supplier:'Cranbourne Market', stall:'—', buyer:'Receipt (handwritten)', qty:1, price:42, total:42, perUnit:true }
   ] }
 };
 function loadHistory()  {
