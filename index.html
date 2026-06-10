@@ -1361,6 +1361,7 @@
 <!-- Pre-loaded 90-day EPOS sales data (auto-cleaned) -->
 <script src="epos90.js"></script>
 <script src="shopProducts.js"></script>
+<script src="storeCatalog.js"></script>
 <script src="invoices.js"></script>
 <script src="bankledger.js"></script>
 <script src="bankfeed.js"></script>
@@ -1852,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v145';
+var APP_BUILD = 'v146';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7237,6 +7238,49 @@ function renderSpendRows() {
 }
 function fvToggleSupp(i){ var e = document.getElementById('supp' + i); if (e) e.style.display = (e.style.display === 'none' ? 'block' : 'none'); }
 
+/* ── Purchased-products catalogue (auto-built from the Mandi invoice photos by
+   G:\...\Carrum Downs\Store Catalog\build_store_catalog.js — weekly the owner
+   supplies the EPOS product CSV and the script refreshes storeCatalog.js). ── */
+function fvEposTasksLoad(){ try{ return JSON.parse(localStorage.getItem('fvEposTasks')||'{}'); }catch(e){ return {}; } }
+function fvEposTaskToggle(name){ var t=fvEposTasksLoad(); if(t[name])delete t[name]; else t[name]=1; try{localStorage.setItem('fvEposTasks',JSON.stringify(t));}catch(e){} fvRenderPurchased(); }
+function fvRenderPurchased(){
+  var host=document.getElementById('fvPurchasedCard'); if(!host) return;
+  if(typeof STORE_CATALOG==='undefined'||!STORE_CATALOG||!STORE_CATALOG.products||!STORE_CATALOG.products.length){ host.style.display='none'; return; }
+  host.style.display='';
+  var q=((document.getElementById('fvPurchSearch')||{}).value||'').toLowerCase().trim();
+  var done=fvEposTasksLoad();
+  var missing=STORE_CATALOG.products.filter(function(p){ return !p.epos; });
+  var open=missing.filter(function(p){ return !done[p.n]; }).length;
+  var tasks='';
+  if(missing.length){
+    tasks='<details id="fvEposTasksDD"'+(window._fvEposDDOpen?' open':'')+' style="margin:0 0 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;">'
+      +'<summary style="cursor:pointer;font-weight:800;color:#92400e;font-size:13px;">⚠️ To add to EPOS Now — '+open+' open'+((missing.length-open)?(' · '+(missing.length-open)+' done'):'')+'</summary>'
+      +'<div style="font-size:11px;color:#92400e;margin:6px 0 4px;">Bought on invoices but not found in the till product list. Tick each one once you add it in the EPOS back office.</div>'
+      +missing.map(function(p){ var d=!!done[p.n];
+        return '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #fef3c7;font-size:13px;'+(d?'opacity:.55;':'')+'">'
+          +'<input type="checkbox" '+(d?'checked':'')+' onchange="fvEposTaskToggle(\''+String(p.n).replace(/'/g,'\\\'')+'\')" style="width:18px;height:18px;flex:none;">'
+          +'<span style="flex:1;min-width:0;'+(d?'text-decoration:line-through;':'')+'">'+fvEsc(p.n)+'</span>'
+          +'<span style="flex:none;font-size:10px;color:#9ca3af;">'+fvEsc((p.sups||[]).join(', '))+'</span></label>'; }).join('')
+      +'</details>';
+  }
+  var rows='', shown=0;
+  STORE_CATALOG.products.forEach(function(p){
+    if(q && (p.n+' '+(p.sups||[]).join(' ')).toLowerCase().indexOf(q)<0) return;
+    shown++;
+    rows+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #f3f3f3;font-size:13px;">'
+      +'<span style="flex:1;min-width:0;"><span style="font-weight:600;color:#111;">'+fvEsc(p.n)+'</span>'
+      +'<span style="display:block;font-size:10px;color:#6b7280;">'+fvEsc((p.sups||[]).join(', '))+((p.stalls&&p.stalls.length)?(' · Stall '+fvEsc(p.stalls.join(', '))):'')+'</span></span>'
+      +'<span style="flex:none;text-align:right;font-size:10px;color:#6b7280;">'+(p.buys||0)+'×<br>last '+fvEsc(p.last||'')+'</span>'
+      +'<span style="flex:none;font-size:14px;" title="'+(p.epos?('On EPOS as: '+fvEsc(p.epos)):'Not on EPOS yet')+'">'+(p.epos?'✅':'⚠️')+'</span></div>';
+  });
+  host.innerHTML = tasks
+    +'<div style="font-weight:800;color:#0d4420;font-size:14px;margin:2px 0 6px;">🧾 Purchased from the Mandi <span style="font-weight:600;color:#9ca3af;font-size:11px;">('+STORE_CATALOG.products.length+' products · '+fvEsc(STORE_CATALOG.source||'')+' · updated '+fvEsc(STORE_CATALOG.generated||'')+')</span></div>'
+    +'<input id="fvPurchSearch" type="text" value="'+fvEsc(q)+'" placeholder="🔍 Search purchased products…" oninput="fvRenderPurchased()" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:4px;">'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">'+shown+' shown · ✅ on the till · ⚠️ not on EPOS yet</div>'
+    +rows;
+  var dd=document.getElementById('fvEposTasksDD'); if(dd) dd.addEventListener('toggle',function(){ window._fvEposDDOpen=dd.open; });
+  if(q){ var si=document.getElementById('fvPurchSearch'); if(si){ si.focus(); try{ si.setSelectionRange(si.value.length,si.value.length); }catch(e){} } }
+}
 function buildStoreView() {
   var v = document.getElementById('viewStore'); if (!v) return;
   var cats = {}; fvStoreList().forEach(function(r){ if (r.cat) cats[r.cat] = 1; });
@@ -7257,9 +7301,11 @@ function buildStoreView() {
     + '<select id="storeCat" onchange="renderStoreRows()" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-top:8px;background:#fff;">' + catOpts + '</select>'
     + '<div id="storeCount" style="font-size:11px;color:#6b7280;margin:6px 0 8px;"></div>'
     + '<div class="pl-table-wrap"><table class="pl-table" id="storeTable"></table></div>'
-    + '</div>';
+    + '</div>'
+    + '<div id="fvPurchasedCard" class="manage-card"></div>';
   renderStoreRows();
   fvRenderStockTake();
+  if (typeof fvRenderPurchased === 'function') fvRenderPurchased();
 }
 
 function renderStoreRows() {
