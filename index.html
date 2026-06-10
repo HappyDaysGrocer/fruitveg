@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v162';
+var APP_BUILD = 'v163';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3514,7 +3514,12 @@ var FV_BOX_DEFS=[
   {re:/pumpkin.*butternut|butternut.*pumpkin/i, per:24, by:'kg'},
   {re:/watermelon.*seedless|seedless.*watermelon/i, per:33.5, by:'kg'},
   {re:/tomato.*roma|roma.*tomato/i, per:10, by:'kg'},
-  {re:/tomato.*truss|truss.*tomato/i, per:5, by:'kg'}
+  {re:/tomato.*truss|truss.*tomato/i, per:5, by:'kg'},
+  {re:/lemon/i, per:10, by:'kg'},                                      // lemons 10kg
+  {re:/orange/i, per:10, by:'kg'},                                     // oranges 10kg
+  {re:/banana/i, per:15, by:'kg'},                                     // bananas 15kg carton
+  {re:/broccolini/i, per:10, by:'bunch'},                              // broccolini deck of 10
+  {re:/\bkale\b/i, per:10, by:'bunch'}                                 // kale deck of 10
 ];
 function fvBoxUnitOf_(name){ var n=String(name||''); if(/\/\s*kg/i.test(n))return 'kg'; if(/punnet|pnt|250g/i.test(n))return 'punnet'; if(/bunch/i.test(n))return 'bunch'; return 'each'; }
 function fvBoxUnitLabel_(by,plural){ return by==='kg'?'kg':(by==='punnet'?(plural?' punnets':' punnet'):(by==='bunch'?(plural?' bunches':' bunch'):(plural?' pieces':' piece'))); }
