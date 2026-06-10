@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v140';
+var APP_BUILD = 'v141';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3464,7 +3464,7 @@ function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.li
 function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; ord.lines[i].src='manual'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
 function fvCOlineToTier(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var tp=fvCOpriceFor(ord.custId,ord.lines[i].key); if(typeof tp!=='number'){ alert('No tier price yet — this product has no cost set. Type a price, or set the cost in the catalogue.'); return; } ord.lines[i].price=tp; ord.lines[i].src='tier'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c&&c.prices&&c.prices[ord.lines[i].key]!=null){ delete c.prices[ord.lines[i].key]; fvCOcustSave(c); } fvCORender(); }
 function fvCOsetTier(custId,tierId){ var c=fvCOloadCust()[custId]; if(!c)return; c.tierId=tierId; fvCOcustSave(c); var ord=fvCOopenOrder(custId); if(ord){ (ord.lines||[]).forEach(function(l){ if(l.src==='manual')return; var tp=fvCOpriceFor(custId,l.key); if(typeof tp==='number'){ l.price=tp; l.src='tier'; } }); fvCOordSave(ord); } fvCORender(); }
-function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); fvCOordSave(ord); fvCOnav('history',ord.custId); }
+function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } var _pf=(typeof fvCOinvoiceProfit_==='function')?fvCOinvoiceProfit_(ord):0; if(_pf<0){ alert('🛡️ Cannot complete: this invoice is at a LOSS ('+fvCOmoney(_pf)+') based on our known costs.\nFix the prices on the Review page first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); fvCOordSave(ord); fvCOnav('history',ord.custId); }
 function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var price=l.price, s=l.src; if(s==='tier'){ var tp=fvCOpriceFor(src.custId,l.key); if(typeof tp==='number')price=tp; } var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=price; found.src=s; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:price,src:s}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
   var agg=fvCObulk(),n=0,m=fvBuyLoad();
@@ -3500,14 +3500,22 @@ function fvCOShopListHTML(){
     + rows
     + '</div>';
 }
+function fvCOhomeTab(t){ fvCO.homeTab=(t==='shop'?'shop':'rest'); if(typeof fvCORender==='function')fvCORender(); }
 function fvCOrenderList(){
   var custs=fvCOloadCust(),orders=fvCOloadOrders();
   var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
-  var h='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
+  // Top tabs: Restaurants/Cafés (customers; New customer + Price tiers live inside) | Shop buy list
+  var tab=fvCO.homeTab||'rest';
+  function tabBtn(key,label){ var on=(tab===key); return '<button onclick="fvCOhomeTab(\''+key+'\')" style="flex:1;padding:12px 8px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;border:1px solid '+(on?'#15662f':'#cbd5e1')+';background:'+(on?'#15662f':'#fff')+';color:'+(on?'#fff':'#374151')+';">'+label+'</button>'; }
+  var h='<div style="display:flex;gap:6px;margin-bottom:10px;">'+tabBtn('rest','🍽️ Restaurants / Cafés')+tabBtn('shop','🏪 Shop buy list')+'</div>';
+  if(tab==='shop'){
+    var shop=(typeof fvCOShopListHTML==='function')?fvCOShopListHTML():'';
+    return h+(shop||'<div class="empty-state">Nothing on the shop buy list yet.<br><br>Add items with the +/− steppers on the <strong>List</strong> tab and they show here.</div>');
+  }
+  h+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
     +'<button onclick="fvCOnav(\'tiers\')" style="flex:1;min-width:140px;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏷️ Price tiers</button></div>';
-  h += (typeof fvCOShopListHTML === 'function' ? fvCOShopListHTML() : '');   // List-selected items show here too
-  if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one, or your shop buy list shows above.</div>';
+  if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one.</div>';
   ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
     var oc=open?(open.lines||[]).length:0;
     h+='<div class="order-summary-card">'
@@ -3555,10 +3563,44 @@ function fvCOdateMin_(){ var d=new Date(); d.setDate(d.getDate()-7); function z(
 function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; var min=fvCOdateMin_(),max=fvCOtoday();
   if(v<min||v>max){ alert('Orders can only be back-dated up to 1 week ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
   var ord=fvCOensureOpen(fvCO.custId); ord.date=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+// ── Below-cost fail-safe ───────────────────────────────────────────────────
+// If we KNOW a product's purchase cost, a sell price under that cost is only allowed
+// while the WHOLE invoice still makes money (other lines cover the discount). If the
+// change would tip the whole invoice into a loss, it's blocked. Protects the company.
+function fvCOlineCost_(key){ var i=fvCOprodIndexByKey(key); if(i<0)return null; var c=PRODUCTS[i][6]; if(c==null||c===''||isNaN(+c)||+c<=0)return null; return +c; }
+function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
+  var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOlineCost_(l.key); if(c==null)return; var price=(l.key===overrideKey)?+overridePrice:(l.price||0); p+=(price-c)*(l.qty||0); });
+  return p;
+}
+function fvCOpriceGuard_(ord,key,newPrice){
+  var c=fvCOlineCost_(key); if(c==null||+newPrice>=c) return true;   // unknown cost or at/above cost → fine
+  var prof=fvCOinvoiceProfit_(ord,key,+newPrice);
+  if(prof>=0){ alert('⚠️ '+fvCOmoney(newPrice)+' is BELOW our cost ('+fvCOmoney(c)+').\nAllowed only because the rest of this invoice covers it — whole order still makes '+fvCOmoney(prof)+'.'); return true; }
+  alert('🛡️ Blocked: '+fvCOmoney(newPrice)+' is below our cost ('+fvCOmoney(c)+') and would put the WHOLE invoice at a loss ('+fvCOmoney(prof)+').\nRaise this price or other items first.');
+  return false;
+}
+// Instant cost/profit analysis for an order — shown ONLY in the app (Review page +
+// History). Copy/Email/Print build their own customer documents and never include it.
+function fvCOprofitBoxHTML_(ord,useSnapshot){
+  var rev=0,cost=0,known=0,unknown=0,n=0;
+  (ord.lines||[]).forEach(function(l){ var q=l.qty||0; if(q<=0)return; n++; rev+=q*(l.price||0);
+    var c=(useSnapshot&&l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
+    if(c==null){ unknown++; return; } known++; cost+=q*c; });
+  if(!n) return '';
+  var prof=rev-cost, marg=(rev>0)?(prof/rev*100):0;
+  var col=prof<0?'#b91c1c':'#15803d', bg=prof<0?'#fef2f2':'#f0fdf4', bd=prof<0?'#fecaca':'#bbf7d0';
+  return '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;padding:9px 12px;margin-top:8px;">'
+    +'<div style="font-size:11px;font-weight:800;color:#374151;margin-bottom:4px;">📊 Our numbers — in-app only, never printed for the customer</div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:1px 0;"><span>Charged</span><span style="font-weight:700;">'+fvCOmoney(rev)+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;padding:1px 0;"><span>Our cost</span><span style="font-weight:700;">'+fvCOmoney(cost)+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;color:'+col+';border-top:1px solid '+bd+';margin-top:4px;padding-top:4px;"><span>'+(prof<0?'LOSS':'Profit')+(rev>0?' · '+marg.toFixed(0)+'% margin':'')+'</span><span>'+fvCOmoney(prof)+'</span></div>'
+    +(unknown?'<div style="font-size:10px;color:#9ca3af;margin-top:3px;">'+unknown+' item'+(unknown!==1?'s':'')+' with no cost on file — not counted.</div>':'')
+    +'</div>';
+}
 // ── Checkout / review page: edit qty & price per line, remove items, then complete. ──
 // Index-based on the order's (normalised) lines array; each edit saves + re-renders.
 function fvCOckQty(j,delta){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var q=Math.max(0,(l.qty||0)+delta); if(q===0){ ord.lines.splice(j,1); } else { l.qty=q; } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
-function fvCOckPrice(j,val){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var pr=parseFloat(val); if(isNaN(pr)||pr<0)pr=0; l.price=pr; l.src='manual'; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[l.key]=pr; fvCOcustSave(c); } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+function fvCOckPrice(j,val){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var pr=parseFloat(val); if(isNaN(pr)||pr<0)pr=0; if(!fvCOpriceGuard_(ord,l.key,pr)){ if(typeof fvCORender==='function')fvCORender(); return; } l.price=pr; l.src='manual'; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[l.key]=pr; fvCOcustSave(c); } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
 function fvCOckRemove(j){ var ord=fvCOensureOpen(fvCO.custId); if(ord.lines&&ord.lines[j]){ ord.lines.splice(j,1); fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); } }
 // Set an exact (possibly decimal) quantity — used for by-the-kilo items (e.g. 5.98 kg).
 function fvCOckQtySet(j,val){ var ord=fvCOensureOpen(fvCO.custId); var l=ord.lines&&ord.lines[j]; if(!l)return; var q=parseFloat(val); if(isNaN(q)||q<0)q=0; if(q===0){ ord.lines.splice(j,1); } else { l.qty=q; } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
@@ -3599,6 +3641,7 @@ function fvCOrenderCheckout(){
   if(!n) return head+'<div style="color:#9ca3af;font-size:14px;padding:20px 4px;text-align:center;">No items yet.<br>Tap <strong>‹ Back</strong> to add products.</div></div>';
   return head+rows
     +'<div style="display:flex;justify-content:space-between;border-top:2px solid #0d4420;padding-top:10px;margin-top:10px;font-weight:800;font-size:16px;"><span>TOTAL · '+n+' item'+(n!==1?'s':'')+'</span><span>'+fvCOmoney(total)+'</span></div>'
+    +fvCOprofitBoxHTML_(ord,false)
     +'<button onclick="fvCOnav(\'order\')" style="width:100%;padding:11px;background:#fff;color:#15662f;border:1px solid #15662f;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;margin-top:10px;">＋ Add more products</button>'
     +'</div>'
     +fvCOorderFooterHTML(ord);
@@ -3665,8 +3708,8 @@ function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); v
   var box2=document.getElementById('cop'+idx); if(box2&&box2.value===''){ var _r2=fvCOorderRow_(idx),ln=_r2&&_r2.line; if(ln&&ln.price)box2.value=ln.price; }
   fvCOupdTotal();
 }
-function fvCOpriceSet(idx,val){ var r=fvCOorderRow_(idx); if(!r)return; var pr=parseFloat(val); if(isNaN(pr))pr=0; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=pr; fvCOcustSave(c); } if(r.line){ r.line.price=pr; r.line.src='manual'; fvCOordSave(r.ord); var box=document.getElementById('cop'+idx); if(box)box.style.borderColor='#f59e0b'; fvCOupdTotal(); } }
-function fvCOsetShop(idx,e){ if(e&&e.stopPropagation)e.stopPropagation(); var p=PRODUCTS[idx]; if(!p)return; var sell=(p[7]!=null)?+p[7]:0; var box=document.getElementById('cop'+idx); if(box){ box.value=sell; box.style.borderColor='#f59e0b'; } var r=fvCOorderRow_(idx); if(!r)return; var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=sell; fvCOcustSave(c); } if(r.line){ r.line.price=sell; r.line.src='manual'; fvCOordSave(r.ord); fvCOupdTotal(); } }
+function fvCOpriceSet(idx,val){ var r=fvCOorderRow_(idx); if(!r)return; var pr=parseFloat(val); if(isNaN(pr))pr=0; if(!fvCOpriceGuard_(r.ord,r.key,pr)){ var bx=document.getElementById('cop'+idx); if(bx)bx.value=(r.line&&r.line.price!=null)?r.line.price:''; return; } var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=pr; fvCOcustSave(c); } if(r.line){ r.line.price=pr; r.line.src='manual'; fvCOordSave(r.ord); var box=document.getElementById('cop'+idx); if(box)box.style.borderColor='#f59e0b'; fvCOupdTotal(); } }
+function fvCOsetShop(idx,e){ if(e&&e.stopPropagation)e.stopPropagation(); var p=PRODUCTS[idx]; if(!p)return; var sell=(p[7]!=null)?+p[7]:0; var r=fvCOorderRow_(idx); if(!r)return; if(!fvCOpriceGuard_(r.ord,r.key,sell)){ var bx=document.getElementById('cop'+idx); if(bx)bx.value=(r.line&&r.line.price!=null)?r.line.price:''; return; } var box=document.getElementById('cop'+idx); if(box){ box.value=sell; box.style.borderColor='#f59e0b'; } var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=sell; fvCOcustSave(c); } if(r.line){ r.line.price=sell; r.line.src='manual'; fvCOordSave(r.ord); fvCOupdTotal(); } }
 function fvCOupdTotal(){ var ord=fvCOopenOrder(fvCO.custId),t=ord?fvCOorderTotal(ord):0; var el=document.getElementById('coOrdTotal'); if(el)el.textContent=fvCOmoney(t); var cc=document.getElementById('coOrdCount'); if(cc){ var n=ord?(ord.lines||[]).filter(function(l){return (l.qty||0)>0;}).length:0; cc.textContent=n?(' · '+n+' item'+(n!==1?'s':'')):''; } }
 function fvCOtoggleOur(){ window._fvCOshowOur=!window._fvCOshowOur; var els=document.querySelectorAll('.fvco-our'); for(var i=0;i<els.length;i++){ els[i].style.display=window._fvCOshowOur?'':'none'; } var b=document.getElementById('fvcoOurBtn'); if(b)b.textContent=window._fvCOshowOur?'🙈 Hide shop price':'👁 Show shop price'; }
 function fvCOtoggleOnly(){ window._fvCOonlyOrder=!window._fvCOonlyOrder; var b=document.getElementById('fvcoOnlyBtn'); if(b){ b.textContent=window._fvCOonlyOrder?'✓ In this order':'Show all'; b.style.background=window._fvCOonlyOrder?'#1c4587':'#f1f5f9'; b.style.color=window._fvCOonlyOrder?'#fff':'#374151'; b.style.borderColor=window._fvCOonlyOrder?'#1c4587':'#cbd5e1'; } fvCOfilter(); }
@@ -3732,6 +3775,7 @@ function fvCOrenderHistory(){
         ls.forEach(function(l,ii){ var q=l.qty||0,pr=(l.price!=null?+l.price:0),u=(l.unit&&l.unit!=='ea')?(' '+l.unit):'';
           b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span><span class="hist-inv-qty">'+niceQty(q)+fvEsc(u)+' × $'+pr.toFixed(2)+'</span><span class="hist-inv-total">$'+(q*pr).toFixed(2)+'</span></div>'; });
         b+='<div class="hist-inv-foot" style="padding:7px 0 2px;"><span class="hist-inv-num"></span><span class="hist-inv-name">TOTAL · '+ls.length+' item'+(ls.length!==1?'s':'')+'</span><span class="hist-inv-qty"></span><span class="hist-inv-total">'+fvCOmoney(tot)+'</span></div>';
+        b+=fvCOprofitBoxHTML_(o,true);   // analysis from costs snapshotted at completion
         return b;
       })()
       +'<div style="display:flex;gap:8px;margin-top:8px;"><button onclick="fvCOreuse(\''+o.id+'\')" style="flex:1;padding:8px;background:#eef2ff;color:#1c4587;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">♻️ Reuse this order</button><button onclick="fvCOcopy(\''+o.id+'\')" style="flex:1;padding:8px;background:#f1f5f9;color:#374151;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copy</button></div>'
