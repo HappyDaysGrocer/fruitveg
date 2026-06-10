@@ -1853,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v148';
+var APP_BUILD = 'v149';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3661,7 +3661,18 @@ function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(
 // If we KNOW a product's purchase cost, a sell price under that cost is only allowed
 // while the WHOLE invoice still makes money (other lines cover the discount). If the
 // change would tip the whole invoice into a loss, it's blocked. Protects the company.
-function fvCOlineCost_(key){ var i=fvCOprodIndexByKey(key); if(i<0)return null; var c=PRODUCTS[i][6]; if(c==null||c===''||isNaN(+c)||+c<=0)return null; return +c; }
+function fvCOlineCost_(key){
+  function ok(c){ return c!=null && c!=='' && !isNaN(+c) && +c>0; }
+  var i=fvCOprodIndexByKey(key);
+  if(i>=0 && ok(PRODUCTS[i][6])) return +PRODUCTS[i][6];
+  // Custom/imported lines carry whatever supplier they were created under, so the exact
+  // key may not exist in the catalogue — fall back to matching the product NAME, so a
+  // cost entered once (e.g. Pumpkin grey $0.90/kg) reaches every same-named line.
+  var nm=String(key||'').split('||')[1]||'';
+  if(nm){ var ln=nm.toLowerCase();
+    for(var j=0;j<PRODUCTS.length;j++){ if(String(PRODUCTS[j][3]||'').toLowerCase()===ln && ok(PRODUCTS[j][6])) return +PRODUCTS[j][6]; } }
+  return null;
+}
 function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
   var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOlineCost_(l.key);
     if(c==null && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0) c=+l.costAt;
