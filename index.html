@@ -1853,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v150';
+var APP_BUILD = 'v151';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3253,6 +3253,62 @@ function fvCostSet(key,val){ var v=parseFloat(val); if(isNaN(v)||v<0) return fal
   if(typeof fvCOpatch==='function') fvCOpatch('costov', String(key).replace(/[.#$\/\[\]]/g,'_'), {key:key,cost:v});
   return true; }
 fvCostOvApply();   // apply saved costs over the merged catalogue on every load
+/* ── One-time seeded order: Shanikas pickup WED 11 JUN 2026 (owner sent the order
+   sheet to Claude, 10 Jun). Created as an OPEN order the first time the app loads,
+   then synced to the team like any other order. Items are matched to the catalogue
+   by name at runtime; matched lines price from her locked prices / tier, unmatched
+   ones come in as custom lines at $0 for review. Idempotent via the fixed id. ── */
+function fvSeedShanikas0611(){
+  try{
+    var SEED_ID='o_seed_shanikas_20260611';
+    var orders=fvCOloadOrders();
+    if(orders[SEED_ID]){
+      if(typeof fvCOsyncOn==='function' && fvCOsyncOn() && !window._fvSeedPushed){ window._fvSeedPushed=true; fvCOordSave(orders[SEED_ID]); }
+      return !!window._fvSeedPushed || !(typeof fvCOsyncOn==='function' && !fvCOsyncOn());
+    }
+    var custs=fvCOloadCust(), cid=null;
+    Object.keys(custs).forEach(function(k){ if(!cid && String(custs[k].name||'').toLowerCase().indexOf('shanika')>=0) cid=k; });
+    if(!cid) return false;                                   // customer not on this device yet — retry
+    var ITEMS=[['Basil Bunch',2],['Apples Granny Smith /kg',2],['Asparagus Bunch',4],['Brocolini',4],
+      ['Capsicum Red /kg',1],['Tomato Cherry Punnets',2],['Chilli Long Red 100g',1],['Lettuce Baby Cos Twin Pack',2],
+      ['Carrots Dutch Bunch',2],['Mushroom Cups 4kg Box',1],['Snow Pea Shoots Punnet 100g',1],['Potato Washed 5kg Bag',1],
+      ['Rocket Box',1],['Rosemary Bunch',1],['Salad Mix Box',1],['Spinach Baby Box',1],
+      ['Strawberries 250g',1],['Zucchini /kg',1],['Eggplants Each',2],['Beans Green /kg',1]];
+    function normS(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
+    function toksS(s){ return normS(s).split(' ').filter(Boolean).map(function(w){ return w.replace(/ies$/,'y').replace(/(oes|ses)$/,'o').replace(/s$/,''); }); }
+    function findIdx(name){
+      var n=normS(name);
+      for(var i=0;i<PRODUCTS.length;i++) if(normS(PRODUCTS[i][3])===n) return i;
+      var lt=toksS(name), best=-1, bestOv=0, ambiguous=false;
+      for(var j=0;j<PRODUCTS.length;j++){ var ht=toksS(PRODUCTS[j][3]); if(!ht.length) continue;
+        var sub=lt.every(function(w){return ht.indexOf(w)>=0;}) || ht.every(function(w){return lt.indexOf(w)>=0;});
+        if(!sub) continue;
+        var ov=Math.min(lt.length,ht.length)/Math.max(lt.length,ht.length);
+        if(ov>bestOv){ bestOv=ov; best=j; ambiguous=false; }
+        else if(ov===bestOv && best>=0 && normS(PRODUCTS[j][3])!==normS(PRODUCTS[best][3])) ambiguous=true;
+      }
+      return (best>=0 && !ambiguous)?best:-1;
+    }
+    var lines=ITEMS.map(function(it){
+      var idx=findIdx(it[0]), key,name;
+      if(idx>=0){ key=PRODUCTS[idx][0]+'||'+PRODUCTS[idx][3]; name=PRODUCTS[idx][3]; }
+      else { key='Custom||'+it[0]; name=it[0]; }
+      var tp=(typeof fvCOpriceFor==='function')?fvCOpriceFor(cid,key):'';
+      return { key:key, name:name, sup:key.split('||')[0], unit:(typeof fvCOunit==='function')?fvCOunit(name):'ea',
+               qty:it[1], price:(typeof tp==='number')?tp:0, src:(typeof tp==='number')?'tier':'seed' };
+    });
+    var ord={ id:SEED_ID, custId:cid, status:'open', date:'2026-06-11', lines:lines, seeded:true };
+    fvCOordSave(ord);
+    if(typeof fvCOsyncOn==='function' && fvCOsyncOn()) window._fvSeedPushed=true;
+    return !!window._fvSeedPushed;
+  }catch(e){ return false; }
+}
+if(!fvSeedShanikas0611()){
+  window._fvSeedT=setInterval(function(){
+    window._fvSeedTries=(window._fvSeedTries||0)+1;
+    if(fvSeedShanikas0611() || window._fvSeedTries>60){ clearInterval(window._fvSeedT); }
+  },20000);
+}
 /* ── Price tiers (Hybrid pricing): a named rule reused across customers ──
    A tier is a rule, not a frozen list, so prices follow live cost/sell.
    COST = PRODUCTS[i][6], SELL = PRODUCTS[i][7].  Backward-compatible:
@@ -3651,11 +3707,12 @@ function fvCOorderFooterHTML(ord){
 // While editing a SAVED order from history (fvCO.editOid set), the whole order flow —
 // picker, checkout, AI import, new-product — targets that order instead of the open one.
 function fvCOcurOrd_(){ if(fvCO&&fvCO.editOid){ var o=fvCOloadOrders()[fvCO.editOid]; if(o) return o; fvCO.editOid=null; } return fvCOensureOpen(fvCO.custId); }
-// Back-dating: orders can be dated up to 90 DAYS back (so historical orders — e.g. May —
-// can be entered), never into the future. The chosen date becomes the completed date.
+// Order dating: up to 90 DAYS back (historical orders, e.g. May) and up to 7 DAYS
+// AHEAD (pre-orders for upcoming pickups). The chosen date becomes the completed date.
 function fvCOdateMin_(){ var d=new Date(); d.setDate(d.getDate()-90); function z(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
-function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; var min=fvCOdateMin_(),max=fvCOtoday();
-  if(v<min||v>max){ alert('Orders can be back-dated up to 90 days ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
+function fvCOdateMax_(){ var d=new Date(); d.setDate(d.getDate()+7); function z(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; var min=fvCOdateMin_(),max=fvCOdateMax_();
+  if(v<min||v>max){ alert('Orders can be dated up to 90 days back or 7 days ahead ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
   var ord=fvCOcurOrd_(); ord.date=v; if(ord.status==='completed')ord.completed=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
 // ── Below-cost fail-safe ───────────────────────────────────────────────────
 // If we KNOW a product's purchase cost, a sell price under that cost is only allowed
@@ -3800,8 +3857,8 @@ function fvCOrenderCheckout(){
     +'<div style="font-size:12px;color:#6b7280;margin-bottom:2px;">'+fvEsc(c.name)+'</div>'
     +'<div style="display:flex;gap:8px;align-items:center;margin:6px 0 4px;flex-wrap:wrap;">'
       +'<span style="font-size:12px;font-weight:700;color:#374151;">📅 Order date</span>'
-      +'<input type="date" value="'+fvEsc(ord.date||'')+'" min="'+fvCOdateMin_()+'" max="'+fvCOtoday()+'" onchange="fvCOckDate(this.value)" style="flex:1;min-width:140px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">'
-      +'<span style="font-size:10px;color:#9ca3af;">back-date up to 1 week</span>'
+      +'<input type="date" value="'+fvEsc(ord.date||'')+'" min="'+fvCOdateMin_()+'" max="'+fvCOdateMax_()+'" onchange="fvCOckDate(this.value)" style="flex:1;min-width:140px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">'
+      +'<span style="font-size:10px;color:#9ca3af;">90 days back · 7 days ahead</span>'
     +'</div>';
   if(!n) return head+'<div style="color:#9ca3af;font-size:14px;padding:20px 4px;text-align:center;">No items yet.<br>Tap <strong>‹ Back</strong> to add products.</div></div>';
   return head+rows
