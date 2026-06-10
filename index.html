@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v157';
+var APP_BUILD = 'v158';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3754,6 +3754,23 @@ function fvShopSortFn_(getStall,getName){
    fvCOautoBuySync; here we also surface WHO needs each item). Searchable, sortable
    (stall / A–Z), tap a name for its purchase history, green when bought. ── */
 var _fvBuyQ='';
+// A buy-list product is "Mandi" (bought at the market in the morning) if it's fresh produce:
+// it has a numeric stall (a Mandi stall supplier) OR sits in a produce category (A-B…S-Z).
+// Everything else (café ingredients, spices, packaged grocery, wastage) is "Grocery" —
+// Kiran's ordering, not part of the Mandi run.
+function fvBuyIsMandi_(r){
+  if(!r) return true;
+  if(r.stall!=null && String(r.stall).trim()!=='' && !isNaN(parseInt(r.stall))) return true;
+  var cat=(r.idx>=0)?String(PRODUCTS[r.idx][0]||''):String(r.sup||'');
+  return /^[A-Za-z]\s*-\s*[A-Za-z]$/.test(cat);
+}
+// Buy-list view filter: 'mandi' (default — the morning produce run), 'grocery', or 'all'.
+var fvBuyFilter=(function(){ try{ var v=localStorage.getItem('fvBuyFilter'); return (v==='grocery'||v==='all')?v:'mandi'; }catch(e){ return 'mandi'; } })();
+function fvSetBuyFilter(f){ fvBuyFilter=(f==='grocery'?'grocery':(f==='all'?'all':'mandi')); try{ localStorage.setItem('fvBuyFilter',fvBuyFilter); }catch(e){} if(typeof fvCORender==='function')fvCORender(); }
+function fvBuyFilterBarHTML(){
+  function b(k,l){ var on=(fvBuyFilter===k); return '<button onclick="fvSetBuyFilter(\''+k+'\')" style="flex:1;padding:9px 6px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;border:1px solid '+(on?'#15662f':'#cbd5e1')+';background:'+(on?'#15662f':'#fff')+';color:'+(on?'#fff':'#374151')+';">'+l+'</button>'; }
+  return '<div style="display:flex;gap:6px;margin:0 0 8px;">'+b('mandi','🍎 Mandi run')+b('grocery','🛒 Grocery')+b('all','All')+'</div>';
+}
 function fvCOBuyUnified_(){
   var m=(typeof fvBuyLoad==='function')?fvBuyLoad():{};
   var agg=(typeof fvCObulk==='function')?fvCObulk():{};
@@ -3773,6 +3790,8 @@ function fvCOBuyUnified_(){
 function fvCOBuyRowsHTML(query){
   var q=String(query||'').toLowerCase().trim();
   var rows=fvCOBuyUnified_();
+  // Apply the Mandi/Grocery view filter first (default = Mandi run only).
+  if(fvBuyFilter!=='all') rows=rows.filter(function(r){ var mn=fvBuyIsMandi_(r); return fvBuyFilter==='mandi'?mn:!mn; });
   rows.sort(fvShopSortFn_(function(x){return x.stall;},function(x){return x.name;}));
   var total=rows.length, nBought=0, shown=0, body='';
   rows.forEach(function(r){
@@ -3799,8 +3818,10 @@ function fvCOBuyRowsHTML(query){
     body+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8f5ec;')+'">'
       +'<span style="flex:1;min-width:0;">'+badge+nameHTML+chip+compLine+restLine+boughtLine+'</span>'+right+'</div>';
   });
-  var count='<div style="font-size:11px;color:#6b7280;font-weight:700;margin:0 0 4px;">'+(q?(shown+' shown · '):'')+total+' item'+(total!==1?'s':'')+(nBought?(' · '+nBought+' bought ✓'):'')+'</div>';
-  if(q && !shown) return count+'<div style="color:#9ca3af;font-size:13px;padding:10px 4px;text-align:center;">Nothing in the buy list matches “'+fvEsc(q)+'”.</div>';
+  var flabel=(fvBuyFilter==='mandi'?'Mandi':(fvBuyFilter==='grocery'?'Grocery':''));
+  var count='<div style="font-size:11px;color:#6b7280;font-weight:700;margin:0 0 4px;">'+(q?(shown+' shown · '):'')+total+(flabel?(' '+flabel):'')+' item'+(total!==1?'s':'')+(nBought?(' · '+nBought+' bought ✓'):'')+'</div>';
+  if(!total) return count+'<div style="color:#9ca3af;font-size:13px;padding:10px 4px;text-align:center;">'+(fvBuyFilter==='mandi'?'No Mandi (fresh produce) items to buy.':(fvBuyFilter==='grocery'?'No grocery items to buy.':'Nothing to buy.'))+'<br><span style="font-size:11px;">Tap <strong>All</strong> above to see everything.</span></div>';
+  if(q && !shown) return count+'<div style="color:#9ca3af;font-size:13px;padding:10px 4px;text-align:center;">Nothing here matches “'+fvEsc(q)+'”.</div>';
   return count+body;
 }
 function fvBuyListSearch(v){ _fvBuyQ=String(v||''); var c=document.getElementById('fvBuyRows'); if(c) c.innerHTML=fvCOBuyRowsHTML(_fvBuyQ); }
@@ -3810,6 +3831,7 @@ function fvCOBuyListHTML(){
   return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
     +'<div style="font-weight:800;color:#0d4420;font-size:15px;margin-bottom:4px;">🛒 Buy list</div>'
     +'<div style="font-size:11px;color:#6b7280;margin:0 0 7px;">Shop items + everything your restaurant orders need, together. 🍽️ shows who needs it. Tap a name for its history; confirmed buys on the List turn green.</div>'
+    +fvBuyFilterBarHTML()
     +fvShopSortBarHTML()
     +'<input id="fvBuySearch" type="search" value="'+fvEsc(_fvBuyQ||'')+'" oninput="fvBuyListSearch(this.value)" placeholder="🔍 Search the buy list…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin:0 0 6px;">'
     +'<div id="fvBuyRows">'+fvCOBuyRowsHTML(_fvBuyQ)+'</div>'
