@@ -1853,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v149';
+var APP_BUILD = 'v150';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3492,7 +3492,7 @@ function fvCOlineQty(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.li
 function fvCOlinePrice(oid,i,val){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var pr=parseFloat(val); ord.lines[i].price=isNaN(pr)?0:pr; ord.lines[i].src='manual'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[ord.lines[i].key]=ord.lines[i].price; fvCOcustSave(c); } fvCORender(); }
 function fvCOlineToTier(oid,i){ var ord=fvCOloadOrders()[oid]; if(!ord||!ord.lines[i])return; var tp=fvCOpriceFor(ord.custId,ord.lines[i].key); if(typeof tp!=='number'){ alert('No tier price yet — this product has no cost set. Type a price, or set the cost in the catalogue.'); return; } ord.lines[i].price=tp; ord.lines[i].src='tier'; fvCOordSave(ord); var c=fvCOloadCust()[ord.custId]; if(c&&c.prices&&c.prices[ord.lines[i].key]!=null){ delete c.prices[ord.lines[i].key]; fvCOcustSave(c); } fvCORender(); }
 function fvCOsetTier(custId,tierId){ var c=fvCOloadCust()[custId]; if(!c)return; c.tierId=tierId; fvCOcustSave(c); var ord=fvCOopenOrder(custId); if(ord){ (ord.lines||[]).forEach(function(l){ if(l.src==='manual')return; var tp=fvCOpriceFor(custId,l.key); if(typeof tp==='number'){ l.price=tp; l.src='tier'; } }); fvCOordSave(ord); } fvCORender(); }
-function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } var _pf=(typeof fvCOinvoiceProfit_==='function')?fvCOinvoiceProfit_(ord):0; if(_pf<0){ alert('🛡️ Cannot complete: this invoice is at a LOSS ('+fvCOmoney(_pf)+') based on our known costs.\nFix the prices on the Review page first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); if(pi>=0){ l.costAt=PRODUCTS[pi][6]; l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); fvCOordSave(ord); fvCOnav('history',ord.custId); }
+function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } var _pf=(typeof fvCOinvoiceProfit_==='function')?fvCOinvoiceProfit_(ord):0; if(_pf<0){ alert('🛡️ Cannot complete: this invoice is at a LOSS ('+fvCOmoney(_pf)+') based on our known costs.\nFix the prices on the Review page first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); var hc=(typeof fvCOhistCost_==='function')?fvCOhistCost_(l, ord.date||fvCOtoday()):null; if(hc!=null){ l.costAt=hc; } else if(pi>=0 && PRODUCTS[pi][6]!=null){ l.costAt=PRODUCTS[pi][6]; } if(pi>=0){ l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); ord.enteredAt=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
 function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var price=l.price, s=l.src; if(s==='tier'){ var tp=fvCOpriceFor(src.custId,l.key); if(typeof tp==='number')price=tp; } var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=price; found.src=s; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:price,src:s}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
   var agg=fvCObulk(),n=0,m=fvBuyLoad();
@@ -3651,11 +3651,11 @@ function fvCOorderFooterHTML(ord){
 // While editing a SAVED order from history (fvCO.editOid set), the whole order flow —
 // picker, checkout, AI import, new-product — targets that order instead of the open one.
 function fvCOcurOrd_(){ if(fvCO&&fvCO.editOid){ var o=fvCOloadOrders()[fvCO.editOid]; if(o) return o; fvCO.editOid=null; } return fvCOensureOpen(fvCO.custId); }
-// Back-dating: orders can be dated up to 1 WEEK back (for entering last week's paper
-// orders), never into the future. The chosen date becomes the completed date in history.
-function fvCOdateMin_(){ var d=new Date(); d.setDate(d.getDate()-7); function z(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+// Back-dating: orders can be dated up to 90 DAYS back (so historical orders — e.g. May —
+// can be entered), never into the future. The chosen date becomes the completed date.
+function fvCOdateMin_(){ var d=new Date(); d.setDate(d.getDate()-90); function z(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
 function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; var min=fvCOdateMin_(),max=fvCOtoday();
-  if(v<min||v>max){ alert('Orders can only be back-dated up to 1 week ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
+  if(v<min||v>max){ alert('Orders can be back-dated up to 90 days ('+min+' to '+max+').'); if(typeof fvCORender==='function')fvCORender(); return; }
   var ord=fvCOcurOrd_(); ord.date=v; if(ord.status==='completed')ord.completed=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
 // ── Below-cost fail-safe ───────────────────────────────────────────────────
 // If we KNOW a product's purchase cost, a sell price under that cost is only allowed
@@ -3673,9 +3673,49 @@ function fvCOlineCost_(key){
     for(var j=0;j<PRODUCTS.length;j++){ if(String(PRODUCTS[j][3]||'').toLowerCase()===ln && ok(PRODUCTS[j][6])) return +PRODUCTS[j][6]; } }
   return null;
 }
+// ── Date-aware cost: scan the PURCHASE HISTORY and use the price from the buy run
+// CLOSEST to the order's date (owner: "input the purchase price closest associated
+// with the order date"). Exact (normalised) name matches always count; looser
+// token matches only between /kg items so per-box vs per-each never cross.
+function fvCOhistCost_(line, date){
+  if(typeof loadHistory!=='function' || !date) return null;
+  var nm=String((line&&line.name)||String((line&&line.key)||'').split('||')[1]||''); if(!nm) return null;
+  var STOP={kg:1,per:1,each:1,box:1,bag:1,bunch:1,punnet:1,fresh:1,loose:1,pack:1,the:1};
+  function toks(s){ return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
+    .filter(function(w){ return w && !STOP[w]; })
+    .map(function(w){ return w.replace(/ies$/,'y').replace(/(oes|ses)$/,'o').replace(/s$/,''); }); }
+  var lt=toks(nm); if(!lt.length) return null;
+  var isKgLine=/\/\s*kg/i.test(nm);
+  var od=new Date(String(date).slice(0,10)+'T00:00:00'); if(isNaN(od)) return null;
+  var hist=loadHistory(), best=null, bestDiff=Infinity, bestOv=0;
+  Object.keys(hist).forEach(function(d){
+    var run=hist[d]; if(!run||!run.items) return;
+    var hd=new Date(String(d).slice(0,10)+'T00:00:00'); if(isNaN(hd)) return;
+    var diff=Math.abs(hd-od);
+    run.items.forEach(function(it){
+      if(!(it && +it.price>0)) return;
+      var hn=String(it.productName||''), ht=toks(hn); if(!ht.length) return;
+      var exact=(lt.join(' ')===ht.join(' '));
+      var subset=lt.every(function(w){return ht.indexOf(w)>=0;}) || ht.every(function(w){return lt.indexOf(w)>=0;});
+      if(!(exact || (isKgLine && /\/\s*kg/i.test(hn) && subset))) return;
+      var ov=Math.min(lt.length,ht.length)/Math.max(lt.length,ht.length);
+      if(diff<bestDiff || (diff===bestDiff && ov>bestOv)){ bestDiff=diff; bestOv=ov; best=+it.price; }
+    });
+  });
+  return best;
+}
+// THE one cost-resolution chain, used by the profit box, the Cost column, history
+// rows, the fail-safe and completion snapshots: explicit line cost (typed/snapshotted)
+// → purchase history closest to the order date → catalogue (incl. name fallback).
+function fvCOcostFor_(l, date){
+  var snap=(l && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0)?+l.costAt:null;
+  if(snap!=null) return snap;
+  var h=fvCOhistCost_(l, date);
+  if(h!=null) return h;
+  return fvCOlineCost_(l && l.key);
+}
 function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
-  var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOlineCost_(l.key);
-    if(c==null && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0) c=+l.costAt;
+  var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOcostFor_(l, ord.date||ord.completed);
     if(c==null)return; var price=(l.key===overrideKey)?+overridePrice:(l.price||0); p+=(price-c)*(l.qty||0); });
   return p;
 }
@@ -3694,9 +3734,7 @@ function fvCOprofitBoxHTML_(ord,useSnapshot){
   // showed "91% margin" when only one $24 line was actually costed).
   var rev=0,revKnown=0,cost=0,known=0,unknown=0,unkRev=0,n=0;
   (ord.lines||[]).forEach(function(l){ var q=l.qty||0; if(q<=0)return; n++; var lr=q*(l.price||0); rev+=lr;
-    var snap=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:null;
-    var c=useSnapshot ? (snap!=null?snap:fvCOlineCost_(l.key))
-                      : (function(){ var cc=fvCOlineCost_(l.key); return (cc!=null)?cc:snap; })();
+    var c=fvCOcostFor_(l, ord.completed||ord.date);
     if(c==null){ unknown++; unkRev+=lr; return; } known++; revKnown+=lr; cost+=q*c; });
   if(!n) return '';
   var prof=revKnown-cost, marg=(revKnown>0)?(prof/revKnown*100):0;
@@ -3724,9 +3762,9 @@ function fvCOckQtySet(j,val){ var ord=fvCOcurOrd_(); var l=ord.lines&&ord.lines[
 function fvCOckCost(j,val){ var ord=fvCOcurOrd_(); var l=ord.lines&&ord.lines[j]; if(!l)return;
   var v=parseFloat(val); if(isNaN(v)||v<0){ if(typeof fvCORender==='function')fvCORender(); return; }
   fvCostSet(l.key,v); l.costAt=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
-function fvCOckRowHTML_(l,j){
+function fvCOckRowHTML_(l,j,ordDate){
   var qty=l.qty||0, price=(l.price!=null?l.price:0), lt=qty*price, nm=l.name||l.key;
-  var cAt=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
+  var cAt=fvCOcostFor_(l, ordDate);
   var isKg=/\/\s*kg\b/i.test(String(nm||''));   // "… /kg" = sold by weight (boxes like "(10kg)" are NOT)
   var qtyCtrl = isKg
     ? '<input type="number" inputmode="decimal" step="0.01" min="0" value="'+(qty||'')+'" onchange="fvCOckQtySet('+j+',this.value)" style="width:78px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;text-align:right;"><span style="font-size:12px;color:#6b7280;font-weight:700;">kg</span>'
@@ -3752,7 +3790,7 @@ function fvCOrenderCheckout(){
   var id=fvCO.custId,c=fvCOloadCust()[id]; if(!c) return fvCOrenderList();
   var ord=fvCO.editOid?fvCOcurOrd_():(fvCOopenOrder(id)||fvCOensureOpen(id));
   var rows='', n=0, total=0;
-  (ord.lines||[]).forEach(function(l,j){ if((l.qty||0)<=0)return; n++; total+=(l.qty||0)*(l.price||0); rows+=fvCOckRowHTML_(l,j); });
+  (ord.lines||[]).forEach(function(l,j){ if((l.qty||0)<=0)return; n++; total+=(l.qty||0)*(l.price||0); rows+=fvCOckRowHTML_(l,j,ord.date||ord.completed); });
   var editing=(ord.status==='completed');
   var head=(editing
       ? '<div style="margin-bottom:8px;"><button onclick="fvCOhistEditDone()" style="background:none;border:none;color:#1c4587;font-size:13px;font-weight:700;cursor:pointer;padding:4px 0;">‹ Back to history</button></div>'
@@ -3900,7 +3938,7 @@ function fvCOrenderHistory(){
         if(!ls.length) return '';
         var b='<div class="hist-inv-hdr" style="padding:8px 0 4px;"><span class="hist-inv-num">#</span><span class="hist-inv-name">Item</span><span class="hist-inv-qty">Qty × Price</span><span class="hist-inv-total">Total</span></div>';
         ls.forEach(function(l,ii){ var q=l.qty||0,pr=(l.price!=null?+l.price:0),u=(l.unit&&l.unit!=='ea')?(' '+l.unit):'';
-          var cAt=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
+          var cAt=fvCOcostFor_(l, o.completed||o.date);
           var lp=(cAt!=null)?(pr-cAt)*q:null;
           b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span>'
             +'<span class="hist-inv-qty">'+niceQty(q)+fvEsc(u)+' × $'+pr.toFixed(2)+'<br><span style="font-size:9px;'+(cAt!=null?'color:#9ca3af;':'color:#b45309;font-weight:800;')+'">'+(cAt!=null?('cost $'+cAt.toFixed(2)):'cost?')+'</span></span>'
@@ -3924,11 +3962,14 @@ function fvCOhistExclude(oid){ if(typeof fvIsOwner!=='function'||!fvIsOwner()){ 
 // A saved order stays EDITABLE for 3 days after its sale date (typo fixes etc.),
 // then locks. Duplicating is always allowed (same order again → edit the copy).
 function fvCOhistCanEdit_(o){
-  var d=String((o&&(o.completed||o.date))||''); if(!/^\d{4}-\d{2}-\d{2}/.test(d)) return false;
-  var sale=new Date(d.slice(0,10)+'T00:00:00'); if(isNaN(sale)) return false;
-  var now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  var diff=(today-sale)/86400000;
-  return diff>=0 && diff<=3;
+  // Editable within 3 days of the SALE date, or — for back-dated records (e.g. a May
+  // order typed in today) — within 3 days of when it was ENTERED.
+  function within3(ds){ if(!/^\d{4}-\d{2}-\d{2}/.test(String(ds||''))) return false;
+    var d0=new Date(String(ds).slice(0,10)+'T00:00:00'); if(isNaN(d0)) return false;
+    var now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    var diff=(today-d0)/86400000; return diff>=0 && diff<=3; }
+  if(!o) return false;
+  return within3(o.completed||o.date) || within3(o.enteredAt);
 }
 function fvCOhistEdit(oid){ var o=fvCOloadOrders()[oid]; if(!o)return;
   if(!fvCOhistCanEdit_(o)){ alert('✏️ Editing is only open for 3 days after the sale date.'); return; }
@@ -5611,7 +5652,37 @@ function importProductList() {
   }
 */
 
-function loadHistory()  { try { var s=localStorage.getItem('mandiHistory'); return s?JSON.parse(s):{};} catch(e){return{};} }
+/* Purchases entered from paper receipts (baked so every device sees them and the
+   date-aware cost engine can price resold orders). Names use the app's product names
+   so they match customer-order lines exactly. */
+var FV_BAKED_HISTORY = {
+  '2026-06-09': { label: 'Tue 9 Jun — Cranbourne Market', items: [
+    { productName:'Misc fruit & veg (1)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:30,   total:30 },
+    { productName:'Misc fruit & veg (2)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:28,   total:28 },
+    { productName:'Misc fruit & veg (3)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:23,   total:23 },
+    { productName:'Misc fruit & veg (4)',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:18,   total:18 },
+    { productName:'Strawberries 250g',        supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:1,      price:5.99, total:5.99 },
+    { productName:'Basil Bunch',              supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:3.99, total:7.98 },
+    { productName:'Tomato Cherry Punnets',    supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:4,      price:2.99, total:11.96 },
+    { productName:'Tomatoes Pre-packed /kg',  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3.03,   price:2.49, total:7.53 },
+    { productName:'Parsley',                  supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:3,      price:2.99, total:8.97 },
+    { productName:'Lettuce Iceberg',          supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:1.99, total:3.98 },
+    { productName:'Watermelon Whole /kg',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:12.38,  price:1.49, total:18.44 },
+    { productName:'Tomatoes Box (10kg)',      supplier:'Cranbourne Market', stall:'—', buyer:'Receipt (handwritten)', qty:1, price:42, total:42 }
+  ] }
+};
+function loadHistory()  {
+  var h={}; try { var s=localStorage.getItem('mandiHistory'); h=s?JSON.parse(s):{}; } catch(e){ h={}; }
+  try {
+    Object.keys(FV_BAKED_HISTORY).forEach(function(d){
+      var b=FV_BAKED_HISTORY[d];
+      if(!h[d]){ h[d]={label:b.label, items:b.items.slice()}; return; }
+      var have={}; (h[d].items||[]).forEach(function(it){ have[(it.supplier||'')+'|'+(it.productName||'')]=1; });
+      b.items.forEach(function(it){ if(!have[(it.supplier||'')+'|'+(it.productName||'')]) h[d].items.push(it); });
+    });
+  } catch(e){}
+  return h;
+}
 function saveHistory(h) { try { localStorage.setItem('mandiHistory',JSON.stringify(h)); } catch(e){} if (typeof fvJsonPush === 'function') fvJsonPush('history', h); }
 
 function initHistory() {
