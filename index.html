@@ -1854,7 +1854,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v153';
+var APP_BUILD = 'v154';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3738,6 +3738,73 @@ function fvShopSortFn_(getStall,getName){
     return String(getName(a)||'').toLowerCase().localeCompare(String(getName(b)||'').toLowerCase());
   };
 }
+/* ── ONE unified Buy list: shop items + everything the restaurant orders need, in a
+   single list (the restaurant needs are already folded into the shop buy list by
+   fvCOautoBuySync; here we also surface WHO needs each item). Searchable, sortable
+   (stall / A–Z), tap a name for its purchase history, green when bought. ── */
+var _fvBuyQ='';
+function fvCOBuyUnified_(){
+  var m=(typeof fvBuyLoad==='function')?fvBuyLoad():{};
+  var agg=(typeof fvCObulk==='function')?fvCObulk():{};
+  var by={};
+  Object.keys(agg).forEach(function(k){ var a=agg[k]; var idx=fvCOprodIndexByKey(k);
+    if(idx<0 && typeof fvCOprodIndexByName_==='function') idx=fvCOprodIndexByName_(a.name);
+    var key=(idx>=0)?('i'+idx):('k'+k);
+    if(!by[key]) by[key]={ idx:(idx>=0?idx:-1), name:(idx>=0?PRODUCTS[idx][3]:a.name), sup:(idx>=0?PRODUCTS[idx][0]:a.sup), stall:(idx>=0?PRODUCTS[idx][1]:null), buyQty:0, rest:null };
+    by[key].rest=a;
+  });
+  Object.keys(m).forEach(function(idx){ if(!(m[idx]>0)||!PRODUCTS[idx]) return; var key='i'+idx;
+    if(!by[key]) by[key]={ idx:+idx, name:PRODUCTS[idx][3], sup:PRODUCTS[idx][0], stall:PRODUCTS[idx][1], buyQty:0, rest:null };
+    by[key].buyQty=m[idx];
+  });
+  return Object.keys(by).map(function(k){ return by[k]; });
+}
+function fvCOBuyRowsHTML(query){
+  var q=String(query||'').toLowerCase().trim();
+  var rows=fvCOBuyUnified_();
+  rows.sort(fvShopSortFn_(function(x){return x.stall;},function(x){return x.name;}));
+  var total=rows.length, nBought=0, shown=0, body='';
+  rows.forEach(function(r){
+    var comp=r.sup||''; if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(comp)) comp='';
+    var st=(typeof state==='object'&&state&&r.idx>=0)?state[r.idx]:null, bought=!!(st&&st.status==='bought'); if(bought)nBought++;
+    if(q && (String(r.name||'')+' '+comp).toLowerCase().indexOf(q)<0) return; shown++;
+    var badge=(r.stall!=null&&!isNaN(parseInt(r.stall)))?('<span class="stall-badge" style="margin-right:6px;font-size:11px;min-width:26px;">'+fvEsc(String(r.stall))+'</span>'):'';
+    var nameHTML=(r.idx>=0)
+      ?'<span onclick="fvProductHistory('+r.idx+')" title="Tap for this product\'s purchase history" style="font-weight:600;color:#111;cursor:pointer;text-decoration:underline dotted #9ca3af;text-underline-offset:2px;">'+fvEsc(r.name)+'</span>'
+      :'<span style="font-weight:600;color:#111;">'+fvEsc(r.name)+'</span>';
+    var chip=(typeof fvNewChip_==='function')?fvNewChip_(r.name):'';
+    var compLine=comp?('<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+fvEsc(comp)+'</span>'):'';
+    var restLine='';
+    if(r.rest){ var a=r.rest; var parts=(a.parts||[]).map(function(pt){ return fvEsc(pt.name)+' '+(Math.round((pt.qty||0)*100)/100)+fvEsc(a.unit||''); }).join(', ');
+      restLine='<span style="display:block;font-size:10px;color:#1c4587;margin-top:1px;">🍽️ '+parts+(a.boxKg?(' · need '+(Math.round((a.qty||0)*10)/10)+'kg ('+a.boxKg+'kg/box'+((a.buyBoxes!=null&&a.spareKg>0)?(', '+a.spareKg+'kg spare'):'')+')'):'')+'</span>'; }
+    var boughtLine=bought?('<span style="display:block;font-size:10px;color:#15803d;font-weight:800;margin-top:1px;">✓ Bought '+(st.qty||0)+' × '+fvCOmoney(st.price||0)+(st.buyer?(' · '+fvEsc(st.buyer)):'')+'</span>'):'';
+    var right;
+    if(r.idx>=0){ right='<span style="display:inline-flex;align-items:center;gap:6px;flex:none;">'
+      +(bought?'<span style="font-size:16px;">✅</span>':'')
+      +'<button type="button" onclick="fvCObuyAdj('+r.idx+',-1,event)" style="width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">−</button>'
+      +'<span style="font-weight:700;min-width:18px;text-align:center;">'+(r.buyQty||0)+'</span>'
+      +'<button type="button" onclick="fvCObuyAdj('+r.idx+',1,event)" style="width:24px;height:24px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:6px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;">+</button></span>';
+    } else { var bt=(r.rest&&r.rest.buyBoxes!=null)?('buy '+r.rest.buyBoxes+' box'+(r.rest.buyBoxes!==1?'es':'')):''; right='<span style="flex:none;font-weight:800;color:#1c4587;white-space:nowrap;">'+(bought?'✅ bought':bt)+'</span>'; }
+    body+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8f5ec;')+'">'
+      +'<span style="flex:1;min-width:0;">'+badge+nameHTML+chip+compLine+restLine+boughtLine+'</span>'+right+'</div>';
+  });
+  var count='<div style="font-size:11px;color:#6b7280;font-weight:700;margin:0 0 4px;">'+(q?(shown+' shown · '):'')+total+' item'+(total!==1?'s':'')+(nBought?(' · '+nBought+' bought ✓'):'')+'</div>';
+  if(q && !shown) return count+'<div style="color:#9ca3af;font-size:13px;padding:10px 4px;text-align:center;">Nothing in the buy list matches “'+fvEsc(q)+'”.</div>';
+  return count+body;
+}
+function fvBuyListSearch(v){ _fvBuyQ=String(v||''); var c=document.getElementById('fvBuyRows'); if(c) c.innerHTML=fvCOBuyRowsHTML(_fvBuyQ); }
+function fvCOBuyListHTML(){
+  var unified=fvCOBuyUnified_(); if(!unified.length) return '';
+  var hasRest=false; unified.forEach(function(r){ if(r.rest) hasRest=true; });
+  return '<div class="order-summary-card" style="border:1px solid #bbf7d0;background:#f0fdf4;">'
+    +'<div style="font-weight:800;color:#0d4420;font-size:15px;margin-bottom:4px;">🛒 Buy list</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin:0 0 7px;">Shop items + everything your restaurant orders need, together. 🍽️ shows who needs it. Tap a name for its history; confirmed buys on the List turn green.</div>'
+    +fvShopSortBarHTML()
+    +'<input id="fvBuySearch" type="search" value="'+fvEsc(_fvBuyQ||'')+'" oninput="fvBuyListSearch(this.value)" placeholder="🔍 Search the buy list…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin:0 0 6px;">'
+    +'<div id="fvBuyRows">'+fvCOBuyRowsHTML(_fvBuyQ)+'</div>'
+    +(hasRest?'<button onclick="fvCOnav(\'pick\')" style="width:100%;padding:9px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-top:8px;">📦 Split back per restaurant (dispatch) ›</button>':'')
+    +'</div>';
+}
 function fvCOrenderList(){
   var custs=fvCOloadCust(),orders=fvCOloadOrders();
   var ids=Object.keys(custs).sort(function(a,b){ return String(custs[a].name||'').toLowerCase().localeCompare(String(custs[b].name||'').toLowerCase()); });
@@ -3746,9 +3813,8 @@ function fvCOrenderList(){
   function tabBtn(key,label){ var on=(tab===key); return '<button onclick="fvCOhomeTab(\''+key+'\')" style="flex:1;padding:12px 8px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;border:1px solid '+(on?'#15662f':'#cbd5e1')+';background:'+(on?'#15662f':'#fff')+';color:'+(on?'#fff':'#374151')+';">'+label+'</button>'; }
   var h='<div style="display:flex;gap:6px;margin-bottom:10px;">'+tabBtn('rest','🍽️ Restaurants / Cafés')+tabBtn('shop','🛒 Buy list')+'</div>';
   if(tab==='shop'){
-    var shop=(typeof fvCOShopListHTML==='function')?fvCOShopListHTML():'';
-    var bulk=(typeof fvCOBulkCardHTML==='function')?fvCOBulkCardHTML():'';
-    return h+((shop||bulk)?(fvShopSortBarHTML()+shop+bulk):'<div class="empty-state">Nothing to buy yet.<br><br>Add shop items with the +/− steppers on the <strong>List</strong> tab, or take restaurant orders — both show here.</div>');
+    var buy=(typeof fvCOBuyListHTML==='function')?fvCOBuyListHTML():'';
+    return h+(buy||'<div class="empty-state">Nothing to buy yet.<br><br>Add shop items with the +/− steppers on the <strong>List</strong> tab, or take restaurant orders — they appear here automatically.</div>');
   }
   h+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
@@ -3834,22 +3900,26 @@ function fvCOhistUnitCost_(it, wantPerKg){
   var hn=String(it.productName||'');
   var anchor=null, ln=hn.toLowerCase();
   if(typeof PRODUCTS!=='undefined'){ for(var i=0;i<PRODUCTS.length;i++){ if(String(PRODUCTS[i][3]||'').toLowerCase()===ln){ anchor=PRODUCTS[i]; break; } } }
+  // A usable anchor needs a box price (p[5]) AND a per-unit cost (p[6]) that DIFFER.
+  // p[5]===p[6] is a copy-paste error implying a 1-unit box and must be ignored.
+  var aBox=anchor?+anchor[5]:0, aUnit=anchor?+anchor[6]:0, useAnchor=(aBox>0 && aUnit>0 && aBox!==aUnit);
+  function viaAnchor(){ var rBox=Math.abs(Math.log(price/aBox)), rUnit=Math.abs(Math.log(price/aUnit));
+    return (rUnit<rBox) ? price : price/(aBox/aUnit); }   // closer to per-unit → already per-unit; else box→per-unit
   if(wantPerKg){
-    if(anchor && +anchor[5]>0 && +anchor[6]>0){
-      // Decide whether the recorded price is a BOX or PER-KG figure: compare which
-      // reference it sits closer to (ratio-wise), then convert box → per-kg.
-      var rBox=Math.abs(Math.log(price/+anchor[5])), rKg=Math.abs(Math.log(price/+anchor[6]));
-      if(rKg<rBox) return price;
-      return price/(+anchor[5]/+anchor[6]);
-    }
+    if(useAnchor) return viaAnchor();
     var kgBox=null, mm=hn.match(/\(([\d.]+)\s*kg/i); if(mm) kgBox=parseFloat(mm[1]);
-    if(kgBox==null && typeof FV_BOXKG==='object'){ var bk=FV_BOXKG[(it.supplier||'')+'||'+hn]; if(+bk>0) kgBox=+bk; }
+    if(kgBox==null && typeof FV_BOXKG==='object'){ var bk=FV_BOXKG[(it.supplier||'')+'||'+hn]||FV_BOXKG[hn]; if(+bk>0) kgBox=+bk; }
     if(kgBox>0) return price/kgBox;
     return null;                                              // can't convert safely → caller falls back
   }
+  // Non-kg (per-each / per-pack):
+  if(useAnchor) return viaAnchor();
   var upb=null; try{ if(typeof unitsPerBox==='function'&&typeof extractPackInfo==='function') upb=unitsPerBox(extractPackInfo(hn)); }catch(e){}
   if(upb&&upb>1) return price/upb;                            // box of N units → per-unit
-  return price;
+  // Counts written in the name that extractPackInfo misses: "(box of 23)", "(20 pack)".
+  var bn=hn.match(/\(\s*(?:box|ctn|carton|case)\s+of\s+(\d+)/i) || hn.match(/\(\s*(\d+)\s*(?:pack|punnet|bunch|ea|each)\b/i);
+  if(bn){ var n=parseInt(bn[1],10); if(n>1) return price/n; }
+  return price;                                               // assume already per-unit (sanity-guarded by caller)
 }
 // ── Date-aware cost: scan the PURCHASE HISTORY and use the price from the buy run
 // CLOSEST to the order's date (owner: "input the purchase price closest associated
@@ -3887,12 +3957,28 @@ function fvCOhistCost_(line, date){
 // THE one cost-resolution chain, used by the profit box, the Cost column, history
 // rows, the fail-safe and completion snapshots: explicit line cost (typed/snapshotted)
 // → purchase history closest to the order date → catalogue (incl. name fallback).
+// Best sell-price reference for sanity-checking a cost: catalogue sell, else what we're charging.
+function fvCOlineSell_(l){
+  var i=fvCOprodIndexByKey(l&&l.key); if(i<0 && typeof fvCOprodIndexByName_==='function') i=fvCOprodIndexByName_(l&&l.name);
+  if(i>=0 && PRODUCTS[i][7]!=null && +PRODUCTS[i][7]>0) return +PRODUCTS[i][7];
+  if(l && l.price!=null && +l.price>0) return +l.price;
+  return null;
+}
 function fvCOcostFor_(l, date){
+  // 1) explicit cost typed/snapshotted on the line always wins.
   var snap=(l && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0)?+l.costAt:null;
   if(snap!=null) return snap;
-  var h=fvCOhistCost_(l, date);
-  if(h!=null) return h;
-  return fvCOlineCost_(l && l.key);
+  var cat=fvCOlineCost_(l && l.key);                 // owner-set catalogue cost
+  var sell=fvCOlineSell_(l);
+  var h=fvCOhistCost_(l, date);                       // date-aware purchase-history cost
+  // SANITY: in resale, cost is ALWAYS below the sell price. A cost >= sell is a unit
+  // mix-up / bad data (e.g. a box price read as per-unit, or a copy-paste catalogue row)
+  // — never trust it; it would only produce a fake loss. Applies to BOTH history and
+  // the catalogue cost, so neither source can poison the numbers.
+  function sane(c){ return c!=null && !(sell!=null && c>=sell); }
+  if(sane(h)) return h;
+  if(sane(cat)) return cat;
+  return null;                                        // no trustworthy cost → show "cost?", never a fake loss
 }
 function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
   var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOcostFor_(l, ord.date||ord.completed);
