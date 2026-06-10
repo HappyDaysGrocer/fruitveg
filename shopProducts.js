@@ -637,5 +637,12 @@ var SHOP_PRODUCTS = [
   ['S-Z',null,null,'Snow Pea Shoots Punnet 100g',null,null,null,null,false,null],
   // Promoted from Reddy Roast's order (was a phone-only custom product) — sell as charged;
   // cost to be set (shows NEW until then).
-  ['C-G',null,null,'Carrots Catering',null,null,null,23,false,null]
+  ['C-G',null,null,'Carrots Catering',null,null,null,23,false,null],
+  // WASTAGE category — log spoiled/dumped stock at a token $0.01 so it's tracked (like in
+  // EPOS) without counting as real sales. Category name "Wastage" is the folder/label.
+  ['Wastage',null,null,'Wastage — Fruit',null,null,null,0.01,false,null],
+  ['Wastage',null,null,'Wastage — Vegetables',null,null,null,0.01,false,null],
+  ['Wastage',null,null,'Wastage — Herbs & Leafy',null,null,null,0.01,false,null],
+  ['Wastage',null,null,'Wastage — Berries & Punnets',null,null,null,0.01,false,null],
+  ['Wastage',null,null,'Wastage — Other',null,null,null,0.01,false,null]
 ];

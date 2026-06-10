@@ -1362,6 +1362,7 @@
 <script src="epos90.js"></script>
 <script src="shopProducts.js"></script>
 <script src="storeCatalog.js"></script>
+<script src="eposCosts.js"></script>
 <script src="invoices.js"></script>
 <script src="bankledger.js"></script>
 <script src="bankfeed.js"></script>
@@ -1714,6 +1715,7 @@ var PRODUCTS = [
 if (typeof SHOP_PRODUCTS !== 'undefined' && SHOP_PRODUCTS.length) {
   Array.prototype.push.apply(PRODUCTS, SHOP_PRODUCTS);
   if (typeof fvExtraApply_ === 'function') fvExtraApply_();   // team-promoted products join the catalogue
+  if (typeof fvApplyEposCosts_ === 'function') fvApplyEposCosts_();   // real EPOS per-unit costs over the catalogue
 }
 
 /* ─── STATE ─────────────────────────────────────────────────────────────── */
@@ -1854,7 +1856,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v154';
+var APP_BUILD = 'v155';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3292,6 +3294,14 @@ function fvCOprodIndexByName_(name){ var n=String(name||'').toLowerCase().trim()
   for(var i=0;i<PRODUCTS.length;i++){ if(String(PRODUCTS[i][3]||'').toLowerCase().trim()===n) return i; } return -1; }
 function fvExtraApply_(){ var m=fvExtraLoad_(); Object.keys(m).forEach(function(k){ var row=m[k]&&m[k].row;
   if(row && row[3] && fvCOprodIndexByName_(row[3])<0) PRODUCTS.push(row); }); }
+// Apply EPOS Now-derived per-unit costs (from the daily DailySales export) over the
+// catalogue cost. EPOS is the accurate cost source; a typed manual cost (mandiCostOv)
+// still wins because fvCostOvApply runs AFTER this.
+function fvApplyEposCosts_(){ if(typeof EPOS_COSTS!=='object'||!EPOS_COSTS) return;
+  for(var i=0;i<PRODUCTS.length;i++){ var c=EPOS_COSTS[String(PRODUCTS[i][3]||'').toLowerCase().trim()]; if(c>0) PRODUCTS[i][6]=+c; } }
+// Wastage: a product is "wastage" if it's in the Wastage category or its name says waste.
+function fvIsWastage_(name, cat){ return /wastage/i.test(String(cat||'')) || /\bwastage\b|\bwaste\b/i.test(String(name||'')); }
+function fvWasteChip_(name, cat){ return fvIsWastage_(name,cat)?' <span style="background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle;">🗑️ WASTAGE</span>':''; }
 function fvPromoteOrderProducts_(){
   try{
     var orders=fvCOloadOrders(), m=fvExtraLoad_(), added=0;
@@ -3952,7 +3962,10 @@ function fvCOhistCost_(line, date){
       if(diff<bestDiff || (diff===bestDiff && ov>bestOv)){ bestDiff=diff; bestOv=ov; best=unit; }
     });
   });
-  return best;
+  // Only use a purchase record within ~30 days of the order — beyond that it's stale and
+  // the EPOS standing cost is the better default (a one-off local buy shouldn't cost
+  // orders months later).
+  return (best!=null && bestDiff<=30*86400000) ? best : null;
 }
 // THE one cost-resolution chain, used by the profit box, the Cost column, history
 // rows, the fail-safe and completion snapshots: explicit line cost (typed/snapshotted)
@@ -3968,16 +3981,23 @@ function fvCOcostFor_(l, date){
   // 1) explicit cost typed/snapshotted on the line always wins.
   var snap=(l && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0)?+l.costAt:null;
   if(snap!=null) return snap;
-  var cat=fvCOlineCost_(l && l.key);                 // owner-set catalogue cost
   var sell=fvCOlineSell_(l);
-  var h=fvCOhistCost_(l, date);                       // date-aware purchase-history cost
-  // SANITY: in resale, cost is ALWAYS below the sell price. A cost >= sell is a unit
-  // mix-up / bad data (e.g. a box price read as per-unit, or a copy-paste catalogue row)
-  // — never trust it; it would only produce a fake loss. Applies to BOTH history and
-  // the catalogue cost, so neither source can poison the numbers.
-  function sane(c){ return c!=null && !(sell!=null && c>=sell); }
-  if(sane(h)) return h;
-  if(sane(cat)) return cat;
+  // Reject only GROSS unit errors (a box price read as per-unit ≈ 5–30× the sell price).
+  // A cost merely AT or above sell is KEPT — Rinku/Jas sometimes buy stock locally/retail
+  // (e.g. dearer strawberries), so a legitimately high cost (even a loss line) must SHOW,
+  // not be silently hidden. The owner needs to see real losses.
+  function sane(c){ return c!=null && +c>0 && !(sell!=null && sell>0 && +c>sell*3); }
+  // 2) Actual purchase recorded CLOSEST to the order date (within ~30 days) — this is the
+  //    real cost of the batch that filled the order, including local-market buys.
+  var h=fvCOhistCost_(l, date);
+  if(sane(h)) return +h;
+  // 3) EPOS Now standing cost — reliable default when there's no recent purchase record.
+  var nm=String((l&&l.name)||String((l&&l.key)||'').split('||')[1]||'').toLowerCase().trim();
+  var ep=(typeof EPOS_COSTS==='object'&&EPOS_COSTS&&nm)?EPOS_COSTS[nm]:null;
+  if(sane(ep)) return +ep;
+  // 4) catalogue base cost.
+  var cat=fvCOlineCost_(l && l.key);
+  if(sane(cat)) return +cat;
   return null;                                        // no trustworthy cost → show "cost?", never a fake loss
 }
 function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
@@ -5649,7 +5669,8 @@ function rebuildProducts() {
   // Reset to base products then append custom ones
   while (PRODUCTS.length > BASE_PRODUCT_COUNT) PRODUCTS.pop();
   loadCustomProducts().forEach(function(p) { PRODUCTS.push(p); });
-  if (typeof fvCostOvApply === 'function') fvCostOvApply();   // saved costs cover custom products too
+  if (typeof fvApplyEposCosts_ === 'function') fvApplyEposCosts_();   // EPOS costs over (re)built catalogue
+  if (typeof fvCostOvApply === 'function') fvCostOvApply();   // saved manual costs win, cover custom products too
 }
 
 /* ── Per-supplier "+ Add" popup (opened from the List supplier headers) ────── */
@@ -7756,7 +7777,7 @@ function renderStoreRows() {
     var key = orderKey(PRODUCTS[r.idx]);
     var st = stock[key];
     html += '<tr>'
-      + '<td><span style="font-weight:600;">' + fvEsc(r.name) + '</span><br><span style="font-size:10px;color:#6b7280;">' + fvEsc(r.cat) + (r.bc ? ' · ' + fvEsc(r.bc) : '') + '</span></td>'
+      + '<td><span style="font-weight:600;">' + fvEsc(r.name) + '</span>' + (typeof fvWasteChip_==='function'?fvWasteChip_(r.name,r.cat):'') + '<br><span style="font-size:10px;color:#6b7280;">' + fvEsc(r.cat) + (r.bc ? ' · ' + fvEsc(r.bc) : '') + '</span></td>'
       + '<td class="right">' + (r.cost != null ? '$' + Number(r.cost).toFixed(2) : '—') + '</td>'
       + '<td class="right">' + (r.sell != null ? '$' + Number(r.sell).toFixed(2) : '—') + '</td>'
       + '<td class="right"><span onclick="editStock(' + r.idx + ')" style="display:inline-block;min-width:32px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;">' + (st != null ? st : '＋') + '</span></td>'
@@ -8257,6 +8278,8 @@ function fvCatalogWire_(){
     if (typeof SHOP_PRODUCTS !== 'undefined' && SHOP_PRODUCTS && SHOP_PRODUCTS.length && typeof PRODUCTS !== 'undefined') {
       var have = {}; PRODUCTS.forEach(function(p){ have[p[0]+'||'+p[3]] = true; });
       SHOP_PRODUCTS.forEach(function(p){ var k = p[0]+'||'+p[3]; if (!have[k]) { PRODUCTS.push(p); have[k] = true; } });
+      if (typeof fvApplyEposCosts_ === 'function') fvApplyEposCosts_();   // keep EPOS costs on any newly-added rows
+      if (typeof fvCostOvApply === 'function') fvCostOvApply();
     }
   } catch(e){}
   try { if (typeof loadEPOS90Preload === 'function') loadEPOS90Preload(); } catch(e){}
