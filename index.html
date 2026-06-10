@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v143';
+var APP_BUILD = 'v144';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -8575,21 +8575,30 @@ function fvCanSeeFinance() {
 
 /* ── Finance re-entry lock (privacy) ──────────────────────────────────────────
    P&L and Money/Expenses numbers are HIDDEN by default. To see them the signed-in
-   person must re-type THEIR OWN password. Unlock is session-only and re-locks the
-   moment the app is backgrounded or they log out. Verifies against the same hash
-   as login (personal override if set, else the baked hash). */
-function fvFinUnlocked(){ return window._fvFinUnlocked === true; }
-function fvFinLock(){ window._fvFinUnlocked = false; }
+   person must re-type THEIR OWN password. A correct password unlocks the numbers
+   for 4 HOURS, timed from the moment it was typed — backgrounding the app no
+   longer re-locks (that was too annoying). It re-locks when the 4h expire, when
+   you tap Hide, or when you log out. The unlock is per-user on this device. */
+var FV_FIN_UNLOCK_MS = 4 * 60 * 60 * 1000;   // 4 hours
+function fvFinUnlockSet_(){ try{ localStorage.setItem('fvFinUnlockUntil', String(Date.now()+FV_FIN_UNLOCK_MS)); localStorage.setItem('fvFinUnlockUser', (fvSession&&fvSession.user)||''); }catch(e){} }
+function fvFinUnlocked(){
+  try{
+    var until=parseInt(localStorage.getItem('fvFinUnlockUntil')||'0',10);
+    var who=localStorage.getItem('fvFinUnlockUser')||'';
+    return until>Date.now() && !!fvSession && who===fvSession.user;
+  }catch(e){ return false; }
+}
+function fvFinLock(){ try{ localStorage.removeItem('fvFinUnlockUntil'); localStorage.removeItem('fvFinUnlockUser'); }catch(e){} window._fvFinUnlocked=false; }
 function fvFinLockWire(){
   if (window._fvFinLockWired) return; window._fvFinLockWired = true;
   try {
+    // No auto-relock on background/blur — re-render on return so an EXPIRED
+    // unlock shows the locked screen again.
     document.addEventListener('visibilitychange', function(){
-      if (document.hidden) { window._fvFinUnlocked = false; }
-      else { var a = (typeof _fvActiveId === 'function') ? _fvActiveId() : '';
+      if (!document.hidden) { var a = (typeof _fvActiveId === 'function') ? _fvActiveId() : '';
         if (a === 'viewPL' && typeof buildPLView === 'function') buildPLView();
         else if (a === 'viewSpend' && typeof buildSpendView === 'function') buildSpendView(); }
     });
-    window.addEventListener('blur', function(){ window._fvFinUnlocked = false; });
   } catch(e){}
 }
 function fvFinLockedHTML(targetView){
@@ -8599,7 +8608,7 @@ function fvFinLockedHTML(targetView){
     + '<div style="font-size:19px;font-weight:800;color:#0d4420;margin:10px 0 4px;">The ' + what + ' numbers are hidden</div>'
     + '<div style="font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:18px;">Numbers are hidden by default. Tap the eye and enter <b>your own password</b> to show them.</div>'
     + '<button onclick="fvFinUnlockPrompt(\'' + targetView + '\')" style="width:100%;max-width:300px;padding:14px;border:none;border-radius:12px;background:#15662f;color:#fff;font-size:16px;font-weight:800;cursor:pointer;">👁️ Show numbers</button>'
-    + '<div style="font-size:12px;color:#9ca3af;margin-top:14px;line-height:1.5;">They hide again when you tap the eye, leave the app, or log out.</div></div>';
+    + '<div style="font-size:12px;color:#9ca3af;margin-top:14px;line-height:1.5;">Your password keeps the numbers visible for <b>4 hours</b> — they hide again after that, or when you tap Hide or log out.</div></div>';
 }
 // Eye toggle shown at the top of the UNLOCKED finance views — tap to hide the numbers again.
 function fvFinEyeBarHTML(targetView){
@@ -8609,7 +8618,7 @@ function fvFinEyeBarHTML(targetView){
     + '<button id="fvBlurBtn" onclick="fvToggleBlurAmounts()" style="' + btnStyle + '">' + (bl ? '👁️ Show amounts' : '🙈 Hide amounts') + '</button></div>';
 }
 function fvFinHide(){
-  window._fvFinUnlocked = false;
+  fvFinLock();   // ends the 4h unlock early
   var a = (typeof _fvActiveId === 'function') ? _fvActiveId() : '';
   if (a === 'viewSpend' && typeof buildSpendView === 'function') buildSpendView();
   else if (typeof buildPLView === 'function') buildPLView();
@@ -8708,7 +8717,7 @@ function fvFinUnlockSubmit(targetView){
     for (var i = 0; i < FV_USERS.length; i++) if (FV_USERS[i].user === fvSession.user) { cand = FV_USERS[i]; break; }
     var ovr = (typeof fvPwOvLoad === 'function') ? fvPwOvLoad() : {};
     var gateHash = (cand && ovr[fvSession.user] !== undefined) ? ovr[fvSession.user] : (cand ? cand.hash : null);
-    function ok(){ window._fvFinUnlocked = true; fvFinUnlockClose();
+    function ok(){ fvFinUnlockSet_(); window._fvFinUnlocked = true; fvFinUnlockClose();
       if (targetView === 'Spend' && typeof buildSpendView === 'function') buildSpendView();
       else if (typeof buildPLView === 'function') buildPLView();
     }
@@ -8907,7 +8916,7 @@ function fvLogin() {
 
 function fvLogout() {
   if (!confirm('Log out of this device?')) return;
-  window._fvFinUnlocked = false;   // re-lock finances
+  if (typeof fvFinLock === 'function') fvFinLock();   // re-lock finances (clears the 4h unlock)
   fvSession = null;
   try { sessionStorage.removeItem('fvAuth'); localStorage.removeItem('fvAuth'); } catch(e) {}
   if (typeof fvFbClear === 'function') fvFbClear();
