@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v164';
+var APP_BUILD = 'v165';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3195,16 +3195,13 @@ function fvCOordSave(ord){ var o=fvCOloadOrders(); o[ord.id]=ord; try{localStora
    orders need (whole boxes for kg products) is pushed into the market buy list.
    Quantities are only ever RAISED to meet demand — manual numbers never lowered. */
 function fvCOautoBuySync(){
-  try{
-    if(typeof fvCObulk!=='function'||typeof fvBuyLoad!=='function') return;
-    var agg=fvCObulk(), m=fvBuyLoad(), changed=false;
-    Object.keys(agg).forEach(function(k){ var a=agg[k], idx=fvCOprodIndexByKey(k);
-      if(idx<0 && typeof fvCOprodIndexByName_==='function') idx=fvCOprodIndexByName_(a.name);   // legacy Custom|| lines
-      if(idx<0) return;
-      var need=(a.buyBoxes!=null&&a.buyBoxes>0)?a.buyBoxes:Math.ceil(a.qty||0);
-      if(need>0 && (m[idx]||0)<need){ m[idx]=need; changed=true; if(typeof fvBuyPush==='function')fvBuyPush(idx,need); } });
-    if(changed){ if(typeof fvBuySave==='function')fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); }
-  }catch(e){}
+  // Restaurant / café demand is shown TWO ways: merged live into the Buy-list view by
+  // fvCOBuyUnified_ (the 🍽️ → buy N boxes sub-line) and as a highlighted note on each List
+  // row (refreshOrderMini). It is deliberately NOT written into the +/− buy counter
+  // (owner: "don't actually add it to the button — make it highlighted"). So this no longer
+  // mutates mandiBuyList; it only refreshes the views that show the demand.
+  try{ if(typeof fvBuyRerender==='function') fvBuyRerender(); }catch(e){}
+  try{ if(typeof _fvRestMap!=='undefined') _fvRestMap=null; if(typeof refreshAllOrderChips==='function' && document.getElementById('row0')) refreshAllOrderChips(); }catch(e){}
 }
 function fvCOordDel(id){ var o=fvCOloadOrders(); delete o[id]; try{localStorage.setItem('mandiCustOrders',JSON.stringify(o));}catch(e){} fvCOpatch('custorders',id,null); }
 // True while the user is mid-entry (on a form view, or focused in any field).
@@ -3748,10 +3745,10 @@ function fvCOsetTier(custId,tierId){ var c=fvCOloadCust()[custId]; if(!c)return;
 function fvCOcomplete(oid){ var ord=fvCOloadOrders()[oid]; if(!ord)return; if(!(ord.lines&&ord.lines.length)){ alert('Add some items first.'); return; } var _pf=(typeof fvCOinvoiceProfit_==='function')?fvCOinvoiceProfit_(ord):0; if(_pf<0){ alert('🛡️ Cannot complete: this invoice is at a LOSS ('+fvCOmoney(_pf)+') based on our known costs.\nFix the prices on the Review page first.'); return; } if(!confirm('Mark this order as completed? It moves to the customer’s history.'))return; (ord.lines||[]).forEach(function(l){ var pi=fvCOprodIndexByKey(l.key); var hc=(typeof fvCOhistCost_==='function')?fvCOhistCost_(l, ord.date||fvCOtoday()):null; if(hc!=null){ l.costAt=hc; } else if(pi>=0 && PRODUCTS[pi][6]!=null){ l.costAt=PRODUCTS[pi][6]; } if(pi>=0){ l.sellAt=PRODUCTS[pi][7]; } }); var _c=fvCOloadCust()[ord.custId]; if(_c){ if(!_c.prices)_c.prices={}; (ord.lines||[]).forEach(function(l){ if(l.price!=null && (l.qty||0)>0) _c.prices[l.key]=l.price; }); fvCOcustSave(_c); } ord.status='completed'; ord.completed=(ord.date||fvCOtoday()); ord.enteredAt=fvCOtoday(); fvCOordSave(ord); fvCOnav('history',ord.custId); }
 function fvCOreuse(oid){ var src=fvCOloadOrders()[oid]; if(!src)return; var ord=fvCOensureOpen(src.custId); (src.lines||[]).forEach(function(l){ var price=l.price, s=l.src; if(s==='tier'){ var tp=fvCOpriceFor(src.custId,l.key); if(typeof tp==='number')price=tp; } var found=null; ord.lines.forEach(function(x){ if(x.key===l.key)found=x; }); if(found){ found.qty=l.qty; found.price=price; found.src=s; } else { ord.lines.push({key:l.key,name:l.name,sup:l.sup,unit:l.unit,qty:l.qty,price:price,src:s}); } }); fvCOordSave(ord); fvCOnav('order',src.custId); }
 function fvCOpushBulk(){
-  var agg=fvCObulk(),n=0,m=fvBuyLoad();
-  // PURCHASING: whole boxes (round up) for kg products; for unit products use the count.
-  Object.keys(agg).forEach(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k); if(idx<0)return; var q=(a.buyBoxes!=null&&a.buyBoxes>0)?a.buyBoxes:Math.ceil(a.qty); if(q>0){ m[idx]=q; n++; if(typeof fvBuyPush==='function')fvBuyPush(idx,q); } });
-  if(n){ fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); alert('Added '+n+' item'+(n!==1?'s':'')+' to the Monday buy list (List tab) — as whole boxes.'); } else { alert('No open orders to add yet.'); }
+  // DISABLED (owner: "don't add restaurant demand to the +/- buy counter — make it highlighted").
+  // Restaurant/café demand now shows as a highlighted note on the List and in the Collate view;
+  // it is never written into mandiBuyList. Kept as a safe redirect in case an old button calls it.
+  if(typeof fvCOnav==='function') fvCOnav('collate');
 }
 
 /* ── renderers (all write into #viewOrders) ── */
@@ -3761,7 +3758,7 @@ function fvCORender(){
   if(v==='cust') ov.innerHTML=fvCOrenderCust();
   else if(v==='order') ov.innerHTML=fvCOrenderOrder();
   else if(v==='checkout') ov.innerHTML=fvCOrenderCheckout();
-  else if(v==='bulk') ov.innerHTML=fvCOrenderBulk();
+  else if(v==='collate') ov.innerHTML=fvCOrenderCollate();
   else if(v==='pick') ov.innerHTML=fvCOrenderPick();
   else if(v==='history') ov.innerHTML=fvCOrenderHistory();
   else if(v==='tiers') ov.innerHTML=fvCOrenderTiers();
@@ -3960,6 +3957,9 @@ function fvCOrenderList(){
   h+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
     +'<button onclick="fvCOnav(\'tiers\')" style="flex:1;min-width:140px;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">🏷️ Price tiers</button></div>';
+  // Collate-all-orders button — totals every open restaurant/café order into one page (+ Mandi boxes)
+  var nOpen=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.status==='open'&&o.lines&&o.lines.length)nOpen++; });
+  if(nOpen) h+='<button onclick="fvCOnav(\'collate\')" style="width:100%;padding:11px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:10px;">📋 Collate all orders → one buy list ('+nOpen+')</button>';
   if(!ids.length) return h+'<div class="empty-state">No restaurants yet.<br><br>Tap <strong>➕ New customer</strong> to add one.</div>';
   ids.forEach(function(id){ var c=custs[id],open=null,hist=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.custId!==id)return; if(o.status==='open')open=o; else hist++; });
     var oc=open?(open.lines||[]).length:0;
@@ -4322,9 +4322,68 @@ function fvCOrenderBulk(){
   h+='<div style="font-size:11px;color:#9ca3af;margin-top:8px;line-height:1.5;">Restaurants get their <strong>exact</strong> amount (see Split back / each order). For <strong>buying</strong> we round up to whole boxes so you don’t overthink it — any extra is shop spare. Your shop’s own List items are shown above so this is your complete Monday shop.</div></div>';
   return h;
 }
+/* ── Collate view — every open restaurant/café order rolled into ONE page, showing
+   TOTAL needed (left) and QUANTITY TO BUY AT THE MANDI (right, whole boxes). Read-only
+   summary; the same figures also surface as a highlighted note on the List rows, but are
+   NOT added to the +/− buy counter (owner's spec). Opened from the Restaurants/Cafés tab. */
+function fvCOrenderCollate(){
+  var agg=fvCObulk(), keys=Object.keys(agg);
+  var orders=fvCOloadOrders(), nOpen=0; Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.status==='open'&&o.lines&&o.lines.length)nOpen++; });
+  var h=fvCObackBtn('list','All customers')+'<div class="manage-card"><div class="manage-title">📋 All orders collated</div>';
+  if(!keys.length) return h+'<div style="color:#9ca3af;font-size:13px;padding:8px 2px;">No open restaurant or café orders yet. Take an order and it shows up here — totalled across everyone and converted into whole Mandi boxes.</div></div>';
+  h+='<div style="font-size:11px;color:#6b7280;margin:-2px 0 9px;">'+nOpen+' open order'+(nOpen!==1?'s':'')+' · '+keys.length+' product'+(keys.length!==1?'s':'')+'. Totals add up every restaurant &amp; café; “Buy at Mandi” rounds up to whole boxes.</div>';
+  keys.sort(function(a,b){ return String(agg[a].name||'').toLowerCase().localeCompare(String(agg[b].name||'').toLowerCase()); });
+  h+='<div style="display:flex;align-items:flex-end;gap:6px;padding:0 2px 5px;font-size:9px;font-weight:800;color:#9ca3af;letter-spacing:.03em;">'
+    +'<span style="width:16px;">#</span><span style="flex:1;min-width:0;">ITEM</span>'
+    +'<span style="width:60px;text-align:right;">TOTAL<br>NEEDED</span>'
+    +'<span style="width:98px;text-align:right;">BUY AT<br>MANDI</span></div>';
+  var nBoxes=0,nLoose=0,nUnknown=0;
+  keys.forEach(function(k,ix){ var a=agg[k];
+    var idx=(typeof fvCOprodIndexByKey==='function')?fvCOprodIndexByKey(k):-1;
+    if(idx<0 && typeof fvCOprodIndexByName_==='function') idx=fvCOprodIndexByName_(a.name);
+    var unit=a.unit||'', totQ=Math.round((a.qty||0)*100)/100;
+    var who=(a.parts||[]).map(function(pt){ return fvEsc(pt.name)+' '+(Math.round((pt.qty||0)*100)/100)+fvEsc(unit); }).join(' · ');
+    var mandiMain,mandiSub='';
+    if(a.buyBoxes!=null){
+      var bpl=(a.boxUnit==='kg')?'kg':fvBoxUnitLabel_(a.boxUnit,true);
+      mandiMain='buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'');
+      mandiSub=a.boxPer+bpl+'/box'+((a.spare>0)?(', '+a.spare+((a.boxUnit==='kg')?'kg':fvBoxUnitLabel_(a.boxUnit,a.spare!==1))+' spare'):'');
+      nBoxes++;
+    } else if(a.loose){ mandiMain='buy '+totQ+fvEsc(unit||'kg'); mandiSub='loose, by weight'; nLoose++; }
+    else { mandiMain=(idx>=0)?'<span onclick="fvBoxPromptIdx('+idx+')" style="color:#b45309;font-weight:800;text-decoration:underline;cursor:pointer;">📦 set box</span>':'—'; mandiSub='box size not set'; nUnknown++; }
+    var sup=(idx>=0&&PRODUCTS[idx][0])?String(PRODUCTS[idx][0]):String(a.sup||'');
+    if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(sup)) sup='';
+    var stall=(idx>=0&&PRODUCTS[idx][1]!=null&&String(PRODUCTS[idx][1]).trim()!=='')?String(PRODUCTS[idx][1]):'';
+    var nameHTML=(idx>=0)?('<span onclick="fvProductHistory('+idx+')" style="cursor:pointer;text-decoration:underline dotted #cbd5e1;text-underline-offset:2px;">'+fvEsc(a.name)+'</span>'):fvEsc(a.name);
+    h+='<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 2px;border-top:1px solid #eef0f2;font-size:12px;color:#374151;">'
+      +'<span style="width:16px;color:#9ca3af;font-weight:700;">'+(ix+1)+'</span>'
+      +'<span style="flex:1;min-width:0;"><span style="font-weight:700;color:#111;">'+nameHTML+'</span>'
+        +(sup?'<span style="display:block;font-size:9px;color:#1c4587;margin-top:1px;">'+(stall?('<span class="stall-badge" style="font-size:9px;min-width:18px;margin-right:4px;">'+fvEsc(stall)+'</span>'):'')+fvEsc(sup)+'</span>':'')
+        +(who?'<span style="display:block;font-size:9px;color:#6b7280;margin-top:1px;">🍽️ '+who+'</span>':'')+'</span>'
+      +'<span style="width:60px;text-align:right;font-weight:800;color:#111;">'+totQ+fvEsc(unit)+'</span>'
+      +'<span style="width:98px;text-align:right;font-weight:800;color:#15662f;line-height:1.25;">'+mandiMain+(mandiSub?('<br><span style="font-size:9px;font-weight:600;color:#9ca3af;">'+mandiSub+'</span>'):'')+'</span></div>';
+  });
+  h+='<div style="margin-top:10px;padding-top:8px;border-top:2px solid #15662f;font-size:11px;color:#374151;font-weight:700;">🛒 '+nBoxes+' item'+(nBoxes!==1?'s':'')+' in boxes'+(nLoose?(' · '+nLoose+' loose by weight'):'')+(nUnknown?(' · <span style="color:#b45309;">'+nUnknown+' need a box size</span>'):'')+'</div>';
+  h+='<div style="font-size:10px;color:#9ca3af;margin-top:6px;line-height:1.5;">These figures also show as a highlighted note on each List item, but are <strong>not</strong> added to your +/− buy counter — that stays yours to set.</div>';
+  h+='<button onclick="fvCOcollateCopy()" style="width:100%;padding:10px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-top:10px;">📋 Copy this list</button>';
+  return h+'</div>';
+}
+function fvCOcollateCopy(){
+  var agg=fvCObulk(), keys=Object.keys(agg);
+  keys.sort(function(a,b){ return String(agg[a].name||'').toLowerCase().localeCompare(String(agg[b].name||'').toLowerCase()); });
+  var L=['HAPPY DAYS — MANDI BUY LIST (all orders collated)','Date: '+fvCOtoday(),'--------------------------------'];
+  keys.forEach(function(k){ var a=agg[k],unit=a.unit||'',totQ=Math.round((a.qty||0)*100)/100,tail;
+    if(a.buyBoxes!=null) tail='buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'');
+    else if(a.loose) tail='buy '+totQ+(unit||'kg')+' loose';
+    else tail='⚠ SET BOX SIZE FIRST';
+    L.push(a.name+'  —  need '+totQ+unit+'  →  '+tail); });
+  var text=L.join('\n');
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(function(){ alert('📋 Collated buy list copied — paste into SMS, email or notes.'); },function(){ prompt('Copy this buy list:',text); }); }
+  else { prompt('Copy this buy list:',text); }
+}
 function fvCOrenderPick(){
   var orders=fvCOloadOrders(),custs=fvCOloadCust();
-  var h=fvCObackBtn('bulk','Bulk list')+'<div class="manage-title" style="padding:0 2px 6px;">📦 Split back — what to set aside</div>';
+  var h=fvCObackBtn('collate','Collated list')+'<div class="manage-title" style="padding:0 2px 6px;">📦 Split back — what to set aside</div>';
   var any=false;
   Object.keys(orders).forEach(function(oid){ var o=orders[oid]; if(o.status!=='open'||!(o.lines&&o.lines.length))return; any=true; var c=custs[o.custId]||{};
     h+='<div class="order-summary-card"><div style="font-weight:700;color:#1c4587;font-size:14px;margin-bottom:4px;">'+fvEsc(c.name||'?')+'</div>';
@@ -5253,75 +5312,57 @@ function refreshOrderChips(idx) {
   }
 }
 
-function refreshAllOrderChips() {
-  PRODUCTS.forEach(function(p, i) { refreshOrderChips(i); refreshOrderMini(i); });
+// Live restaurant/café demand per List product, built from the customer orders (fvCObulk).
+// Memoised for one refresh pass so we call fvCObulk() once, not once per product row.
+var _fvRestMap = null;
+function fvRestDemandMap_(){
+  var map = {};
+  try{
+    if (typeof fvCObulk !== 'function') return map;
+    var agg = fvCObulk();
+    Object.keys(agg).forEach(function(k){ var a = agg[k];
+      var idx = (typeof fvCOprodIndexByKey==='function') ? fvCOprodIndexByKey(k) : -1;
+      if (idx<0 && typeof fvCOprodIndexByName_==='function') idx = fvCOprodIndexByName_(a.name);
+      if (idx>=0) map[idx] = a;
+    });
+  }catch(e){}
+  return map;
 }
 
+function refreshAllOrderChips() {
+  _fvRestMap = fvRestDemandMap_();
+  PRODUCTS.forEach(function(p, i) { refreshOrderChips(i); refreshOrderMini(i); });
+  _fvRestMap = null;
+}
+
+// Highlighted "for restaurants" note on a List row — the collated restaurant/café demand for
+// this product + what that means at the Mandi (whole boxes / loose kg). Purely informational:
+// it does NOT touch the +/− buy counter (owner: "make it highlighted, don't add it to the button").
 function refreshOrderMini(idx) {
   var el = document.getElementById('ordermini' + idx);
   if (!el) return;
-  el.innerHTML = '';
-
-  var entry = getOrderFor(idx);
-  if (!entry) { el.classList.remove('has-orders'); return; }
-
-  // Priority order: Cafe first, Restaurant second, Shop last
-  var PRIORITY = [
-    { key:'cafe',       label:'Cafe',       icon:'☕', baseColor:'#be185d' },
-    { key:'restaurant', label:'Restaurant', icon:'🍽️', baseColor:'#6d28d9' },
-    { key:'shop',       label:'Shop',       icon:'🏪', baseColor:'#1d4ed8' }
-  ];
-
-  // How many boxes were bought
-  var s = state[idx];
-  var boughtBoxes = (s && s.status === 'bought') ? (parseFloat(s.qty) || 0) : 0;
-
-  // Allocate bought boxes to destinations by priority
-  var remaining = boughtBoxes;
-  var totalNeeded = 0;
-  var totalFulfilled = 0;
-  var destResults = [];
-
-  PRIORITY.forEach(function(d) {
-    var needed = (entry[d.key] && entry[d.key].boxes) ? entry[d.key].boxes : 0;
-    if (!needed) return;
-    var fulfilled = Math.min(needed, remaining);
-    remaining = Math.max(0, remaining - fulfilled);
-    totalNeeded    += needed;
-    totalFulfilled += fulfilled;
-    destResults.push({
-      label:     d.label,
-      icon:      d.icon,
-      baseColor: d.baseColor,
-      needed:    needed,
-      fulfilled: fulfilled,
-      done:      fulfilled >= needed
-    });
-  });
-
-  if (!totalNeeded) { el.classList.remove('has-orders'); return; }
+  var a = (_fvRestMap || fvRestDemandMap_())[idx];
+  if (!a || !(a.qty > 0)) { el.classList.remove('has-orders'); el.innerHTML = ''; return; }
   el.classList.add('has-orders');
 
-  // Render each destination as a labelled chip with full name + icon
-  destResults.forEach(function(d) {
-    var chip = document.createElement('span');
-    var qty  = d.done ? (d.needed + ' ✓')
-             : d.fulfilled > 0 ? (d.fulfilled + ' / ' + d.needed)
-             : d.needed;
-    chip.className = 'order-chip-mini ' +
-      (d.done ? 'chip-mini-done' : d.fulfilled > 0 ? 'chip-mini-partial' : 'chip-mini-pending');
-    chip.innerHTML = d.icon + ' <strong>' + d.label + '</strong> ' + qty;
-    el.appendChild(chip);
-  });
+  var unit = a.unit || '', totQ = Math.round((a.qty || 0) * 100) / 100;
+  var mandi, mcolor = '#15662f';
+  if (a.buyBoxes != null) { mandi = '→ buy ' + a.buyBoxes + ' box' + (a.buyBoxes !== 1 ? 'es' : ''); }
+  else if (a.loose)       { mandi = '→ buy ' + totQ + fvEsc(unit || 'kg') + ' (loose)'; }
+  else { mandi = '→ <span onclick="fvBoxPromptIdx(' + idx + ');event.stopPropagation();" style="text-decoration:underline;cursor:pointer;">📦 set box size</span>'; mcolor = '#b45309'; }
 
-  // Total chip
-  var allDone = totalFulfilled >= totalNeeded;
-  var totChip = document.createElement('span');
-  totChip.className = 'order-chip-mini ' + (allDone ? 'chip-mini-total-done' : 'chip-mini-total-pending');
-  totChip.innerHTML = allDone
-    ? '✅ Total ' + totalNeeded
-    : (boughtBoxes > 0 ? '📦 ' + totalFulfilled + ' / ' + totalNeeded : '📦 Need ' + totalNeeded);
-  el.appendChild(totChip);
+  var who = (a.parts || []).map(function(pt){ return fvEsc(pt.name) + ' ' + (Math.round((pt.qty||0)*100)/100) + fvEsc(unit); }).join(', ');
+  var p = PRODUCTS[idx] || [];
+  var sup = p[0] ? String(p[0]) : '';
+  if (/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(sup)) sup = '';   // produce category isn't a supplier name
+
+  el.innerHTML =
+    '<span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px;background:#f5f3ff;border:1px solid #ddd6fe;border-left:3px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:10px;color:#5b21b6;font-weight:700;line-height:1.45;">'
+    + '🍽️ <strong>' + totQ + fvEsc(unit) + '</strong> for restaurants'
+    + ' <span style="color:' + mcolor + ';font-weight:800;">' + mandi + '</span>'
+    + (sup ? (' <span style="opacity:.8;">· ' + fvEsc(sup) + '</span>') : '')
+    + (who ? ('<span style="display:block;width:100%;font-weight:600;color:#7c6f9c;font-size:9px;margin-top:1px;">' + who + '</span>') : '')
+    + '</span>';
 }
 
 // Orders summary view
