@@ -1853,7 +1853,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v147';
+var APP_BUILD = 'v148';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3202,7 +3202,8 @@ function fvCOpull(){
     return Promise.all([
       fetch(FV_FB.databaseURL+'/customers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
       fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
-      fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
+      fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
+      fetch(FV_FB.databaseURL+'/costov.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
     ]).then(function(res){
       var changed=false;
       // MERGE the cloud copy with this device's copy — never REPLACE — so a customer/order
@@ -3224,6 +3225,13 @@ function fvCOpull(){
         if(s1!==localStorage.getItem('mandiCustOrders')){ try{localStorage.setItem('mandiCustOrders',s1);}catch(e){} changed=true; }
       }
       if(res[2]!==undefined && res[2]!==null){ var s2=JSON.stringify(res[2]); if(s2!==localStorage.getItem('mandiTiers')){ try{localStorage.setItem('mandiTiers',s2);}catch(e){} changed=true; } }
+      // Shared product costs (the Cost column) — cloud wins per product, then re-applied.
+      if(res[3]!==undefined && res[3]!==null && typeof res[3]==='object'){
+        var locC=fvCostOvLoad(), mC={};
+        Object.keys(res[3]).forEach(function(k){ var r3=res[3][k]; if(r3&&r3.key&&+r3.cost>0) mC[r3.key]=+r3.cost; });
+        var sC=JSON.stringify(Object.assign({}, locC, mC));
+        if(sC!==localStorage.getItem('mandiCostOv')){ try{localStorage.setItem('mandiCostOv',sC);}catch(e){} fvCostOvApply(); changed=true; }
+      }
       // Don't redraw while the user is entering data — preserves the new-customer form.
       var v=document.getElementById('viewOrders');
       if(changed && v && v.classList.contains('active') && !fvCOisEditing_() && typeof fvCORender==='function') fvCORender();
@@ -3233,6 +3241,18 @@ function fvCOpull(){
 
 function fvCOunit(name){ var pi=(typeof extractPackInfo==='function')?extractPackInfo(name):null; if(pi&&pi.unit==='kg')return 'kg'; if(pi&&pi.unit&&pi.unit!=='each')return pi.unit; return 'ea'; }
 function fvCOprodIndexByKey(key){ for(var i=0;i<PRODUCTS.length;i++){ if(orderKey(PRODUCTS[i])===key) return i; } return -1; }
+/* ── Cost overrides: the per-product purchase cost, editable straight from the order
+   Review page (the Cost column). Saved locally, applied over PRODUCTS[i][6] (the cost
+   the tiers / profit / fail-safe all read), and shared with the team via /costov so
+   the profit numbers are right on every device. ── */
+function fvCostOvLoad(){ try{ return JSON.parse(localStorage.getItem('mandiCostOv')||'{}'); }catch(e){ return {}; } }
+function fvCostOvApply(){ var m=fvCostOvLoad(); Object.keys(m).forEach(function(k){ var v=+m[k]; if(!(v>0))return; var i=fvCOprodIndexByKey(k); if(i>=0) PRODUCTS[i][6]=v; }); }
+function fvCostSet(key,val){ var v=parseFloat(val); if(isNaN(v)||v<0) return false;
+  var m=fvCostOvLoad(); m[key]=v; try{ localStorage.setItem('mandiCostOv',JSON.stringify(m)); }catch(e){}
+  var i=fvCOprodIndexByKey(key); if(i>=0) PRODUCTS[i][6]=v;
+  if(typeof fvCOpatch==='function') fvCOpatch('costov', String(key).replace(/[.#$\/\[\]]/g,'_'), {key:key,cost:v});
+  return true; }
+fvCostOvApply();   // apply saved costs over the merged catalogue on every load
 /* ── Price tiers (Hybrid pricing): a named rule reused across customers ──
    A tier is a rule, not a frozen list, so prices follow live cost/sell.
    COST = PRODUCTS[i][6], SELL = PRODUCTS[i][7].  Backward-compatible:
@@ -3643,7 +3663,9 @@ function fvCOckDate(val){ var v=String(val||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(
 // change would tip the whole invoice into a loss, it's blocked. Protects the company.
 function fvCOlineCost_(key){ var i=fvCOprodIndexByKey(key); if(i<0)return null; var c=PRODUCTS[i][6]; if(c==null||c===''||isNaN(+c)||+c<=0)return null; return +c; }
 function fvCOinvoiceProfit_(ord,overrideKey,overridePrice){
-  var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOlineCost_(l.key); if(c==null)return; var price=(l.key===overrideKey)?+overridePrice:(l.price||0); p+=(price-c)*(l.qty||0); });
+  var p=0; (ord.lines||[]).forEach(function(l){ var c=fvCOlineCost_(l.key);
+    if(c==null && l.costAt!=null && l.costAt!=='' && !isNaN(+l.costAt) && +l.costAt>0) c=+l.costAt;
+    if(c==null)return; var price=(l.key===overrideKey)?+overridePrice:(l.price||0); p+=(price-c)*(l.qty||0); });
   return p;
 }
 function fvCOpriceGuard_(ord,key,newPrice){
@@ -3661,7 +3683,9 @@ function fvCOprofitBoxHTML_(ord,useSnapshot){
   // showed "91% margin" when only one $24 line was actually costed).
   var rev=0,revKnown=0,cost=0,known=0,unknown=0,unkRev=0,n=0;
   (ord.lines||[]).forEach(function(l){ var q=l.qty||0; if(q<=0)return; n++; var lr=q*(l.price||0); rev+=lr;
-    var c=(useSnapshot&&l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
+    var snap=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:null;
+    var c=useSnapshot ? (snap!=null?snap:fvCOlineCost_(l.key))
+                      : (function(){ var cc=fvCOlineCost_(l.key); return (cc!=null)?cc:snap; })();
     if(c==null){ unknown++; unkRev+=lr; return; } known++; revKnown+=lr; cost+=q*c; });
   if(!n) return '';
   var prof=revKnown-cost, marg=(revKnown>0)?(prof/revKnown*100):0;
@@ -3684,8 +3708,14 @@ function fvCOckPrice(j,val){ var ord=fvCOcurOrd_(); var l=ord.lines&&ord.lines[j
 function fvCOckRemove(j){ var ord=fvCOcurOrd_(); if(ord.lines&&ord.lines[j]){ ord.lines.splice(j,1); fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); } }
 // Set an exact (possibly decimal) quantity — used for by-the-kilo items (e.g. 5.98 kg).
 function fvCOckQtySet(j,val){ var ord=fvCOcurOrd_(); var l=ord.lines&&ord.lines[j]; if(!l)return; var q=parseFloat(val); if(isNaN(q)||q<0)q=0; if(q===0){ ord.lines.splice(j,1); } else { l.qty=q; } fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
+// Set/correct a product's COST straight from the Review page — updates the catalogue
+// (shared with the team), this line's snapshot, and the profit box instantly.
+function fvCOckCost(j,val){ var ord=fvCOcurOrd_(); var l=ord.lines&&ord.lines[j]; if(!l)return;
+  var v=parseFloat(val); if(isNaN(v)||v<0){ if(typeof fvCORender==='function')fvCORender(); return; }
+  fvCostSet(l.key,v); l.costAt=v; fvCOordSave(ord); if(typeof fvCORender==='function')fvCORender(); }
 function fvCOckRowHTML_(l,j){
   var qty=l.qty||0, price=(l.price!=null?l.price:0), lt=qty*price, nm=l.name||l.key;
+  var cAt=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
   var isKg=/\/\s*kg\b/i.test(String(nm||''));   // "… /kg" = sold by weight (boxes like "(10kg)" are NOT)
   var qtyCtrl = isKg
     ? '<input type="number" inputmode="decimal" step="0.01" min="0" value="'+(qty||'')+'" onchange="fvCOckQtySet('+j+',this.value)" style="width:78px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;text-align:right;"><span style="font-size:12px;color:#6b7280;font-weight:700;">kg</span>'
@@ -3703,6 +3733,8 @@ function fvCOckRowHTML_(l,j){
       +qtyCtrl
       +'<span style="font-size:11px;color:#6b7280;font-weight:700;margin-left:8px;">Price '+(isKg?'$/kg':'$')+'</span>'
       +'<input type="number" inputmode="decimal" step="0.01" value="'+(price?price:'')+'" onchange="fvCOckPrice('+j+',this.value)" style="width:84px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;">'
+      +'<span style="font-size:11px;color:'+(cAt!=null?'#6b7280':'#b45309')+';font-weight:700;margin-left:8px;">Cost '+(isKg?'$/kg':'$')+'</span>'
+      +'<input type="number" inputmode="decimal" step="0.01" value="'+(cAt!=null?cAt:'')+'" placeholder="cost?" onchange="fvCOckCost('+j+',this.value)" style="width:74px;padding:8px;border:1px solid '+(cAt!=null?'#cbd5e1':'#f59e0b')+';border-radius:8px;font-size:15px;'+(cAt!=null?'':'background:#fffbeb;')+'">'
     +'</div></div>';
 }
 function fvCOrenderCheckout(){
@@ -3857,7 +3889,11 @@ function fvCOrenderHistory(){
         if(!ls.length) return '';
         var b='<div class="hist-inv-hdr" style="padding:8px 0 4px;"><span class="hist-inv-num">#</span><span class="hist-inv-name">Item</span><span class="hist-inv-qty">Qty × Price</span><span class="hist-inv-total">Total</span></div>';
         ls.forEach(function(l,ii){ var q=l.qty||0,pr=(l.price!=null?+l.price:0),u=(l.unit&&l.unit!=='ea')?(' '+l.unit):'';
-          b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span><span class="hist-inv-qty">'+niceQty(q)+fvEsc(u)+' × $'+pr.toFixed(2)+'</span><span class="hist-inv-total">$'+(q*pr).toFixed(2)+'</span></div>'; });
+          var cAt=(l.costAt!=null&&l.costAt!==''&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:fvCOlineCost_(l.key);
+          var lp=(cAt!=null)?(pr-cAt)*q:null;
+          b+='<div class="hist-inv-row" style="padding:6px 0;"><span class="hist-inv-num">'+(ii+1)+'</span><span class="hist-inv-name"><span class="hist-inv-prod">'+fvEsc(l.name)+'</span></span>'
+            +'<span class="hist-inv-qty">'+niceQty(q)+fvEsc(u)+' × $'+pr.toFixed(2)+'<br><span style="font-size:9px;'+(cAt!=null?'color:#9ca3af;':'color:#b45309;font-weight:800;')+'">'+(cAt!=null?('cost $'+cAt.toFixed(2)):'cost?')+'</span></span>'
+            +'<span class="hist-inv-total">$'+(q*pr).toFixed(2)+(lp!=null?('<br><span style="font-size:9px;font-weight:700;color:'+(lp<0?'#b91c1c':'#15803d')+';">'+(lp<0?'−':'+')+'$'+Math.abs(lp).toFixed(2)+'</span>'):'')+'</span></div>'; });
         b+='<div class="hist-inv-foot" style="padding:7px 0 2px;"><span class="hist-inv-num"></span><span class="hist-inv-name">TOTAL · '+ls.length+' item'+(ls.length!==1?'s':'')+'</span><span class="hist-inv-qty"></span><span class="hist-inv-total">'+fvCOmoney(tot)+'</span></div>';
         b+=fvCOprofitBoxHTML_(o,true);   // analysis from costs snapshotted at completion
         return b;
@@ -5295,6 +5331,7 @@ function rebuildProducts() {
   // Reset to base products then append custom ones
   while (PRODUCTS.length > BASE_PRODUCT_COUNT) PRODUCTS.pop();
   loadCustomProducts().forEach(function(p) { PRODUCTS.push(p); });
+  if (typeof fvCostOvApply === 'function') fvCostOvApply();   // saved costs cover custom products too
 }
 
 /* ── Per-supplier "+ Add" popup (opened from the List supplier headers) ────── */
