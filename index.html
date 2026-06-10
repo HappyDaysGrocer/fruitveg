@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v163';
+var APP_BUILD = 'v164';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3449,7 +3449,9 @@ function fvCObulk(){
   });
   Object.keys(agg).forEach(function(k){ var a=agg[k];
     var bd=(typeof fvBoxDef_==='function')?fvBoxDef_(a.name,a.key):null;
-    if(bd && bd.per>0){
+    if(bd && bd.loose){
+      a.loose=true; a.boxUnit=bd.by||'kg';                        // bought loose by weight — no box rounding
+    } else if(bd && bd.per>0){
       a.boxPer=bd.per; a.boxUnit=bd.by;
       a.buyBoxes=Math.max(1,Math.ceil((a.qty||0)/bd.per));        // round UP to whole boxes
       a.spare=Math.round((a.buyBoxes*bd.per-(a.qty||0))*100)/100; // left over after restaurants
@@ -3508,18 +3510,21 @@ var FV_BOX_DEFS=[
   {re:/mushroom.*cup|cup.*mushroom/i, per:4, by:'kg'},
   {re:/mushroom.*flat|flat.*mushroom/i, per:4, by:'kg'},
   {re:/mushroom.*brown|brown.*mushroom/i, per:3, by:'kg'},
-  {re:/ginger/i, per:10, by:'kg'},
+  {re:/ginger/i, by:'kg', loose:true},                                 // bought loose by weight
   {re:/papaya/i, per:8, by:'kg'},
   {re:/pumpkin.*jap|jap.*pumpkin/i, per:28.9, by:'kg'},
   {re:/pumpkin.*butternut|butternut.*pumpkin/i, per:24, by:'kg'},
+  {re:/pumpkin.*(grey|gray|queen|grher)|(grey|gray|queen)\s*pumpkin/i, by:'kg', loose:true}, // grey/queen pumpkin loose
   {re:/watermelon.*seedless|seedless.*watermelon/i, per:33.5, by:'kg'},
+  {re:/watermelon/i, by:'kg', loose:true},                             // standard whole melon — buy by weight
   {re:/tomato.*roma|roma.*tomato/i, per:10, by:'kg'},
   {re:/tomato.*truss|truss.*tomato/i, per:5, by:'kg'},
   {re:/lemon/i, per:10, by:'kg'},                                      // lemons 10kg
   {re:/orange/i, per:10, by:'kg'},                                     // oranges 10kg
   {re:/banana/i, per:15, by:'kg'},                                     // bananas 15kg carton
   {re:/broccolini/i, per:10, by:'bunch'},                              // broccolini deck of 10
-  {re:/\bkale\b/i, per:10, by:'bunch'}                                 // kale deck of 10
+  {re:/\bkale\b/i, per:10, by:'bunch'},                                // kale deck of 10
+  {re:/\boak\b|oakleaf|oak\s*leaf/i, per:12, by:'each'}                // oak lettuce 12 heads/box
 ];
 function fvBoxUnitOf_(name){ var n=String(name||''); if(/\/\s*kg/i.test(n))return 'kg'; if(/punnet|pnt|250g/i.test(n))return 'punnet'; if(/bunch/i.test(n))return 'bunch'; return 'each'; }
 function fvBoxUnitLabel_(by,plural){ return by==='kg'?'kg':(by==='punnet'?(plural?' punnets':' punnet'):(by==='bunch'?(plural?' bunches':' bunch'):(plural?' pieces':' piece'))); }
@@ -3527,7 +3532,7 @@ function fvBoxOvLoad(){ try{ return JSON.parse(localStorage.getItem('mandiBoxSiz
 function fvBoxDef_(name, key){
   var n=String(name||'').toLowerCase().trim();
   var ov=fvBoxOvLoad(); if(ov[n] && +ov[n].per>0) return {per:+ov[n].per, by:ov[n].by||fvBoxUnitOf_(name)};   // owner-set wins
-  for(var i=0;i<FV_BOX_DEFS.length;i++){ if(FV_BOX_DEFS[i].re.test(name)) return {per:FV_BOX_DEFS[i].per, by:FV_BOX_DEFS[i].by}; }
+  for(var i=0;i<FV_BOX_DEFS.length;i++){ if(FV_BOX_DEFS[i].re.test(name)) return {per:FV_BOX_DEFS[i].per, by:FV_BOX_DEFS[i].by, loose:!!FV_BOX_DEFS[i].loose}; }
   var bk=fvCOboxKg(name,key); if(bk>0) return {per:bk, by:'kg'};
   return null;
 }
@@ -3902,6 +3907,10 @@ function fvCOBuyRowsHTML(query){
         var needTxt=(Math.round((a.qty||0)*100)/100)+ku;
         var spareTxt=(a.spare>0)?(', '+a.spare+ku+' spare'):'';
         boxPhrase=' · need '+needTxt+' → <strong style="color:#0d4420;">buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'')+'</strong> ('+a.boxPer+ku+'/box'+spareTxt+')';
+      } else if(a.loose){
+        var lu=(a.boxUnit==='kg')?'kg':fvBoxUnitLabel_(a.boxUnit,true);
+        var ln=(Math.round((a.qty||0)*100)/100)+lu;
+        boxPhrase=' · need '+ln+' → <strong style="color:#0d4420;">buy '+ln+'</strong> (loose, by weight)';
       } else if(r.idx>=0){
         boxPhrase=' · <span onclick="event.stopPropagation();fvBoxPromptIdx('+r.idx+')" style="color:#b45309;font-weight:700;text-decoration:underline;cursor:pointer;">📦 set box size</span>';
       }
