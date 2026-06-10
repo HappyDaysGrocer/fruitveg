@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v160';
+var APP_BUILD = 'v161';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3471,7 +3471,10 @@ var FV_BOX_DEFS=[
   {re:/\bzucchini/i, per:10, by:'kg'},
   {re:/strawberr/i, per:12, by:'punnet'},
   {re:/\bcos\b/i, per:10, by:'each'},               // cos lettuce, 10 heads/box
-  {re:/\bbasil\b|\bcoriander\b|\bmint\b|\bparsley\b|\bdill\b|\bchive\b|\bchervil\b|\boregano\b|\brosemary\b|\bsage\b|\btarragon\b|\bthyme\b|fenugreek|methi/i, per:10, by:'bunch'} // herbs: deck of 10 bunches
+  {re:/\bbasil\b|\bcoriander\b|\bmint\b|\bparsley\b|\bdill\b|\bchive\b|\bchervil\b|\boregano\b|\brosemary\b|\bsage\b|\btarragon\b|\bthyme\b|fenugreek|methi/i, per:10, by:'bunch'}, // herbs: deck of 10 bunches
+  {re:/onion.*brown|brown.*onion|brown\s+loose/i, per:10, by:'kg'},   // brown onions 10kg
+  {re:/cauliflower/i, per:10, by:'each'},                              // cauliflower 10 heads/box
+  {re:/cherr/i, per:12, by:'punnet'}                                   // cherry tomatoes ~12 punnets (CONFIRM w/ owner tomorrow)
 ];
 function fvBoxUnitOf_(name){ var n=String(name||''); if(/\/\s*kg/i.test(n))return 'kg'; if(/punnet|pnt|250g/i.test(n))return 'punnet'; if(/bunch/i.test(n))return 'bunch'; return 'each'; }
 function fvBoxUnitLabel_(by,plural){ return by==='kg'?'kg':(by==='punnet'?(plural?' punnets':' punnet'):(by==='bunch'?(plural?' bunches':' bunch'):(plural?' pieces':' piece'))); }
