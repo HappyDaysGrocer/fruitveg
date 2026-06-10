@@ -644,5 +644,20 @@ var SHOP_PRODUCTS = [
   ['Wastage',null,null,'Wastage — Vegetables',null,null,null,0.01,false,null],
   ['Wastage',null,null,'Wastage — Herbs & Leafy',null,null,null,0.01,false,null],
   ['Wastage',null,null,'Wastage — Berries & Punnets',null,null,null,0.01,false,null],
-  ['Wastage',null,null,'Wastage — Other',null,null,null,0.01,false,null]
+  ['Wastage',null,null,'Wastage — Other',null,null,null,0.01,false,null],
+  // Confirmed-missing Mandi produce (owner 2026-06-10: "add them all"). Orderable by
+  // restaurants. Costs auto-fill from EPOS where the name matches; others show NEW until priced.
+  ['A-B',null,null,'Bittermelon Karela /kg',null,null,null,null,false,null],
+  ['C-G',null,null,'Coconut Each',null,null,null,null,false,null],
+  ['C-G',null,null,'Dragonfruit Each',null,null,null,null,false,null],
+  ['C-G',null,null,'Endive Each',null,null,null,null,false,null],
+  ['C-G',null,null,'Eschallots Bunch',null,null,null,null,false,null],
+  ['C-G',null,null,'Fenugreek Methi Bunch',null,null,null,null,false,null],
+  ['C-G',null,null,'Guava /kg',null,null,null,10.99,false,null],
+  ['H-O',null,null,'Kale Bunch',null,null,null,null,false,null],
+  ['H-O',null,null,'Okra Bhindi /kg',null,null,null,9.99,false,null],
+  ['P-R',null,null,'Pak Choy Bunch',null,null,null,null,false,null],
+  ['P-R',null,null,'Papaya Red /kg',null,null,null,null,false,null],
+  ['P-R',null,null,'Persimmon Each',null,null,null,1.99,false,null],
+  ['S-Z',null,null,'Turmeric /kg',null,null,null,null,false,null]
 ];
