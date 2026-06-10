@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v161';
+var APP_BUILD = 'v162';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3473,8 +3473,48 @@ var FV_BOX_DEFS=[
   {re:/\bcos\b/i, per:10, by:'each'},               // cos lettuce, 10 heads/box
   {re:/\bbasil\b|\bcoriander\b|\bmint\b|\bparsley\b|\bdill\b|\bchive\b|\bchervil\b|\boregano\b|\brosemary\b|\bsage\b|\btarragon\b|\bthyme\b|fenugreek|methi/i, per:10, by:'bunch'}, // herbs: deck of 10 bunches
   {re:/onion.*brown|brown.*onion|brown\s+loose/i, per:10, by:'kg'},   // brown onions 10kg
+  {re:/onion.*red|red.*onion/i, per:10, by:'kg'},                      // red onions 10kg
+  {re:/spring\s*onion|onion\s*spring/i, per:10, by:'bunch'},           // spring onions deck of 10
   {re:/cauliflower/i, per:10, by:'each'},                              // cauliflower 10 heads/box
-  {re:/cherr/i, per:12, by:'punnet'}                                   // cherry tomatoes ~12 punnets (CONFIRM w/ owner tomorrow)
+  {re:/cherr/i, per:12, by:'punnet'},                                  // cherry tomatoes ~12 punnets (CONFIRM tomorrow)
+  {re:/avocado/i, per:20, by:'each'},                                  // avocado tray of 20
+  {re:/blueberr|berries\s*blue|blue\s*berr/i, per:12, by:'punnet'},
+  {re:/raspberr|berries\s*rasp|rasp\s*berr/i, per:12, by:'punnet'},
+  {re:/blackberr|berries\s*black|black\s*berr/i, per:12, by:'punnet'},
+  {re:/carrot.*dutch|dutch.*carrot/i, per:10, by:'bunch'},            // dutch carrots deck of 10
+  {re:/carrot.*large|large.*carrot/i, per:20, by:'kg'},               // large carrots 20kg
+  {re:/iceberg/i, per:10, by:'each'},                                  // iceberg 10 heads/box
+  {re:/spinach\s*bunch/i, per:10, by:'bunch'},                         // english spinach deck of 10
+  {re:/mushroom.*button|button.*mushroom/i, per:4, by:'kg'},           // button mushrooms 4kg
+  {re:/tomato.*round|tomato.*hydro|tomato.*gourmet/i, per:10, by:'kg'},// round/gourmet tomatoes 10kg
+  {re:/pineapple/i, per:8, by:'each'},                                 // pineapple 8/box
+  {re:/celery/i, per:10, by:'each'},                                   // celery 10/box
+  {re:/bok\s*cho/i, per:10, by:'bunch'},                               // bok choi deck of 10
+  {re:/silverbeet|silver\s*beet/i, per:10, by:'bunch'},               // silverbeet deck of 10
+  {re:/beetroot|beet\s*root/i, per:20, by:'kg'},                       // beetroot 20kg
+  {re:/radish/i, per:10, by:'bunch'},                                  // radish deck of 10
+  {re:/\bcorn\b/i, per:24, by:'each'},                                 // corn 24 cobs/box
+  {re:/garlic/i, per:10, by:'kg'},                                     // garlic 10kg
+  // Name-based versions of the FV_BOXKG sizes so they apply to the ORDERABLE produce
+  // (FV_BOXKG is keyed by Mandi-supplier names that order lines don't use).
+  {re:/capsicum/i, per:10, by:'kg'},
+  {re:/cucumber.*cont|continental.*cucumber/i, per:15, by:'kg'},
+  {re:/cucumber.*leb|lebanese.*cucumber/i, per:10, by:'kg'},
+  {re:/eggplant/i, per:7, by:'kg'},
+  {re:/\bbeans\b/i, per:10, by:'kg'},
+  {re:/grape/i, per:10, by:'kg'},
+  {re:/\bpear/i, per:13, by:'kg'},
+  {re:/kiwi/i, per:9, by:'kg'},
+  {re:/mushroom.*cup|cup.*mushroom/i, per:4, by:'kg'},
+  {re:/mushroom.*flat|flat.*mushroom/i, per:4, by:'kg'},
+  {re:/mushroom.*brown|brown.*mushroom/i, per:3, by:'kg'},
+  {re:/ginger/i, per:10, by:'kg'},
+  {re:/papaya/i, per:8, by:'kg'},
+  {re:/pumpkin.*jap|jap.*pumpkin/i, per:28.9, by:'kg'},
+  {re:/pumpkin.*butternut|butternut.*pumpkin/i, per:24, by:'kg'},
+  {re:/watermelon.*seedless|seedless.*watermelon/i, per:33.5, by:'kg'},
+  {re:/tomato.*roma|roma.*tomato/i, per:10, by:'kg'},
+  {re:/tomato.*truss|truss.*tomato/i, per:5, by:'kg'}
 ];
 function fvBoxUnitOf_(name){ var n=String(name||''); if(/\/\s*kg/i.test(n))return 'kg'; if(/punnet|pnt|250g/i.test(n))return 'punnet'; if(/bunch/i.test(n))return 'bunch'; return 'each'; }
 function fvBoxUnitLabel_(by,plural){ return by==='kg'?'kg':(by==='punnet'?(plural?' punnets':' punnet'):(by==='bunch'?(plural?' bunches':' bunch'):(plural?' pieces':' piece'))); }
