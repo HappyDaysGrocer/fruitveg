@@ -1713,6 +1713,7 @@ var PRODUCTS = [
 // Merge the EPOS shop catalogue (loaded from shopProducts.js) so every shop item is orderable too.
 if (typeof SHOP_PRODUCTS !== 'undefined' && SHOP_PRODUCTS.length) {
   Array.prototype.push.apply(PRODUCTS, SHOP_PRODUCTS);
+  if (typeof fvExtraApply_ === 'function') fvExtraApply_();   // team-promoted products join the catalogue
 }
 
 /* ─── STATE ─────────────────────────────────────────────────────────────── */
@@ -1853,7 +1854,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v152';
+var APP_BUILD = 'v153';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3194,7 +3195,9 @@ function fvCOautoBuySync(){
   try{
     if(typeof fvCObulk!=='function'||typeof fvBuyLoad!=='function') return;
     var agg=fvCObulk(), m=fvBuyLoad(), changed=false;
-    Object.keys(agg).forEach(function(k){ var a=agg[k], idx=fvCOprodIndexByKey(k); if(idx<0) return;
+    Object.keys(agg).forEach(function(k){ var a=agg[k], idx=fvCOprodIndexByKey(k);
+      if(idx<0 && typeof fvCOprodIndexByName_==='function') idx=fvCOprodIndexByName_(a.name);   // legacy Custom|| lines
+      if(idx<0) return;
       var need=(a.buyBoxes!=null&&a.buyBoxes>0)?a.buyBoxes:Math.ceil(a.qty||0);
       if(need>0 && (m[idx]||0)<need){ m[idx]=need; changed=true; if(typeof fvBuyPush==='function')fvBuyPush(idx,need); } });
     if(changed){ if(typeof fvBuySave==='function')fvBuySave(); if(typeof fvBuyRerender==='function')fvBuyRerender(); }
@@ -3216,7 +3219,8 @@ function fvCOpull(){
       fetch(FV_FB.databaseURL+'/customers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
       fetch(FV_FB.databaseURL+'/custorders.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
       fetch(FV_FB.databaseURL+'/pricetiers.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
-      fetch(FV_FB.databaseURL+'/costov.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
+      fetch(FV_FB.databaseURL+'/costov.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;}),
+      fetch(FV_FB.databaseURL+'/extraprod.json?auth='+tok,{cache:'no-store'}).then(function(r){return (r&&r.ok)?r.json():undefined;})
     ]).then(function(res){
       var changed=false;
       // MERGE the cloud copy with this device's copy — never REPLACE — so a customer/order
@@ -3245,6 +3249,15 @@ function fvCOpull(){
         var sC=JSON.stringify(Object.assign({}, locC, mC));
         if(sC!==localStorage.getItem('mandiCostOv')){ try{localStorage.setItem('mandiCostOv',sC);}catch(e){} fvCostOvApply(); changed=true; }
       }
+      // Team-promoted products (cloud wins per product), then promote any order-only
+      // products that arrived with this sync — keeps the catalogue identical everywhere.
+      if(res[4]!==undefined && res[4]!==null && typeof res[4]==='object'){
+        var locE=fvExtraLoad_(), mE={};
+        Object.keys(res[4]).forEach(function(k){ var r4=res[4][k]; if(r4&&r4.name&&r4.row) mE[String(r4.name).toLowerCase().trim()]=r4; });
+        var sE=JSON.stringify(Object.assign({}, locE, mE));
+        if(sE!==localStorage.getItem('mandiExtraProducts')){ try{localStorage.setItem('mandiExtraProducts',sE);}catch(e){} fvExtraApply_(); changed=true; }
+      }
+      if(changed && typeof fvPromoteOrderProducts_==='function') fvPromoteOrderProducts_();
       if(changed && typeof fvCOautoBuySync==='function') fvCOautoBuySync();   // synced orders feed the Buy list too
       // Don't redraw while the user is entering data — preserves the new-customer form.
       var v=document.getElementById('viewOrders');
@@ -3267,10 +3280,49 @@ function fvCostSet(key,val){ var v=parseFloat(val); if(isNaN(v)||v<0) return fal
   if(typeof fvCOpatch==='function') fvCOpatch('costov', String(key).replace(/[.#$\/\[\]]/g,'_'), {key:key,cost:v});
   return true; }
 fvCostOvApply();   // apply saved costs over the merged catalogue on every load
+/* ── Promoted products: anything added as a one-off product inside ANY customer's
+   order becomes a STANDARD catalogue product app-wide (owner rule). Scanned from the
+   synced orders, added to PRODUCTS with the line's price/cost as starting values,
+   stored locally and shared via /extraprod so every device gets the same catalogue. ── */
+function fvExtraLoad_(){ try{ return JSON.parse(localStorage.getItem('mandiExtraProducts')||'{}'); }catch(e){ return {}; } }
+function fvExtraSave_(m){ try{ localStorage.setItem('mandiExtraProducts',JSON.stringify(m)); }catch(e){} }
+function fvCatForName_(name){ var c=(String(name||'').match(/[A-Za-z]/)||['s'])[0].toUpperCase();
+  if(c<='B')return 'A-B'; if(c<='G')return 'C-G'; if(c<='O')return 'H-O'; if(c<='R')return 'P-R'; return 'S-Z'; }
+function fvCOprodIndexByName_(name){ var n=String(name||'').toLowerCase().trim(); if(!n)return -1;
+  for(var i=0;i<PRODUCTS.length;i++){ if(String(PRODUCTS[i][3]||'').toLowerCase().trim()===n) return i; } return -1; }
+function fvExtraApply_(){ var m=fvExtraLoad_(); Object.keys(m).forEach(function(k){ var row=m[k]&&m[k].row;
+  if(row && row[3] && fvCOprodIndexByName_(row[3])<0) PRODUCTS.push(row); }); }
+function fvPromoteOrderProducts_(){
+  try{
+    var orders=fvCOloadOrders(), m=fvExtraLoad_(), added=0;
+    Object.keys(orders).forEach(function(oid){ var o=orders[oid]; (o&&o.lines||[]).forEach(function(l){
+      var nm=l&&l.name; if(!nm) return;
+      if(fvCOprodIndexByName_(nm)>=0) return;                       // already a real product
+      var nk=String(nm).toLowerCase().trim(); if(m[nk]) return;     // already promoted
+      var cost=(l.costAt!=null&&!isNaN(+l.costAt)&&+l.costAt>0)?+l.costAt:null;
+      var sell=(l.price!=null&&!isNaN(+l.price)&&+l.price>0)?+l.price:null;
+      var row=[fvCatForName_(nm),null,null,String(nm),null,null,cost,sell,false,null];
+      m[nk]={ name:String(nm), row:row, from:oid };
+      PRODUCTS.push(row); added++;
+      if(typeof fvCOpatch==='function') fvCOpatch('extraprod', nk.replace(/[.#$\/\[\]]/g,'_'), m[nk]);
+    }); });
+    if(added) fvExtraSave_(m);
+    return added;
+  }catch(e){ return 0; }
+}
 // Products recently added from order sheets — shown with a NEW tag in orders until priced.
 var FV_NEW_PRODUCTS={'asparagus bunch':1,'beans green /kg':1,'broccolini bunch':1,'carrots dutch bunch':1,
-  'chilli long red 100g':1,'eggplant each':1,'mushroom cups 4kg box':1,'snow pea shoots punnet 100g':1};
-function fvNewChip_(name){ return (typeof FV_NEW_PRODUCTS==='object'&&FV_NEW_PRODUCTS[String(name||'').toLowerCase()])?' <span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle;">NEW</span>':''; }
+  'chilli long red 100g':1,'eggplant each':1,'mushroom cups 4kg box':1,'snow pea shoots punnet 100g':1,
+  'carrots catering':1};
+// NEW shows on (a) freshly-added catalogue products and (b) anything promoted out of a
+// customer's order — UNTIL its cost is set, then the tag clears by itself.
+function fvNewChip_(name){
+  var n=String(name||'').toLowerCase().trim(); if(!n) return '';
+  var isNew=(typeof FV_NEW_PRODUCTS==='object'&&FV_NEW_PRODUCTS[n])||(typeof fvExtraLoad_==='function'&&fvExtraLoad_()[n]);
+  if(!isNew) return '';
+  if(typeof fvCOlineCost_==='function' && fvCOlineCost_('zz||'+name)!=null) return '';   // costed → no longer "new"
+  return ' <span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle;">NEW</span>';
+}
 /* ── One-time seeded order: Shanikas pickup WED 11 JUN 2026 (owner's order sheet).
    Created as an OPEN order once per dataset, then synced like any other order.
    All 20 items resolve to real catalogue products (the 8 NEW ones were added to
@@ -3333,6 +3385,7 @@ setTimeout(function(){
       if(fvSeedShanikas0611() || window._fvSeedTries>90){ clearInterval(window._fvSeedT); }
     },20000);
   }
+  if(typeof fvPromoteOrderProducts_==='function') fvPromoteOrderProducts_();   // order-only products → standard catalogue
   if(typeof fvCOautoBuySync==='function') fvCOautoBuySync();   // restaurant needs → Buy list
 },1200);
 /* ── Price tiers (Hybrid pricing): a named rule reused across customers ──
@@ -3644,6 +3697,7 @@ function fvCOBulkCardHTML(){
   var agg=fvCObulk(),keys=Object.keys(agg); if(!keys.length) return '';
   var bk=fvCOboughtKeys();
   var items=keys.map(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k);
+    if(idx<0 && typeof fvCOprodIndexByName_==='function') idx=fvCOprodIndexByName_(a.name);   // legacy Custom|| lines
     var stall=(idx>=0)?PRODUCTS[idx][1]:null, comp=(idx>=0)?PRODUCTS[idx][0]:(a.sup||'');
     if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(String(comp||''))) comp='';   // category, not a company
     return {a:a,k:k,idx:idx,stall:stall,comp:comp,bought:!!bk[k]}; });

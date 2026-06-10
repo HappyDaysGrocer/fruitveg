@@ -634,5 +634,8 @@ var SHOP_PRODUCTS = [
   ['C-G',null,null,'Chilli Long Red 100g',null,null,null,null,false,null],
   ['C-G',null,null,'Eggplant Each',null,null,null,null,false,null],
   ['H-O',null,null,'Mushroom Cups 4kg Box',null,null,null,null,false,null],
-  ['S-Z',null,null,'Snow Pea Shoots Punnet 100g',null,null,null,null,false,null]
+  ['S-Z',null,null,'Snow Pea Shoots Punnet 100g',null,null,null,null,false,null],
+  // Promoted from Reddy Roast's order (was a phone-only custom product) — sell as charged;
+  // cost to be set (shows NEW until then).
+  ['C-G',null,null,'Carrots Catering',null,null,null,23,false,null]
 ];
