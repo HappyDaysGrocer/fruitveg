@@ -1363,6 +1363,7 @@
 <script src="shopProducts.js"></script>
 <script src="storeCatalog.js"></script>
 <script src="eposCosts.js"></script>
+<script src="wastage.js"></script>
 <script src="invoices.js"></script>
 <script src="bankledger.js"></script>
 <script src="bankfeed.js"></script>
@@ -1856,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v156';
+var APP_BUILD = 'v157';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6255,7 +6256,8 @@ function buildHistoryView() {
   tabs.className = 'hist-tabs';
   tabs.innerHTML =
     '<button class="hist-tab ' + (histMode==='product'?'active':'') + '" onclick="setHistMode(\'product\')">📦 By Product</button>' +
-    '<button class="hist-tab ' + (histMode==='date'?'active':'') + '"    onclick="setHistMode(\'date\')">📅 By Date</button>';
+    '<button class="hist-tab ' + (histMode==='date'?'active':'') + '"    onclick="setHistMode(\'date\')">📅 By Date</button>' +
+    '<button class="hist-tab ' + (histMode==='waste'?'active':'') + '"   onclick="setHistMode(\'waste\')">🗑️ Wastage</button>';
   hv.appendChild(tabs);
 
   // Results container
@@ -6297,11 +6299,49 @@ function renderHistory(query) {
   var dates = Object.keys(hist).sort().reverse();
   var q     = (query || '').toLowerCase().trim();
 
+  // Total spent buying produce (Mandi + market) across every saved run — shown on the
+  // By Product / By Date views so the purchasing cost is always visible.
+  if (histMode !== 'waste') {
+    var grand=0, runs=0;
+    dates.forEach(function(d){ var run=hist[d]; if(!run||!run.items)return; runs++;
+      run.items.forEach(function(it){ grand += (+it.total || (+it.price||0)*(+it.qty||0) || 0); }); });
+    if (runs) {
+      var pc=document.createElement('div'); pc.className='order-summary-card';
+      pc.style.cssText='background:#0d4420;color:#fff;border-radius:10px;';
+      pc.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;">'
+        +'<span style="font-weight:700;font-size:13px;">🛒 Produce purchased (Mandi + market)</span>'
+        +'<span style="font-weight:900;font-size:18px;color:#4ade80;">'+fvCOmoney(grand)+'</span></div>'
+        +'<div style="font-size:11px;color:#bbf7d0;margin-top:2px;">total cost of buying fruit &amp; veg across '+runs+' run'+(runs!==1?'s':'')+'</div>';
+      results.appendChild(pc);
+    }
+  }
   if (histMode === 'product') {
     renderByProduct(hist, dates, q, results);
+  } else if (histMode === 'waste') {
+    renderWastage(q, results);
   } else {
     renderByDate(hist, dates, q, results);
   }
+}
+function renderWastage(q, container) {
+  var W = (typeof FV_WASTAGE==='object' && FV_WASTAGE) ? FV_WASTAGE : {};
+  var dates = Object.keys(W).sort().reverse();
+  var total=0; dates.forEach(function(d){ (W[d]||[]).forEach(function(w){ if(!q || String(w.desc||'').toLowerCase().indexOf(q)>=0) total++; }); });
+  if (!total) { container.innerHTML += '<div class="hist-empty">No wastage logged'+(q?' for “'+fvEsc(q)+'”':'')+'.<br><br>Waste rung up in EPOS (the $0.01 lines) shows here once the daily sales file is processed.</div>'; return; }
+  var head=document.createElement('div'); head.className='order-summary-card';
+  head.style.cssText='border:1px solid #fecaca;background:#fef2f2;';
+  head.innerHTML='<div style="font-weight:800;color:#b91c1c;font-size:14px;">🗑️ Wastage log</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-top:2px;">What’s been dumped/spoiled (rung through EPOS). '+total+' entr'+(total!==1?'ies':'y')+'.</div>';
+  container.appendChild(head);
+  dates.forEach(function(d){
+    var items=(W[d]||[]).filter(function(w){ return !q || String(w.desc||'').toLowerCase().indexOf(q)>=0; });
+    if(!items.length) return;
+    var dl; try{ var dd=new Date(d+'T00:00:00'); dl=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dd.getDay()]+' '+dd.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dd.getMonth()]+' '+dd.getFullYear(); }catch(e){ dl=d; }
+    var card=document.createElement('div'); card.className='order-summary-card';
+    var rows=items.map(function(w){ return '<div style="display:flex;gap:8px;padding:5px 0;border-top:1px solid #f3f3f3;font-size:13px;color:#374151;"><span style="color:#b91c1c;">🗑️</span><span style="flex:1;min-width:0;">'+fvEsc(w.desc)+'</span></div>'; }).join('');
+    card.innerHTML='<div style="font-weight:700;color:#1c4587;font-size:14px;">'+fvEsc(dl)+' <span style="font-size:11px;color:#9ca3af;font-weight:600;">· '+items.length+' item'+(items.length!==1?'s':'')+'</span></div>'+rows;
+    container.appendChild(card);
+  });
 }
 
 // Find a product's CURRENT index in PRODUCTS by its (historical) name.
