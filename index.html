@@ -1852,7 +1852,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v142';
+var APP_BUILD = 'v143';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -3517,6 +3517,38 @@ function fvCOShopListHTML(){
     + rows
     + '</div>';
 }
+// Restaurant-orders purchasing card (the old Bulk list), shown in the same Shop tab with
+// the same stall/company + green-when-bought treatment — one screen for the whole run.
+function fvCOBulkCardHTML(){
+  if(typeof fvCObulk!=='function') return '';
+  var agg=fvCObulk(),keys=Object.keys(agg); if(!keys.length) return '';
+  var bk=fvCOboughtKeys();
+  var items=keys.map(function(k){ var a=agg[k],idx=fvCOprodIndexByKey(k);
+    var stall=(idx>=0)?PRODUCTS[idx][1]:null, comp=(idx>=0)?PRODUCTS[idx][0]:(a.sup||'');
+    if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(String(comp||''))) comp='';   // category, not a company
+    return {a:a,k:k,stall:stall,comp:comp,bought:!!bk[k]}; });
+  items.sort(function(x,y){ var sa=parseInt(x.stall),sb=parseInt(y.stall),aN=!isNaN(sa),bN=!isNaN(sb);
+    if(aN&&bN&&sa!==sb)return sa-sb; if(aN&&!bN)return -1; if(!aN&&bN)return 1;
+    return String(x.a.name||'').localeCompare(String(y.a.name||'')); });
+  var nB=0; items.forEach(function(x){ if(x.bought)nB++; });
+  var rows=items.map(function(x){ var a=x.a;
+    var badge=(x.stall&&!isNaN(parseInt(x.stall)))?('<span class="stall-badge" style="margin-right:6px;font-size:11px;min-width:26px;">'+fvEsc(String(x.stall))+'</span>'):'';
+    var buyTxt=(a.buyBoxes!=null)?('buy '+a.buyBoxes+' box'+(a.buyBoxes!==1?'es':'')):((Math.round((a.qty||0)*100)/100)+fvEsc(a.unit||''));
+    var parts=a.parts.map(function(pt){ return fvEsc(pt.name)+' '+(Math.round((pt.qty||0)*100)/100)+fvEsc(a.unit||''); }).join(', ');
+    var sub=(x.comp?fvEsc(x.comp)+' · ':'')+(a.boxKg?('need '+(Math.round((a.qty||0)*10)/10)+'kg ('+a.boxKg+'kg/box)'+((a.buyBoxes!=null&&a.spareKg>0)?(' · '+a.spareKg+'kg spare'):'')+' · '):'')+parts;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#374151;padding:6px 6px;'+(x.bought?'background:#dcfce7;border-radius:8px;margin:2px 0;':'border-bottom:1px solid #e8eef5;')+'">'
+      +'<span style="flex:1;min-width:0;">'+badge+'<span style="font-weight:600;color:#111;">'+fvEsc(a.name)+'</span>'
+      +'<span style="display:block;font-size:10px;color:#6b7280;margin-top:1px;">'+sub+'</span></span>'
+      +'<span style="flex:none;font-weight:800;white-space:nowrap;color:'+(x.bought?'#15803d':'#1c4587')+';">'+(x.bought?'✅ bought':buyTxt)+'</span></div>';
+  }).join('');
+  return '<div class="order-summary-card" style="border:1px solid #c7d2fe;background:#eef2ff;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#1c4587;font-size:14px;">🍽️ Restaurant orders — to buy</span><span style="font-size:11px;color:#1c4587;font-weight:700;">'+(nB?nB+' of '+items.length+' bought ✓':items.length+' item'+(items.length!==1?'s':''))+'</span></div>'
+    +'<div style="font-size:11px;color:#6b7280;margin:2px 0 6px;">Everything your open restaurant orders need, rounded up to whole boxes. Confirmed buys on the List turn green here too.</div>'
+    +rows
+    +'<button onclick="fvCOpushBulk()" style="width:100%;padding:10px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;margin-top:10px;">➕ Add these to the List as boxes</button>'
+    +'<button onclick="fvCOnav(\'pick\')" style="width:100%;padding:9px;background:#1c4587;color:#fff;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-top:6px;">📦 Split back per restaurant (dispatch) ›</button>'
+    +'</div>';
+}
 function fvCOhomeTab(t){ fvCO.homeTab=(t==='shop'?'shop':'rest'); if(typeof fvCORender==='function')fvCORender(); }
 function fvCOrenderList(){
   var custs=fvCOloadCust(),orders=fvCOloadOrders();
@@ -3527,7 +3559,8 @@ function fvCOrenderList(){
   var h='<div style="display:flex;gap:6px;margin-bottom:10px;">'+tabBtn('rest','🍽️ Restaurants / Cafés')+tabBtn('shop','🏪 Shop buy list')+'</div>';
   if(tab==='shop'){
     var shop=(typeof fvCOShopListHTML==='function')?fvCOShopListHTML():'';
-    return h+(shop||'<div class="empty-state">Nothing on the shop buy list yet.<br><br>Add items with the +/− steppers on the <strong>List</strong> tab and they show here.</div>');
+    var bulk=(typeof fvCOBulkCardHTML==='function')?fvCOBulkCardHTML():'';
+    return h+((shop||bulk)?(shop+bulk):'<div class="empty-state">Nothing to buy yet.<br><br>Add shop items with the +/− steppers on the <strong>List</strong> tab, or take restaurant orders — both show here.</div>');
   }
   h+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
     +'<button onclick="fvCOnewCust()" style="flex:1;min-width:140px;padding:11px;background:#15662f;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;">➕ New customer</button>'
