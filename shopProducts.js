@@ -635,7 +635,7 @@ var SHOP_PRODUCTS = [
   ['C-G',null,null,'Carrots Dutch Bunch',null,null,null,null,false,null],
   ['C-G',null,null,'Chilli Long Red /kg',null,null,4.5,16.99,false,null],
   ['C-G',null,null,'Eggplant Each',null,null,null,null,false,null],
-  ['H-O',null,null,'Mushroom Cups 4kg Box',null,null,null,null,false,null],
+  ['H-O',null,null,'Mushroom Cups 4kg Box',null,null,25,45,false,null],
   ['S-Z',null,null,'Snow Pea Shoots Punnet 100g',null,null,null,null,false,null],
   ['C-G',null,null,'Carrots Catering',null,null,null,23,false,null],
   ['Wastage',null,null,'Wastage — Fruit',null,null,null,0.01,false,null],

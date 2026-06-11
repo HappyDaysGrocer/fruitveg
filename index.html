@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v174';
+var APP_BUILD = 'v175';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7154,7 +7154,7 @@ function fvBankByCat(monthFilter){
   return { byCat:byCat, periodStart:minD, periodEnd:maxD };
 }
 /* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
-var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":9037.13,"items":2060,"mp":0.5462,"bad":0}};
+var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":9037.13,"items":2060,"mp":0.5434,"bad":0}};
 var FV_MONTHLY_RENT = 7262.75;   // $6,562.50 rent + $40 mgmt fee + GST per month (Cameron invoices 5212888/5275095; lease rent $78,750/yr ex-GST)
 /* VERIFIED against the SIGNED LEASE (dated 13/01/2026) and the Cameron rent invoices:
    - Lease TERM commenced 22 Jan 2026 (3-year term + two 3-year options).
@@ -7185,7 +7185,7 @@ function fvEposForMonth(selMonth){
   if (selMonth){ var m = EPOS_MONTHLY[selMonth]; return m ? { sales:m.sales, items:m.items, mp:m.mp } : null; }
   var sales=0, items=0, keys=Object.keys(EPOS_MONTHLY); if (!keys.length) return null;
   keys.forEach(function(k){ sales += EPOS_MONTHLY[k].sales||0; items += EPOS_MONTHLY[k].items||0; });
-  return { sales:sales, items:items, mp:(typeof EPOS_SALES!=='undefined'?EPOS_SALES.cleanMarginPerc:0) };
+  return { sales:sales, items:items, mp:(typeof EPOS_SALES!=='undefined'?EPOS_SALES.cleanMarginPerc:0.588) };
 }
 function fvPLNet(selMonth){
   var b = fvBankByCat(selMonth || null);
@@ -7281,7 +7281,7 @@ function fvPLNetPanelHTML(selMonth){
    cost-error days (EPOS cost not set) excluded. */
 var EPOS_SALES = { src:'fix_2026-06-11', start:'2026-02-25', end:'2026-06-11', days:59,
   salesIncVAT:28068.96, salesExVAT:27459.77, items:6887, trans:1595, avgPerDay:475.75,
-  badDays:6, cleanDays:53, cleanSalesIncVAT:22170.19, cleanMargin:13063.97, cleanMarginPerc:0.589 };
+  badDays:6, cleanDays:53, cleanSalesIncVAT:22170.19, cleanMargin:13038.97, cleanMarginPerc:0.589 };
 /* Earliest → latest date across ALL data we hold (so Expenses & P&L always
    show the period they cover — no guessing, no duplicate analyses). */
 function fvDataDateRange(){
