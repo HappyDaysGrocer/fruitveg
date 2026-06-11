@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v165';
+var APP_BUILD = 'v166';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2303,7 +2303,7 @@ function fvCafeMenuRow(m){
 }
 function fvCafeMenuListHTML(q){
   q=(q||'').trim().toLowerCase();
-  var bySec={}; FV_CAFE_MENU.forEach(function(m){ if(q && m[0].toLowerCase().indexOf(q)<0) return; (bySec[m[1]]=bySec[m[1]]||[]).push(m); });
+  var bySec={}; FV_CAFE_MENU.forEach(function(m){ if(!fvSearchHit_(m[0], q)) return; (bySec[m[1]]=bySec[m[1]]||[]).push(m); });
   var h='', any=false;
   FV_CAFE_SECORDER.forEach(function(sec){ var arr=bySec[sec]; if(!arr||!arr.length) return; any=true;
     h+='<div style="font-weight:800;color:#0d4420;margin:14px 0 5px;font-size:14px;">'+(FV_CAFE_SECLABEL[sec]||sec)+' <span style="color:#9ca3af;font-weight:600;font-size:12px;">('+arr.length+')</span></div>';
@@ -2807,6 +2807,14 @@ function showView(name) {
 
 /* ─── SEARCH ────────────────────────────────────────────────────────────── */
 
+// One search standard for the whole app: case-insensitive, splits the query into words,
+// every word must appear as a substring (any order). Fixes "red onion" not finding "Onion Red".
+function fvSearchHit_(text, query){
+  var q=String(query==null?'':query).toLowerCase().trim(); if(!q) return true;
+  var t=String(text==null?'':text).toLowerCase();
+  var ws=q.split(/\s+/); for(var i=0;i<ws.length;i++){ if(ws[i] && t.indexOf(ws[i])<0) return false; }
+  return true;
+}
 function onSearch(query) {
   var q = query.trim().toLowerCase();
   document.getElementById('searchClear').style.display = q ? 'block' : 'none';
@@ -3889,7 +3897,7 @@ function fvCOBuyRowsHTML(query){
   rows.forEach(function(r){
     var comp=r.sup||''; if(/^[A-Za-z]\s*-\s*[A-Za-z]$/.test(comp)) comp='';
     var st=(typeof state==='object'&&state&&r.idx>=0)?state[r.idx]:null, bought=!!(st&&st.status==='bought'); if(bought)nBought++;
-    if(q && (String(r.name||'')+' '+comp).toLowerCase().indexOf(q)<0) return; shown++;
+    if(!fvSearchHit_(String(r.name||'')+' '+comp, query)) return; shown++;
     var badge=(r.stall!=null&&!isNaN(parseInt(r.stall)))?('<span class="stall-badge" style="margin-right:6px;font-size:11px;min-width:26px;">'+fvEsc(String(r.stall))+'</span>'):'';
     var nameHTML=(r.idx>=0)
       ?'<span onclick="fvProductHistory('+r.idx+')" title="Tap for this product\'s purchase history" style="font-weight:600;color:#111;cursor:pointer;text-decoration:underline dotted #9ca3af;text-underline-offset:2px;">'+fvEsc(r.name)+'</span>'
@@ -4066,14 +4074,30 @@ function fvCOhistUnitCost_(it, wantPerKg){
 // CLOSEST to the order's date (owner: "input the purchase price closest associated
 // with the order date"). Exact (normalised) name matches always count; looser
 // token matches only between /kg items so per-box vs per-each never cross.
+// ── Shared cost-matching helpers (used by the date-history matcher AND the EPOS fallback) ──
+// Tokenise a product name: lowercase, drop packaging/stop words, singularise. Order-independent.
+var FV_COST_STOP={kg:1,per:1,each:1,box:1,boxe:1,bag:1,bunch:1,bunche:1,punnet:1,fresh:1,loose:1,pack:1,tray:1,carton:1,ctn:1,sleeve:1,slv:1,the:1};
+// Singularise FIRST, then drop stop words — so plural packaging words ("punnets","bags") fold
+// to the same token as their singular and don't leak into the match (the cherry-punnet bug).
+function fvCostToks_(s){ return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
+  .map(function(w){ return w.replace(/ies$/,'y').replace(/(oes|ses)$/,'o').replace(/s$/,''); })
+  .filter(function(w){ return w && !FV_COST_STOP[w]; }); }
+// Do two token sets refer to the SAME product for costing?
+//  • identical set in any word order → match (fixes "red onion" vs "onion red").
+//  • kgTol (only for /kg lines): allow generic↔specific ONLY when the EXTRA tokens are numeric
+//    size tokens (e.g. "20kg","10"), NEVER alphabetic descriptors — so "Carrots /kg" never
+//    inherits the cost of "Carrots Premium / Catering / Jack Rabbit" (each a different price).
+function fvCostNameMatch_(lt, ht, kgTol){
+  if(lt.slice().sort().join(' ')===ht.slice().sort().join(' ')) return true;
+  if(!kgTol) return false;
+  function hasAlphaExtra(a,b){ for(var i=0;i<a.length;i++){ var w=a[i]; if(b.indexOf(w)<0 && /[a-z]/.test(w) && !/^[0-9]/.test(w)) return true; } return false; }
+  if(hasAlphaExtra(lt,ht) || hasAlphaExtra(ht,lt)) return false;
+  return lt.every(function(w){return ht.indexOf(w)>=0;}) || ht.every(function(w){return lt.indexOf(w)>=0;});
+}
 function fvCOhistCost_(line, date){
   if(typeof loadHistory!=='function' || !date) return null;
   var nm=String((line&&line.name)||String((line&&line.key)||'').split('||')[1]||''); if(!nm) return null;
-  var STOP={kg:1,per:1,each:1,box:1,bag:1,bunch:1,punnet:1,fresh:1,loose:1,pack:1,the:1};
-  function toks(s){ return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
-    .filter(function(w){ return w && !STOP[w]; })
-    .map(function(w){ return w.replace(/ies$/,'y').replace(/(oes|ses)$/,'o').replace(/s$/,''); }); }
-  var lt=toks(nm); if(!lt.length) return null;
+  var lt=fvCostToks_(nm); if(!lt.length) return null;
   var isKgLine=/\/\s*kg/i.test(nm);
   var od=new Date(String(date).slice(0,10)+'T00:00:00'); if(isNaN(od)) return null;
   var hist=loadHistory(), best=null, bestDiff=Infinity, bestOv=0;
@@ -4083,10 +4107,8 @@ function fvCOhistCost_(line, date){
     var diff=Math.abs(hd-od);
     run.items.forEach(function(it){
       if(!(it && +it.price>0)) return;
-      var hn=String(it.productName||''), ht=toks(hn); if(!ht.length) return;
-      var exact=(lt.join(' ')===ht.join(' '));
-      var subset=lt.every(function(w){return ht.indexOf(w)>=0;}) || ht.every(function(w){return lt.indexOf(w)>=0;});
-      if(!(exact || (isKgLine && /\/\s*kg/i.test(hn) && subset))) return;
+      var hn=String(it.productName||''), ht=fvCostToks_(hn); if(!ht.length) return;
+      if(!fvCostNameMatch_(lt, ht, isKgLine && /\/\s*kg/i.test(hn))) return;
       var unit=fvCOhistUnitCost_(it, isKgLine);               // per-unit, matching how we sell
       if(unit==null) return;
       var ov=Math.min(lt.length,ht.length)/Math.max(lt.length,ht.length);
@@ -4125,6 +4147,13 @@ function fvCOcostFor_(l, date){
   // 3) EPOS Now standing cost — reliable default when there's no recent purchase record.
   var nm=String((l&&l.name)||String((l&&l.key)||'').split('||')[1]||'').toLowerCase().trim();
   var ep=(typeof EPOS_COSTS==='object'&&EPOS_COSTS&&nm)?EPOS_COSTS[nm]:null;
+  if(ep==null && typeof EPOS_COSTS==='object' && EPOS_COSTS && nm){
+    // exact name missed → token-SET match (handles word order, "/kg" suffix, punctuation);
+    // never looser, so we can't grab a different product's cost.
+    var _lt=fvCostToks_(nm); if(_lt.length){ var _lk=_lt.slice().sort().join(' ');
+      for(var _ek in EPOS_COSTS){ if(EPOS_COSTS.hasOwnProperty(_ek)){ var _et=fvCostToks_(_ek);
+        if(_et.length && _et.slice().sort().join(' ')===_lk){ ep=EPOS_COSTS[_ek]; break; } } } }
+  }
   if(sane(ep)) return +ep;
   // 4) catalogue base cost.
   var cat=fvCOlineCost_(l && l.key);
@@ -4295,7 +4324,7 @@ function fvCOsetShop(idx,e){ if(e&&e.stopPropagation)e.stopPropagation(); var p=
 function fvCOupdTotal(){ var ord=(fvCO.editOid?fvCOloadOrders()[fvCO.editOid]:fvCOopenOrder(fvCO.custId)),t=ord?fvCOorderTotal(ord):0; var el=document.getElementById('coOrdTotal'); if(el)el.textContent=fvCOmoney(t); var cc=document.getElementById('coOrdCount'); if(cc){ var n=ord?(ord.lines||[]).filter(function(l){return (l.qty||0)>0;}).length:0; cc.textContent=n?(' · '+n+' item'+(n!==1?'s':'')):''; } }
 function fvCOtoggleOur(){ window._fvCOshowOur=!window._fvCOshowOur; var els=document.querySelectorAll('.fvco-our'); for(var i=0;i<els.length;i++){ els[i].style.display=window._fvCOshowOur?'':'none'; } var b=document.getElementById('fvcoOurBtn'); if(b)b.textContent=window._fvCOshowOur?'🙈 Hide shop price':'👁 Show shop price'; }
 function fvCOtoggleOnly(){ window._fvCOonlyOrder=!window._fvCOonlyOrder; var b=document.getElementById('fvcoOnlyBtn'); if(b){ b.textContent=window._fvCOonlyOrder?'✓ In this order':'Show all'; b.style.background=window._fvCOonlyOrder?'#1c4587':'#f1f5f9'; b.style.color=window._fvCOonlyOrder?'#fff':'#374151'; b.style.borderColor=window._fvCOonlyOrder?'#1c4587':'#cbd5e1'; } fvCOfilter(); }
-function fvCOfilter(){ var q=((document.getElementById('fvcoSearch')||{}).value||'').toLowerCase(),only=!!window._fvCOonlyOrder; var ord=(fvCO.editOid?fvCOloadOrders()[fvCO.editOid]:fvCOopenOrder(fvCO.custId))||{lines:[]},have={}; (ord.lines||[]).forEach(function(l){ if((l.qty||0)>0)have[l.key]=true; }); var rows=document.querySelectorAll('[data-coidx]'); for(var i=0;i<rows.length;i++){ var el=rows[i],nm=el.getAttribute('data-coname')||'',key=el.getAttribute('data-cokey')||''; el.style.display=((!q||nm.indexOf(q)>=0)&&(!only||have[key]))?'block':'none'; } }
+function fvCOfilter(){ var q=((document.getElementById('fvcoSearch')||{}).value||''),only=!!window._fvCOonlyOrder; var ord=(fvCO.editOid?fvCOloadOrders()[fvCO.editOid]:fvCOopenOrder(fvCO.custId))||{lines:[]},have={}; (ord.lines||[]).forEach(function(l){ if((l.qty||0)>0)have[l.key]=true; }); var rows=document.querySelectorAll('[data-coidx]'); for(var i=0;i<rows.length;i++){ var el=rows[i],nm=el.getAttribute('data-coname')||'',key=el.getAttribute('data-cokey')||''; el.style.display=(fvSearchHit_(nm,q)&&(!only||have[key]))?'block':'none'; } }
 function fvCOrenderBulk(){
   var agg=fvCObulk(),keys=Object.keys(agg);
   keys.sort(function(a,b){ var s=String(agg[a].sup||'').localeCompare(String(agg[b].sup||'')); return s!==0?s:String(agg[a].name||'').localeCompare(String(agg[b].name||'')); });
@@ -6549,7 +6578,7 @@ function renderByProduct(hist, dates, q, container) {
   if (q) {
     dates.forEach(function(date) {
       hist[date].items.forEach(function(it) {
-        if (it.productName.toLowerCase().indexOf(q) >= 0) productNameMatch = true;
+        if (fvSearchHit_(it.productName, q)) productNameMatch = true;
       });
     });
   }
@@ -6560,8 +6589,8 @@ function renderByProduct(hist, dates, q, container) {
     var run = hist[date];
     run.items.forEach(function(item) {
       if (q) {
-        var nameHit = item.productName.toLowerCase().indexOf(q) >= 0;
-        var supHit  = item.supplier.toLowerCase().indexOf(q) >= 0;
+        var nameHit = fvSearchHit_(item.productName, q);
+        var supHit  = fvSearchHit_(item.supplier, q);
         // If query matches a product name anywhere, only include name hits.
         // Otherwise fall back to supplier matches (e.g. "Latorre", "Costa").
         if (productNameMatch ? !nameHit : !supHit) return;
@@ -6687,14 +6716,14 @@ function renderByDate(hist, dates, q, container) {
   if (q) {
     dates.forEach(function(date) {
       hist[date].items.forEach(function(it) {
-        if (it.productName.toLowerCase().indexOf(q) >= 0) productNameMatch = true;
+        if (fvSearchHit_(it.productName, q)) productNameMatch = true;
       });
     });
   }
   function matchItem(it) {
     if (!q) return true;
-    var nameHit = it.productName.toLowerCase().indexOf(q) >= 0;
-    var supHit  = it.supplier.toLowerCase().indexOf(q) >= 0;
+    var nameHit = fvSearchHit_(it.productName, q);
+    var supHit  = fvSearchHit_(it.supplier, q);
     return productNameMatch ? nameHit : supHit;
   }
 
@@ -7866,7 +7895,7 @@ function buildSpendView() {
 function renderSpendRows() {
   var el = document.getElementById('spendList'); if (!el) return;
   var q = ((document.getElementById('spendSearch') || {}).value || '').trim().toLowerCase();
-  var list = (window._spendSuppliers || []).filter(function(g){ return !q || g.name.toLowerCase().indexOf(q) >= 0; });
+  var list = (window._spendSuppliers || []).filter(function(g){ return fvSearchHit_(g.name, q); });
   var html = '';
   list.forEach(function(g, gi){
     html += '<div class="order-summary-card">'
