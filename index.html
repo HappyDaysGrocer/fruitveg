@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v168';
+var APP_BUILD = 'v169';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4285,12 +4285,14 @@ function fvCOrenderOrder(){
     var tp; if(c.prices&&c.prices[key]!=null){ tp=c.prices[key]; } else if(rule){ tp=tierPx(p); } else { tp=(sell!=null?sell:''); }
     var priceVal=line?line.price:((typeof tp==='number')?tp:''), isMan=!!(line&&line.src==='manual'), setcost=(tp==='SETCOST');
     var nm=(typeof getProductName==='function')?getProductName(i):p[3];
+    var u=(typeof fvCOunit==='function')?fvCOunit(p[3]):'ea', uStep=(u==='kg'?'0.1':'1');
     var our=(sell!=null)?('<span class="fvco-our" style="'+(showOur?'':'display:none;')+'color:#9ca3af;font-size:11px;white-space:nowrap;">shop '+fvCOmoney(sell)+'</span>'):'';
     rowsHtml+='<div data-coidx="'+i+'" data-cokey="'+fvEsc(String(key)).replace(/"/g,'&quot;')+'" data-coname="'+fvEsc(String(p[3]).toLowerCase()).replace(/"/g,'&quot;')+'" id="cor'+i+'" style="display:'+((!only||qty>0)?'block':'none')+';border-top:1px solid #eef0f2;padding:8px 4px;'+(qty>0?'background:#f0fdf4;border-radius:8px;':'')+'">'
       +'<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;"><span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111;">'+fvEsc(nm)+fvNewChip_(nm)+(isMan?' <span style="font-size:9px;color:#b45309;font-weight:700;">· manual</span>':'')+'</span>'+our+'</div>'
       +'<div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">'
       +'<button type="button" onclick="fvCOqtyAdj('+i+',-1,event)" style="width:30px;height:30px;border:1px solid #cbd5e1;background:#fff;border-radius:7px;font-size:17px;font-weight:700;line-height:1;cursor:pointer;">−</button>'
-      +'<span id="coq'+i+'" style="min-width:22px;text-align:center;font-weight:700;font-size:14px;">'+qty+'</span>'
+      +'<input id="coq'+i+'" type="number" inputmode="decimal" min="0" step="'+uStep+'" value="'+(qty||'')+'" placeholder="0" onchange="fvCOqtySet('+i+',this.value)" onfocus="try{this.select()}catch(e){}" title="Type the quantity — e.g. 0.5 or 1.5 for kg" style="width:52px;text-align:center;font-weight:700;font-size:14px;padding:6px 2px;border:1px solid #cbd5e1;border-radius:7px;">'
+      +'<span style="font-size:11px;color:#6b7280;font-weight:700;min-width:14px;">'+fvEsc(u)+'</span>'
       +'<button type="button" onclick="fvCOqtyAdj('+i+',1,event)" style="width:30px;height:30px;border:1px solid #15662f;background:#15662f;color:#fff;border-radius:7px;font-size:17px;font-weight:700;line-height:1;cursor:pointer;">+</button>'
       +'<span style="font-size:12px;color:#6b7280;margin-left:4px;">$</span>'
       +'<input id="cop'+i+'" type="number" inputmode="decimal" value="'+(priceVal===''?'':priceVal)+'" placeholder="'+(setcost?'set cost':'price')+'" onchange="fvCOpriceSet('+i+',this.value)" style="width:64px;padding:7px;border:1px solid '+(isMan?'#f59e0b':'#cbd5e1')+';border-radius:7px;font-size:14px;">'
@@ -4322,7 +4324,24 @@ function fvCOqtyAdj(idx,delta,e){ if(e&&e.stopPropagation)e.stopPropagation(); v
     ord.lines.push({key:r.key,name:p[3],sup:p[0],unit:fvCOunit(p[3]),qty:nq,price:price,src:src});
     if(src==='manual'){ var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=price; fvCOcustSave(c); } } }
   fvCOordSave(ord);
-  var qs=document.getElementById('coq'+idx); if(qs)qs.textContent=nq;
+  var qs=document.getElementById('coq'+idx); if(qs){ if(qs.tagName==='INPUT') qs.value=(nq||''); else qs.textContent=nq; }
+  var row=document.getElementById('cor'+idx); if(row){ if(nq>0){ row.style.background='#f0fdf4'; row.style.borderRadius='8px'; } else { row.style.background=''; row.style.borderRadius=''; if(window._fvCOonlyOrder)row.style.display='none'; } }
+  var box2=document.getElementById('cop'+idx); if(box2&&box2.value===''){ var _r2=fvCOorderRow_(idx),ln=_r2&&_r2.line; if(ln&&ln.price)box2.value=ln.price; }
+  fvCOupdTotal();
+}
+// Type an exact quantity (allows decimal kg like 0.5 / 1.5 / 5.98) — mirrors fvCOqtyAdj's
+// line create/update/remove + pricing, but sets the qty absolutely instead of stepping.
+function fvCOqtySet(idx,val){ var r=fvCOorderRow_(idx); if(!r){ if(typeof fvCORender==='function')fvCORender(); return; }
+  var p=r.p,ord=r.ord,line=r.line; if(ord&&!Array.isArray(ord.lines))fvCOnormLines(ord);
+  var nq=parseFloat(val); if(isNaN(nq)||nq<0)nq=0; nq=Math.round(nq*1000)/1000;
+  if(nq===0){ if(line)ord.lines.splice(ord.lines.indexOf(line),1); }
+  else if(line){ line.qty=nq; }
+  else { var box=document.getElementById('cop'+idx),typed=box?parseFloat(box.value):NaN,tp=fvCOpriceFor(fvCO.custId,r.key),price,src;
+    if(!isNaN(typed)){ price=typed; src=((typeof tp==='number')&&Math.abs(tp-typed)<0.005)?'tier':'manual'; } else { price=(typeof tp==='number')?tp:0; src='tier'; }
+    ord.lines.push({key:r.key,name:p[3],sup:p[0],unit:fvCOunit(p[3]),qty:nq,price:price,src:src});
+    if(src==='manual'){ var c=fvCOloadCust()[fvCO.custId]; if(c){ if(!c.prices)c.prices={}; c.prices[r.key]=price; fvCOcustSave(c); } } }
+  fvCOordSave(ord);
+  var qi=document.getElementById('coq'+idx); if(qi)qi.value=(nq||'');
   var row=document.getElementById('cor'+idx); if(row){ if(nq>0){ row.style.background='#f0fdf4'; row.style.borderRadius='8px'; } else { row.style.background=''; row.style.borderRadius=''; if(window._fvCOonlyOrder)row.style.display='none'; } }
   var box2=document.getElementById('cop'+idx); if(box2&&box2.value===''){ var _r2=fvCOorderRow_(idx),ln=_r2&&_r2.line; if(ln&&ln.price)box2.value=ln.price; }
   fvCOupdTotal();

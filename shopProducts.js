@@ -631,7 +631,7 @@ var SHOP_PRODUCTS = [
   ['A-B',null,null,'Beans Green /kg',null,null,null,null,false,null],
   ['A-B',null,null,'Broccolini Bunch',null,null,null,null,false,null],
   ['C-G',null,null,'Carrots Dutch Bunch',null,null,null,null,false,null],
-  ['C-G',null,null,'Chilli Long Red 100g',null,null,null,null,false,null],
+  ['C-G',null,null,'Chilli Long Red /kg',null,null,null,null,false,null],
   ['C-G',null,null,'Eggplant Each',null,null,null,null,false,null],
   ['H-O',null,null,'Mushroom Cups 4kg Box',null,null,null,null,false,null],
   ['S-Z',null,null,'Snow Pea Shoots Punnet 100g',null,null,null,null,false,null],
