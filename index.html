@@ -4036,8 +4036,8 @@ function fvCOorderForm(oid){
     +'.off-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:3px solid #15662f;padding:0 2px 5px;margin-bottom:7px;}'
     +'.off-ttl{font-size:17px;font-weight:800;color:#15662f;letter-spacing:1px;line-height:1;}.off-eml{font-size:9px;color:#374151;margin-top:4px;}'
     +'.off-wm{height:62px;width:auto;}.off-ic{height:40px;width:auto;flex:none;}'
-    +'.off-fields{margin:0 0 7px;}'
-    +'.off-fld{display:flex;gap:6px;align-items:center;padding:1.5px 0;}.off-lbl{font-weight:700;color:#15662f;white-space:nowrap;font-size:10px;background:#eaf4ec;border:1px solid #9aa0a6;border-radius:3px;padding:2px 5px;width:160px;flex:none;}.off-val{flex:1;font-weight:600;border:1px solid #9aa0a6;border-radius:3px;min-height:15px;padding:1px 5px;}'
+    +'.off-fields{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;margin:0 0 7px;}'
+    +'.off-fld{display:flex;gap:5px;align-items:center;}.off-lbl{font-weight:700;color:#15662f;white-space:nowrap;font-size:9px;background:#eaf4ec;border:1px solid #9aa0a6;border-radius:3px;padding:2px 4px;width:118px;flex:none;overflow:hidden;text-overflow:ellipsis;}.off-val{flex:1;min-width:0;font-weight:600;border:1px solid #9aa0a6;border-radius:3px;min-height:16px;padding:1px 5px;}'
     +'.off-grid{column-count:3;column-gap:11px;}.off-sec{break-inside:avoid;font-weight:800;color:#fff;background:#15662f;padding:1px 6px;border-radius:3px;margin:4px 0 1px;font-size:10px;letter-spacing:.5px;border:1px solid #15662f;}'
     +'.off-item{break-inside:avoid;display:flex;align-items:center;gap:4px;padding:0.5px 0;}.off-nm{flex:1;min-width:0;font-size:11px;line-height:1.15;border:1px solid #e2e5e9;border-radius:2px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.off-no{color:#15662f;}'
     +'.off-qty{width:26px;height:15px;border:1px solid #9ca3af;border-radius:2px;text-align:center;line-height:14px;color:#b91c1c;font-weight:700;flex:none;font-size:10px;}'
@@ -4050,8 +4050,8 @@ function fvCOorderForm(oid){
   var scr='<scr'+'ipt>function ofToggle(cb){var v=cb.checked?"visible":"hidden";var n=document.querySelectorAll(".ofqty");for(var i=0;i<n.length;i++){n[i].style.visibility=v;}}<\/scr'+'ipt>';
   var html='<html><head><title>Happy Days Order Form'+(c.name?(' - '+fvEsc(c.name)):'')+'</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style></head><body>'
     +topbar
-    +'<div class="off-head"><div><div class="off-ttl">ORDER FORM</div><div class="off-eml">✉ happydaysgrocer@gmail.com</div></div><img class="off-wm" src="'+wm+'" alt="Happy Days Fruit, Veg &amp; Grocery" onerror="this.remove()"><img class="off-ic" src="'+ic+'" alt="" onerror="this.remove()"></div>'
-    +'<div class="off-fields">'+fld('Company:',c.name)+fld('Contact Person:',c.contact)+fld('Delivery Address:',c.address)+fld('Suburb:','')+fld('Phone Number:',c.phone)+fld('Date Required:','')+fld('Time Required:','')+fld('Special Delivery Instructions:','')+'</div>'
+    +'<div class="off-head"><div class="off-ttl">ORDER FORM</div><img class="off-wm" src="'+wm+'" alt="Happy Days Fruit, Veg &amp; Grocery" onerror="this.remove()"><img class="off-ic" src="'+ic+'" alt="" onerror="this.remove()"></div>'
+    +'<div class="off-fields">'+fld('Company:',c.name)+fld('Contact Person:',c.contact)+fld('Delivery Address:',c.address)+fld('Phone Number:',c.phone)+fld('Suburb:','')+fld('Date Required:','')+fld('Special Delivery Instructions:','')+fld('Time Required:','')+'</div>'
     +'<div class="off-grid">'+grid+'</div>'
     +'<div class="off-add"><b>Additional Items Required:</b></div>'
     +'<div class="off-note">📩 Please email or send your order via text message</div>'
