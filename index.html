@@ -4043,8 +4043,10 @@ function fvCOorderForm(oid){
     +'.off-qty{width:26px;height:15px;border:1px solid #9ca3af;border-radius:2px;text-align:center;line-height:14px;color:#b91c1c;font-weight:700;flex:none;font-size:10px;}'
     +'.off-add{margin-top:7px;border:1px solid #cbd5e1;border-radius:4px;padding:5px;min-height:30px;font-size:10px;}.off-add b{color:#15662f;}'
     +'.off-note{text-align:center;font-weight:800;color:#15662f;background:#eaf4ec;border-radius:4px;padding:3px;margin-top:6px;font-size:10px;}.off-foot{text-align:center;font-weight:700;color:#15662f;margin-top:3px;font-size:10px;}.off-addr{text-align:center;color:#6b7280;font-size:8.5px;margin-top:2px;}.noprint{margin-bottom:8px;}@media print{.noprint{display:none;}}';
+  var xls=''; try{ xls=new URL('orderform.xlsx',location.href).href; }catch(e){ xls='orderform.xlsx'; }
   var topbar='<div class="noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
     +'<button onclick="window.print()" style="padding:8px 14px;background:#15662f;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Print / Save as PDF</button>'
+    +'<a href="'+xls+'" download="Happy Days Order Form A4.xlsx" style="padding:8px 14px;background:#1c4587;color:#fff;border-radius:6px;font-weight:700;text-decoration:none;">⬇️ Excel version</a>'
     +(hasQ?'<label style="font-size:13px;cursor:pointer;"><input type="checkbox" checked onchange="ofToggle(this)"> Include '+fvEsc(c.name||'this customer')+'’s quantities</label>':'')
     +'</div>';
   var scr='<scr'+'ipt>function ofToggle(cb){var v=cb.checked?"visible":"hidden";var n=document.querySelectorAll(".ofqty");for(var i=0;i<n.length;i++){n[i].style.visibility=v;}}<\/scr'+'ipt>';
