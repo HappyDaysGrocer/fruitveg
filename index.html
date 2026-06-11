@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v167';
+var APP_BUILD = 'v168';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -4147,21 +4147,22 @@ function fvCOcostFor_(l, date){
   // (e.g. dearer strawberries), so a legitimately high cost (even a loss line) must SHOW,
   // not be silently hidden. The owner needs to see real losses.
   function sane(c){ return c!=null && +c>0 && !(sell!=null && sell>0 && +c>sell*3); }
-  // 2) Actual purchase recorded CLOSEST to the order date (within ~30 days) — this is the
-  //    real cost of the batch that filled the order, including local-market buys.
-  var h=fvCOhistCost_(l, date);
-  if(sane(h)) return +h;
-  // 3) EPOS Now standing cost — reliable default when there's no recent purchase record.
+  // 2) EPOS Now cost — the owner's AUTHORITATIVE purchase price, refreshed DAILY from the
+  //    DailySales CSV (yesterday's export prices today's worksheets). Exact name, else a
+  //    token-SET match (handles word order / "/kg" suffix / punctuation); never looser, so we
+  //    can't grab a different product's cost.
   var nm=String((l&&l.name)||String((l&&l.key)||'').split('||')[1]||'').toLowerCase().trim();
   var ep=(typeof EPOS_COSTS==='object'&&EPOS_COSTS&&nm)?EPOS_COSTS[nm]:null;
   if(ep==null && typeof EPOS_COSTS==='object' && EPOS_COSTS && nm){
-    // exact name missed → token-SET match (handles word order, "/kg" suffix, punctuation);
-    // never looser, so we can't grab a different product's cost.
     var _lt=fvCostToks_(nm); if(_lt.length){ var _lk=_lt.slice().sort().join(' ');
       for(var _ek in EPOS_COSTS){ if(EPOS_COSTS.hasOwnProperty(_ek)){ var _et=fvCostToks_(_ek);
         if(_et.length && _et.slice().sort().join(' ')===_lk){ ep=EPOS_COSTS[_ek]; break; } } } }
   }
   if(sane(ep)) return +ep;
+  // 3) Actual purchase recorded closest to the order date (within ~30 days) — covers items EPOS
+  //    hasn't sold recently, and genuine local-market buys.
+  var h=fvCOhistCost_(l, date);
+  if(sane(h)) return +h;
   // 4) catalogue base cost.
   var cat=fvCOlineCost_(l && l.key);
   if(sane(cat)) return +cat;
