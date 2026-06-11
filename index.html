@@ -4034,15 +4034,15 @@ function fvCOorderForm(oid){
   var grid=sec('FRUIT',FV_ORDERFORM.FRUIT)+sec('VEGETABLES',FV_ORDERFORM.VEGETABLES)+sec('HERBS',FV_ORDERFORM.HERBS);
   var css='@page{size:A4;margin:8mm;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;color:#0d2818;margin:0;padding:4px;font-size:10px;}'
     +'.off-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:3px solid #15662f;padding:0 2px 5px;margin-bottom:7px;}'
-    +'.off-ttl{font-size:19px;font-weight:800;color:#15662f;letter-spacing:1px;line-height:1;}.off-eml{font-size:10px;color:#374151;margin-top:4px;}'
+    +'.off-ttl{font-size:17px;font-weight:800;color:#15662f;letter-spacing:1px;line-height:1;}.off-eml{font-size:9px;color:#374151;margin-top:4px;}'
     +'.off-wm{height:62px;width:auto;}.off-ic{height:40px;width:auto;flex:none;}'
     +'.off-fields{margin:0 0 7px;}'
     +'.off-fld{display:flex;gap:6px;align-items:center;padding:1.5px 0;}.off-lbl{font-weight:700;color:#15662f;white-space:nowrap;font-size:10px;background:#eaf4ec;border:1px solid #9aa0a6;border-radius:3px;padding:2px 5px;width:160px;flex:none;}.off-val{flex:1;font-weight:600;border:1px solid #9aa0a6;border-radius:3px;min-height:15px;padding:1px 5px;}'
     +'.off-grid{column-count:3;column-gap:11px;}.off-sec{break-inside:avoid;font-weight:800;color:#fff;background:#15662f;padding:1px 6px;border-radius:3px;margin:4px 0 1px;font-size:10px;letter-spacing:.5px;border:1px solid #15662f;}'
-    +'.off-item{break-inside:avoid;display:flex;align-items:center;gap:4px;padding:0.5px 0;}.off-nm{flex:1;min-width:0;font-size:9px;line-height:1.18;border:1px solid #e2e5e9;border-radius:2px;padding:0 3px;}.off-no{color:#15662f;}'
-    +'.off-qty{width:24px;height:13px;border:1px solid #9ca3af;border-radius:2px;text-align:center;line-height:12px;color:#b91c1c;font-weight:700;flex:none;font-size:9px;}'
+    +'.off-item{break-inside:avoid;display:flex;align-items:center;gap:4px;padding:0.5px 0;}.off-nm{flex:1;min-width:0;font-size:11px;line-height:1.15;border:1px solid #e2e5e9;border-radius:2px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.off-no{color:#15662f;}'
+    +'.off-qty{width:26px;height:15px;border:1px solid #9ca3af;border-radius:2px;text-align:center;line-height:14px;color:#b91c1c;font-weight:700;flex:none;font-size:10px;}'
     +'.off-add{margin-top:7px;border:1px solid #cbd5e1;border-radius:4px;padding:5px;min-height:30px;font-size:10px;}.off-add b{color:#15662f;}'
-    +'.off-note{text-align:center;font-weight:800;color:#15662f;background:#eaf4ec;border-radius:4px;padding:4px;margin-top:7px;font-size:11px;}.off-foot{text-align:center;font-weight:700;color:#15662f;margin-top:4px;font-size:11px;}.off-addr{text-align:center;color:#6b7280;font-size:9.5px;margin-top:3px;}.noprint{margin-bottom:8px;}@media print{.noprint{display:none;}}';
+    +'.off-note{text-align:center;font-weight:800;color:#15662f;background:#eaf4ec;border-radius:4px;padding:3px;margin-top:6px;font-size:10px;}.off-foot{text-align:center;font-weight:700;color:#15662f;margin-top:3px;font-size:10px;}.off-addr{text-align:center;color:#6b7280;font-size:8.5px;margin-top:2px;}.noprint{margin-bottom:8px;}@media print{.noprint{display:none;}}';
   var topbar='<div class="noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
     +'<button onclick="window.print()" style="padding:8px 14px;background:#15662f;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Print / Save as PDF</button>'
     +(hasQ?'<label style="font-size:13px;cursor:pointer;"><input type="checkbox" checked onchange="ofToggle(this)"> Include '+fvEsc(c.name||'this customer')+'’s quantities</label>':'')
