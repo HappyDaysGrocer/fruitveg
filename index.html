@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v171';
+var APP_BUILD = 'v172';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7084,7 +7084,7 @@ function fvBankByCat(monthFilter){
   return { byCat:byCat, periodStart:minD, periodEnd:maxD };
 }
 /* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
-var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":7511.8,"items":1800,"mp":0.5348,"bad":0}};
+var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":13567.87,"items":3088,"mp":0.5076,"bad":0}};
 var FV_MONTHLY_RENT = 7262.75;   // $6,562.50 rent + $40 mgmt fee + GST per month (Cameron invoices 5212888/5275095; lease rent $78,750/yr ex-GST)
 /* VERIFIED against the SIGNED LEASE (dated 13/01/2026) and the Cameron rent invoices:
    - Lease TERM commenced 22 Jan 2026 (3-year term + two 3-year options).
@@ -7209,9 +7209,9 @@ function fvPLNetPanelHTML(selMonth){
    (SalesBreakdown_2026_06_08). Daily totals → period summary, same logic as
    before: revenue incl VAT (includes CASH), and a clean gross margin with the
    cost-error days (EPOS cost not set) excluded. */
-var EPOS_SALES = { src:'auto_2026-06-10', start:'2026-02-25', end:'2026-06-10', days:58,
-  salesIncVAT:26544.63, salesExVAT:25942.9, items:6627, trans:1595, avgPerDay:457.67,
-  badDays:6, cleanDays:52, cleanSalesIncVAT:20645.86, cleanMargin:12144.66, cleanMarginPerc:0.588 };
+var EPOS_SALES = { src:'auto_2026-06-11', start:'2026-02-25', end:'2026-06-11', days:59,
+  salesIncVAT:32595.76, salesExVAT:31911.04, items:7915, trans:1595, avgPerDay:552.47,
+  badDays:6, cleanDays:53, cleanSalesIncVAT:26696.99, cleanMargin:15014.96, cleanMarginPerc:0.562 };
 /* Earliest → latest date across ALL data we hold (so Expenses & P&L always
    show the period they cover — no guessing, no duplicate analyses). */
 function fvDataDateRange(){
