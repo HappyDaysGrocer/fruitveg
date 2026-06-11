@@ -4,9 +4,11 @@
    Cross-origin requests (Firebase REST, identity toolkit) pass through
    untouched — store.js owns offline behaviour for data via local mirrors. */
 
-const CACHE = 'hd2-v1';
+const CACHE = 'hd2-v2';   // bumped: purge any old cache that held costy shopProducts.js
 
-/* App shell (scope-relative). */
+/* App shell (scope-relative). catalog.js is the PUBLIC cost-free product
+   list — the customer app never loads the root shopProducts.js (which
+   carries purchase costs), so it is deliberately NOT cached here. */
 const PRECACHE = [
   './',
   './index.html',
@@ -15,13 +17,13 @@ const PRECACHE = [
   './js/store.js',
   './js/catalog.js',
   './js/orders.js',
+  './catalog.js',
   './manifest.webmanifest'
 ];
 
 /* Shared root assets (outside scope but same origin) — best effort:
-   a missing one must not brick the install. */
+   a missing one must not brick the install. (No financial data here.) */
 const PRECACHE_EXTRA = [
-  '../shopProducts.js',
   '../happydays-wordmark.png',
   '../happydays-icons.png',
   '../icon-192.png',
