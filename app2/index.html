@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Happy Days — Fruit, Veg &amp; Grocery</title>
+  <meta name="description" content="Happy Days Fruit, Veg & Grocery — market buy list and customer orders. Unit 4, 684–700 Frankston-Dandenong Rd, Carrum Downs VIC 3201.">
+
+  <!-- PWA / theming -->
+  <meta name="theme-color" content="#15662f" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d2818" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#15662f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Happy Days">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="../icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="../icon-192.png">
+
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <!-- Slim sticky header: brand row collapses on scroll, search stays -->
+  <header class="hdr" id="hdr">
+    <div class="brand">
+      <img src="../happydays-wordmark.png" alt="Happy Days Fruit, Veg &amp; Grocery">
+    </div>
+    <div class="searchwrap">
+      <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+      </svg>
+      <input id="q" type="search" inputmode="search" placeholder="Search products…"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             enterkeyhint="search" aria-label="Search products">
+    </div>
+  </header>
+
+  <!-- Views render here. Initial skeleton = instant feedback before JS boots. -->
+  <main id="view">
+    <div class="skeleton-list" aria-hidden="true">
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w60"></div><div class="skeleton sk-line sm w30"></div></div><div class="skeleton sk-pill"></div></div>
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w70"></div><div class="skeleton sk-line sm w25"></div></div><div class="skeleton sk-pill"></div></div>
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w50"></div><div class="skeleton sk-line sm w35"></div></div><div class="skeleton sk-pill"></div></div>
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w65"></div><div class="skeleton sk-line sm w30"></div></div><div class="skeleton sk-pill"></div></div>
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w55"></div><div class="skeleton sk-line sm w28"></div></div><div class="skeleton sk-pill"></div></div>
+      <div class="row"><div class="row-main"><div class="skeleton sk-line w62"></div><div class="skeleton sk-line sm w32"></div></div><div class="skeleton sk-pill"></div></div>
+    </div>
+    <noscript><p class="empty">Happy Days needs JavaScript turned on to work.</p></noscript>
+  </main>
+
+  <!-- Bottom navigation: 3 thumb-friendly tabs -->
+  <nav class="nav" id="nav" aria-label="Main">
+    <button class="navbtn active" type="button" data-view="shop" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5.5 9 8 3.5M18.5 9 16 3.5"></path>
+        <path d="M3 9h18l-1.7 9.4a2 2 0 0 1-2 1.6H6.7a2 2 0 0 1-2-1.6L3 9z"></path>
+        <path d="M9 13v3M12 13v3M15 13v3"></path>
+      </svg>
+      <span>Shop</span>
+    </button>
+    <button class="navbtn" type="button" data-view="orders">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 2.5h12V21l-2-1.4-2 1.4-2-1.4L10 21l-2-1.4L6 21V2.5z"></path>
+        <path d="M9 7.5h6M9 11h6M9 14.5h4"></path>
+      </svg>
+      <span>Orders</span>
+    </button>
+    <button class="navbtn" type="button" data-view="more">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="5" cy="12" r="2"></circle>
+        <circle cx="12" cy="12" r="2"></circle>
+        <circle cx="19" cy="12" r="2"></circle>
+      </svg>
+      <span>More</span>
+    </button>
+  </nav>
+
+  <!-- Header collapse: toggles body.scrolled, CSS does the animation.
+       Lives in the shell because it is pure presentation. -->
+  <script>
+    (function () {
+      var last = false;
+      function onScroll() {
+        var s = (window.scrollY || document.documentElement.scrollTop) > 24;
+        if (s !== last) { last = s; document.body.classList.toggle('scrolled', s); }
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,472 @@
+/* =========================================================================
+   store.js — Happy Days v2 data layer (Builder B)
+   Catalogue, buy list, auth, Firebase REST sync, customers/orders/tiers,
+   tier pricing, and the app-wide event bus. No frameworks, no SDKs.
+   ========================================================================= */
+
+const FB = {
+  apiKey: 'AIzaSyBlnVVwGbNW6N3ErAZMpqNIROjGkv_D3nc',
+  databaseURL: 'https://happydaysgrocer-dc980-default-rtdb.asia-southeast1.firebasedatabase.app'
+};
+
+/* ---------- tiny utilities ---------- */
+
+const round2 = (x) => Math.round(x * 100) / 100;
+
+const num = (v) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+function genId(prefix) {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** Local calendar date (NOT toISOString — at the 4am market UTC is yesterday). */
+function todayStr() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/* localStorage wrapper that never throws (private mode / quota). */
+const LS = {
+  get(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (e) { return fallback; }
+  },
+  set(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* ignore */ }
+  },
+  del(key) {
+    try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  }
+};
+
+/* ---------- event bus (singleton) ---------- */
+
+const _listeners = {};
+const BUS = {
+  on(evt, fn) { (_listeners[evt] = _listeners[evt] || []).push(fn); },
+  emit(evt, data) {
+    (_listeners[evt] || []).forEach((fn) => {
+      try { fn(data); } catch (e) { /* a bad listener must not break the app */ }
+    });
+  }
+};
+export function bus() { return BUS; }
+
+/* =========================================================================
+   CATALOGUE — loaded from the old app's ../shopProducts.js (non-module
+   global SHOP_PRODUCTS). Row shape:
+   [category, stall, phone, name, defaultQty, boxPrice, cost, sellPrice,
+    mustCheck, barcode]
+   ========================================================================= */
+
+let CATALOG = [];
+const CATALOG_BY_KEY = new Map();
+let _catalogPromise = null;
+
+function buildCatalog(rows) {
+  CATALOG = [];
+  CATALOG_BY_KEY.clear();
+  (Array.isArray(rows) ? rows : []).forEach((r) => {
+    if (!Array.isArray(r)) return;
+    const cat = String(r[0] == null ? '' : r[0]).trim();
+    const name = String(r[3] == null ? '' : r[3]).trim();
+    if (!name) return;
+    const item = {
+      key: cat + '||' + name,         // this exact key joins all stores
+      cat,
+      name,
+      cost: num(r[6]),
+      sell: num(r[7]),
+      barcode: r[9] == null ? '' : String(r[9]).trim()
+    };
+    CATALOG.push(item);
+    CATALOG_BY_KEY.set(item.key, item);
+  });
+}
+
+/* Inject <script src="../shopProducts.js"> (it is NOT a module) and wait
+   for window.SHOP_PRODUCTS. Caches the rows in localStorage so the
+   catalogue still works on an offline cold start. */
+function loadShopProducts() {
+  return new Promise((resolve) => {
+    if (window.SHOP_PRODUCTS) return resolve(window.SHOP_PRODUCTS);
+    const s = document.createElement('script');
+    s.src = '../shopProducts.js';
+    let settled = false;
+    const finish = (rows) => { if (!settled) { settled = true; resolve(rows); } };
+    s.onload = () => {
+      // The global is set synchronously by the script, but poll briefly
+      // as cheap insurance against any deferred assignment.
+      let tries = 0;
+      const tick = () => {
+        if (window.SHOP_PRODUCTS) return finish(window.SHOP_PRODUCTS);
+        if (++tries > 60) return finish(null);   // ~3s then give up
+        setTimeout(tick, 50);
+      };
+      tick();
+    };
+    s.onerror = () => finish(null);              // offline / 404
+    document.head.appendChild(s);
+  });
+}
+
+export async function initCatalog() {
+  if (CATALOG.length) return CATALOG;            // idempotent
+  if (_catalogPromise) return _catalogPromise;
+  _catalogPromise = (async () => {
+    const rows = await loadShopProducts();
+    if (Array.isArray(rows) && rows.length) {
+      LS.set('hd2.catalogCache', rows);          // offline fallback copy
+      buildCatalog(rows);
+    } else {
+      buildCatalog(LS.get('hd2.catalogCache', []));
+    }
+    BUS.emit('change');
+    return CATALOG;
+  })();
+  return _catalogPromise;
+}
+
+export function catalog() { return CATALOG; }
+
+export function categories() {
+  const seen = new Set();
+  CATALOG.forEach((i) => { if (i.cat) seen.add(i.cat); });
+  return Array.from(seen).sort((a, b) => a.localeCompare(b));
+}
+
+/** Multi-word, any-order match on the product name. "" -> full catalogue. */
+export function searchCatalog(q) {
+  const terms = String(q == null ? '' : q).toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return CATALOG.slice();
+  return CATALOG.filter((i) => {
+    const name = i.name.toLowerCase();
+    return terms.every((t) => name.includes(t));
+  });
+}
+
+/* =========================================================================
+   BUY LIST — market shopping list, persisted as 'hd2.buylist' {key: qty}
+   ========================================================================= */
+
+let _buyMap = LS.get('hd2.buylist', {});
+if (typeof _buyMap !== 'object' || _buyMap === null || Array.isArray(_buyMap)) _buyMap = {};
+
+function persistBuy() {
+  LS.set('hd2.buylist', _buyMap);
+  BUS.emit('change');
+}
+
+export const buy = {
+  qty(key) { return _buyMap[key] || 0; },
+  set(key, qty) {
+    qty = Number(qty);
+    if (!Number.isFinite(qty) || qty <= 0) delete _buyMap[key];
+    else _buyMap[key] = qty;
+    persistBuy();
+  },
+  add(key, delta) {
+    buy.set(key, (_buyMap[key] || 0) + (Number(delta) || 0));
+  },
+  entries() { return Object.entries(_buyMap); },         // [[key, qty], ...]
+  count() { return Object.keys(_buyMap).length; },        // distinct items
+  clear() { _buyMap = {}; persistBuy(); }
+};
+
+/* =========================================================================
+   AUTH — same Firebase accounts as the old app.
+   email = username + '@happydaysgrocer.app'. Login-only (no auto-signUp).
+   Blob {idToken, refreshToken, expiresAt, uid, email} in 'hd2.auth'.
+   ========================================================================= */
+
+let _auth = LS.get('hd2.auth', null);
+
+function setAuth(blob) {
+  _auth = blob;
+  if (blob) LS.set('hd2.auth', blob); else LS.del('hd2.auth');
+  BUS.emit('change');
+}
+
+function friendlyAuthError(code) {
+  code = String(code || '');
+  if (code.indexOf('EMAIL_NOT_FOUND') === 0 ||
+      code.indexOf('INVALID_PASSWORD') === 0 ||
+      code.indexOf('INVALID_LOGIN_CREDENTIALS') === 0) return 'Wrong username or password.';
+  if (code.indexOf('TOO_MANY_ATTEMPTS') === 0) return 'Too many attempts — wait a minute and try again.';
+  if (code.indexOf('USER_DISABLED') === 0) return 'This account has been disabled.';
+  return 'Could not sign in. Check your connection and try again.';
+}
+
+export const auth = {
+  async login(username, password) {
+    const u = String(username || '').trim();
+    const email = u.indexOf('@') >= 0 ? u : u + '@happydaysgrocer.app';
+    const res = await fetch(
+      'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + FB.apiKey,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      }
+    );
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* fall through */ }
+    if (!res.ok) {
+      throw new Error(friendlyAuthError(data && data.error && data.error.message));
+    }
+    setAuth({
+      idToken: data.idToken,
+      refreshToken: data.refreshToken,
+      // refresh 60s early so an in-flight request never carries a dead token
+      expiresAt: Date.now() + (Number(data.expiresIn) || 3600) * 1000 - 60000,
+      uid: data.localId,
+      email
+    });
+    return auth.user();
+  },
+
+  logout() { setAuth(null); },
+
+  user() {
+    if (!_auth) return null;
+    return { uid: _auth.uid, email: _auth.email, name: String(_auth.email || '').split('@')[0] };
+  },
+
+  /** Resolves a valid idToken (auto-refresh) or null when signed out. */
+  async token() {
+    if (!_auth) return null;
+    if (Date.now() < _auth.expiresAt) return _auth.idToken;
+    try {
+      const res = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB.apiKey, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(_auth.refreshToken)
+      });
+      if (!res.ok) {
+        // 400/401/403 => refresh token revoked/invalid: sign out cleanly.
+        if (res.status === 400 || res.status === 401 || res.status === 403) {
+          setAuth(null);
+          return null;
+        }
+        return _auth.idToken; // transient server error: try the stale token
+      }
+      const d = await res.json();
+      setAuth({
+        idToken: d.id_token,
+        refreshToken: d.refresh_token || _auth.refreshToken,
+        expiresAt: Date.now() + (Number(d.expires_in) || 3600) * 1000 - 60000,
+        uid: d.user_id || _auth.uid,
+        email: _auth.email
+      });
+      return _auth.idToken;
+    } catch (e) {
+      return _auth.idToken; // offline: stale token; callers tolerate failure
+    }
+  }
+};
+
+/* =========================================================================
+   FIREBASE MIRRORS — customers / orders(custorders) / tiers(pricetiers)
+   Offline-first: render from the local mirror instantly, pull() refreshes.
+   ========================================================================= */
+
+/* local concept name -> remote node name */
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers' };
+
+function localNameFor(node) {
+  if (node === 'custorders' || node === 'orders') return 'orders';
+  if (node === 'pricetiers' || node === 'tiers') return 'tiers';
+  return node;
+}
+
+const mirror = {
+  customers: LS.get(LSKEY.customers, {}) || {},
+  orders: LS.get(LSKEY.orders, {}) || {},
+  tiers: LS.get(LSKEY.tiers, {}) || {}
+};
+
+const DEFAULT_TIERS = {
+  retail:     { id: 'retail',     name: 'Retail',     rule: { type: 'shop' } },
+  cafe:       { id: 'cafe',       name: 'Cafe',       rule: { type: 'shopAdj',  pct: -10 } },
+  restaurant: { id: 'restaurant', name: 'Restaurant', rule: { type: 'costPlus', pct: 20 } },
+  agedcare:   { id: 'agedcare',   name: 'Aged Care',  rule: { type: 'costPlus', pct: 12 } },
+  wholesale:  { id: 'wholesale',  name: 'Wholesale',  rule: { type: 'costPlus', pct: 8 } }
+};
+const TIER_ORDER = ['retail', 'cafe', 'restaurant', 'agedcare', 'wholesale'];
+
+function seedTiersIfEmpty() {
+  if (Object.keys(mirror.tiers).length === 0) {
+    mirror.tiers = JSON.parse(JSON.stringify(DEFAULT_TIERS));
+    LS.set(LSKEY.tiers, mirror.tiers);
+  }
+}
+seedTiersIfEmpty(); // pricing must work before the first sync ever happens
+
+/**
+ * Fire-and-forget PATCH. Also keeps the local mirror + localStorage in sync
+ * (offline-first: the write is visible immediately, the network is best
+ * effort). No-op on the network when logged out. Accepts either the local
+ * name ('orders') or the remote node name ('custorders').
+ */
+export function patch(node, id, rec) {
+  const local = localNameFor(node);
+  if (mirror[local] && id != null) {
+    mirror[local][id] = rec;
+    LS.set(LSKEY[local], mirror[local]);
+  }
+  if (!_auth) return; // logged out -> local only
+  auth.token().then((t) => {
+    if (!t) return;
+    // No Content-Type header: RTDB accepts the raw body and a "simple"
+    // request avoids a CORS preflight round trip on every keystroke-save.
+    return fetch(FB.databaseURL + '/' + (REMOTE[local] || node) + '.json?auth=' + encodeURIComponent(t), {
+      method: 'PATCH',
+      body: JSON.stringify({ [id]: rec })
+    });
+  }).catch(() => { /* offline: mirror already updated, sync on next pull */ });
+}
+
+/**
+ * Pull the 3 nodes into the local mirrors. NEVER rejects — on any network
+ * or auth failure it resolves with the stale mirrors. Remote records win
+ * per-id, but ids that only exist locally (created offline) are kept.
+ */
+export async function pull() {
+  seedTiersIfEmpty();
+  let t = null;
+  try { t = await auth.token(); } catch (e) { /* treat as logged out */ }
+  if (!t) { BUS.emit('change'); return; }
+
+  const getNode = async (node) => {
+    const res = await fetch(FB.databaseURL + '/' + node + '.json?auth=' + encodeURIComponent(t));
+    if (!res.ok) throw new Error(node + ' HTTP ' + res.status);
+    return res.json();
+  };
+
+  try {
+    const [cust, ord, tr] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers)
+    ]);
+    if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
+    if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
+    if (tr && typeof tr === 'object' && Object.keys(tr).length) {
+      mirror.tiers = Object.assign({}, mirror.tiers, tr);
+    } else {
+      // Remote tier node is empty: seed it with the defaults (fire & forget).
+      fetch(FB.databaseURL + '/' + REMOTE.tiers + '.json?auth=' + encodeURIComponent(t), {
+        method: 'PATCH',
+        body: JSON.stringify(DEFAULT_TIERS)
+      }).catch(() => {});
+    }
+    LS.set(LSKEY.customers, mirror.customers);
+    LS.set(LSKEY.orders, mirror.orders);
+    LS.set(LSKEY.tiers, mirror.tiers);
+  } catch (e) {
+    /* offline or server error — keep stale mirrors, still resolve */
+  }
+  BUS.emit('change');
+}
+
+/* ---------- read accessors (arrays, ready to render) ---------- */
+
+export function customers() {
+  return Object.values(mirror.customers).filter(Boolean)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
+export function orders() {
+  return Object.values(mirror.orders).filter(Boolean)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+export function tiers() {
+  return Object.values(mirror.tiers).filter(Boolean).sort((a, b) => {
+    const ai = TIER_ORDER.indexOf(a.id), bi = TIER_ORDER.indexOf(b.id);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) ||
+      String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
+/* ---------- writers ---------- */
+
+export function saveCustomer(c) {
+  if (!c.id) c.id = genId('c');
+  if (!c.prices) c.prices = {};
+  patch('customers', c.id, c);
+  BUS.emit('change');
+  return c;
+}
+
+export function saveOrder(o) {
+  if (!o.id) o.id = genId('o');
+  if (!Array.isArray(o.lines)) o.lines = [];
+  patch('custorders', o.id, o);
+  BUS.emit('change');
+  return o;
+}
+
+/** Find this customer's open order, or create one dated today. */
+export function ensureOpenOrder(custId) {
+  const existing = Object.values(mirror.orders).find(
+    (o) => o && o.custId === custId && o.status === 'open'
+  );
+  if (existing) return existing;
+  return saveOrder({
+    id: genId('o'),
+    custId,
+    date: todayStr(),
+    status: 'open',
+    lines: []
+  });
+}
+
+/* ---------- tier pricing ---------- */
+
+/**
+ * Price for one catalogue item for one customer.
+ *   shop     -> sell
+ *   shopAdj  -> round2(sell * (1 + pct/100))
+ *   costPlus -> cost null/0 ? 'SETCOST' : round2(cost * (1 + pct/100))
+ *   manual   -> ''
+ * A per-customer override in customer.prices[key] (old-app shape) wins.
+ * Returns number | '' | 'SETCOST'.
+ */
+export function tierPrice(custId, key) {
+  const cust = mirror.customers[custId] ||
+    Object.values(mirror.customers).find((c) => c && c.id === custId) || null;
+
+  if (cust && cust.prices && cust.prices[key] != null && cust.prices[key] !== '') {
+    const p = num(cust.prices[key]);
+    if (p != null) return round2(p);
+  }
+
+  const tierId = (cust && cust.tierId) || 'retail';
+  const tier = mirror.tiers[tierId] || DEFAULT_TIERS[tierId] ||
+    mirror.tiers.retail || DEFAULT_TIERS.retail;
+  const rule = (tier && tier.rule) || { type: 'shop' };
+
+  const item = CATALOG_BY_KEY.get(key);
+  if (!item) return '';
+
+  const pct = Number(rule.pct) || 0;
+  switch (rule.type) {
+    case 'shop':
+      return item.sell == null ? '' : item.sell;
+    case 'shopAdj':
+      return item.sell == null ? '' : round2(item.sell * (1 + pct / 100));
+    case 'costPlus':
+      return (item.cost == null || item.cost === 0)
+        ? 'SETCOST'
+        : round2(item.cost * (1 + pct / 100));
+    case 'manual':
+    default:
+      return '';
+  }
+}
