@@ -60,6 +60,19 @@
     /* ── Stats bar (now hidden — merged into header) ── */
     .stats-bar { display: none; }
 
+    /* ── Auto-collapse header on scroll (phone/tablet): the logo band + stats
+       strip tuck away while scrolling down so the stall tape + list get the
+       whole screen; they slide back when you return to the top. The .header
+       element itself keeps its safe-area padding so standalone/PWA content
+       never slides under the notch. ── */
+    .header-row1, .header-row2 {
+      transition: max-height .28s ease, opacity .18s ease, padding .28s ease;
+      max-height: 180px;
+    }
+    body.hdr-compact .header-row1, body.hdr-compact .header-row2 {
+      max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; overflow: hidden;
+    }
+
     /* ── Search bar ── */
     .search-bar {
       flex: 0 0 auto; position: relative; z-index: 98;
@@ -1857,7 +1870,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v176';
+var APP_BUILD = 'v177';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -8720,11 +8733,19 @@ function scrollToTop() {
 }
 
 function onScrollCheck() {
+  var c = document.getElementById('mainContent');
+  var y = (c ? c.scrollTop : 0) || window.scrollY || document.documentElement.scrollTop || 0;
+  // Header auto-collapse (phone/tablet only — desktop uses the header height to
+  // place its fixed sidebar). Hysteresis (hide >90, show <30) stops flutter.
+  if (!document.body.classList.contains('dev-desktop')) {
+    if (y > 90) document.body.classList.add('hdr-compact');
+    else if (y < 30) document.body.classList.remove('hdr-compact');
+  } else {
+    document.body.classList.remove('hdr-compact');
+  }
   var btn = document.getElementById('backToTop');
   if (!btn) return;
   var listActive = document.getElementById('viewList').classList.contains('active');
-  var c = document.getElementById('mainContent');
-  var y = (c ? c.scrollTop : 0) || window.scrollY || document.documentElement.scrollTop || 0;
   btn.classList.toggle('show', listActive && y > 400);
 }
 
