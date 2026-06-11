@@ -1,6 +1,12 @@
 /* Shop product catalogue from EPOS Now (2026-06-05), 614 items.
    Schema: [category, stall, phone, name, defaultQty, boxPrice, cost, sellPrice, mustCheck, barcode] */
 var SHOP_PRODUCTS = [
+  ['Herbs',null,null,'Chervil (bunch)',null,null,null,null,false,null],
+  ['Herbs',null,null,'Dill (bunch)',null,null,null,null,false,null],
+  ['Herbs',null,null,'Sage (bunch)',null,null,null,null,false,null],
+  ['Herbs',null,null,'Tarragon (bunch)',null,null,null,null,false,null],
+  ['A-B',null,null,'Alfalfa Sprouts (punnet)',null,null,null,null,false,null],
+  ['H-O',null,null,'Leeks Each',null,null,null,null,false,null],
   ['A-B',null,null,'Apples Golden /kg',null,null,3.75,4.99,false,null],
   ['A-B',null,null,'Apples Granny Smith /kg',null,null,2.5,3.99,false,'0605053615'],
   ['A-B',null,null,'Apples Jazz /kg',null,null,5,5.49,false,'7040521315'],
