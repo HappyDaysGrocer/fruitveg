@@ -4041,7 +4041,7 @@ function fvCOorderForm(oid){
     +'.off-item{break-inside:avoid;display:flex;align-items:center;gap:5px;padding:0.5px 0;}.off-nm{flex:1;min-width:0;font-size:9px;line-height:1.18;}'
     +'.off-qty{width:24px;height:13px;border:1px solid #9ca3af;border-radius:2px;text-align:center;line-height:12px;color:#b91c1c;font-weight:700;flex:none;font-size:9px;}'
     +'.off-add{margin-top:7px;border:1px solid #cbd5e1;border-radius:4px;padding:5px;min-height:30px;font-size:10px;}.off-add b{color:#15662f;}'
-    +'.off-foot{text-align:center;font-weight:700;color:#15662f;margin-top:7px;font-size:11px;}.noprint{margin-bottom:8px;}@media print{.noprint{display:none;}}';
+    +'.off-note{text-align:center;font-weight:800;color:#15662f;background:#eaf4ec;border-radius:4px;padding:4px;margin-top:7px;font-size:11px;}.off-foot{text-align:center;font-weight:700;color:#15662f;margin-top:4px;font-size:11px;}.off-addr{text-align:center;color:#6b7280;font-size:9.5px;margin-top:3px;}.noprint{margin-bottom:8px;}@media print{.noprint{display:none;}}';
   var topbar='<div class="noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
     +'<button onclick="window.print()" style="padding:8px 14px;background:#15662f;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Print / Save as PDF</button>'
     +(hasQ?'<label style="font-size:13px;cursor:pointer;"><input type="checkbox" checked onchange="ofToggle(this)"> Include '+fvEsc(c.name||'this customer')+'’s quantities</label>':'')
@@ -4053,7 +4053,9 @@ function fvCOorderForm(oid){
     +'<div class="off-fields">'+fld('Company:',c.name)+fld('Contact Person:',c.contact)+fld('Delivery Address:',c.address)+fld('Phone Number:',c.phone)+fld('Suburb:','')+fld('Date Required:','')+fld('Special Delivery Instructions:','')+fld('Time Required:','')+'</div>'
     +'<div class="off-grid">'+grid+'</div>'
     +'<div class="off-add"><b>Additional Items Required:</b></div>'
-    +'<div class="off-foot">Ravi: 0430 033 127&nbsp;&nbsp;|&nbsp;&nbsp;Jas: 0415 703 336&nbsp;&nbsp;|&nbsp;&nbsp;Abhi: 0408 752 385</div>'
+    +'<div class="off-note">📩 Please email or send your order via text message</div>'
+    +'<div class="off-foot">✉ happydaysgrocer@gmail.com&nbsp;&nbsp;&nbsp;📞 Ravi 0430 033 127 · Jas 0415 703 336 · Abhi 0408 752 385</div>'
+    +'<div class="off-addr">Happy Days Fruit, Veg &amp; Grocery&nbsp; · &nbsp;Unit 4, 684–700 Frankston-Dandenong Rd, Carrum Downs VIC 3201</div>'
     +scr+'</body></html>';
   var w=window.open('','_blank'); if(!w){ alert('Allow pop-ups to open the printable order form.'); return; } w.document.write(html); w.document.close();
 }
