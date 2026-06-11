@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v166';
+var APP_BUILD = 'v167';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -2346,6 +2346,11 @@ function fvRenderCafeMenu(container){
 }
 
 function buildList() {
+  // The team-sync poll calls this every ~15s in the background. If the user is mid-search,
+  // rebuilding the list wiped their typed filter (the "search disappears" bug). When the search
+  // box is focused, just re-apply its filter to the current rows and skip the disruptive rebuild.
+  var _siEl=document.getElementById('searchInput');
+  if(_siEl && document.activeElement===_siEl){ if(typeof onSearch==='function') onSearch(_siEl.value||''); return; }
   var container = document.getElementById('viewList');
   container.innerHTML = '';
 
@@ -2490,6 +2495,8 @@ function buildList() {
 
   refreshAllRows();
   fvBuyRenderSummary();
+  // Keep any active search filter applied so a background rebuild can't silently reset it.
+  if(_siEl && _siEl.value && typeof onSearch==='function') onSearch(_siEl.value);
 }
 
 function makeRow(p, idx) {
