@@ -1857,7 +1857,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v169';
+var APP_BUILD = 'v170';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -6184,6 +6184,63 @@ var FV_BAKED_HISTORY = {
     { productName:'Lettuce Iceberg',          supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:2,      price:1.99, total:3.98,  perUnit:true },
     { productName:'Watermelon Whole /kg',     supplier:'Cranbourne Market', stall:'—', buyer:'Receipt', qty:12.38,  price:1.49, total:18.44, perUnit:true },
     { productName:'Tomatoes Box (10kg)',      supplier:'Cranbourne Market', stall:'—', buyer:'Receipt (handwritten)', qty:1, price:42, total:42, perUnit:true }
+  ] },
+  '2026-06-11': { label: 'Thu 11 Jun — Epping Mandi run', items: [
+    { productName:'Carrots Prepacked /kg (20kg box)',        supplier:'Fresh Berry Co',        stall:'—',       buyer:'Mandi run', qty:2,   price:25,   total:50 },
+    { productName:'Carrots Catering /kg',                    supplier:'Fresh Berry Co',        stall:'—',       buyer:'Mandi run', qty:3,   price:13,   total:39 },
+    { productName:'Carrots Large /kg (20kg box)',            supplier:'Fresh Berry Co',        stall:'—',       buyer:'Mandi run', qty:2,   price:27,   total:54 },
+    { productName:'Tomato Cherry Punnets (box of 12)',       supplier:'Fresh Crop VIC',        stall:'—',       buyer:'Mandi run', qty:3,   price:30,   total:90 },
+    { productName:'Basil Bunch (deck of 10)',                supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:28,   total:28 },
+    { productName:'Coriander Bunch (deck of 10)',            supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:10,   total:10 },
+    { productName:'Dill Bunch (deck of 10)',                 supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:0.5, price:22,   total:11 },
+    { productName:'Mint Bunch (deck of 10)',                 supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:22,   total:22 },
+    { productName:'Parsley Continental Bunch (deck of 10)',  supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:2,   price:10,   total:20 },
+    { productName:'Parsley Bunch (deck of 10)',              supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:0.5, price:18,   total:9 },
+    { productName:'Rosemary Bunch (deck of 10)',             supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:0.5, price:35,   total:17.5 },
+    { productName:'Thyme Bunch (deck of 10)',                supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:30,   total:30 },
+    { productName:'Fenugreek Methi Bunch (deck of 10)',      supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:22,   total:22 },
+    { productName:'Spinach Bunch (10 pack box)',             supplier:'Freni and Doria',       stall:'526-527', buyer:'Mandi run', qty:1,   price:15,   total:15 },
+    { productName:'Cauliflower (box of 10)',                 supplier:'MazCorp',               stall:'—',       buyer:'Mandi run', qty:5,   price:20,   total:100 },
+    { productName:'Bananas Cavendish /kg (15kg box)',        supplier:'Total Fresh Produce',   stall:'5',       buyer:'Mandi run', qty:4,   price:30,   total:120 },
+    { productName:'Sweet Potato (box)',                      supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:1,   price:30,   total:30 },
+    { productName:'Garlic /kg',                              supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:10,  price:8,    total:80,  perUnit:true },
+    { productName:'Capsicum Green /kg (8kg box)',            supplier:'G. Ferlazzo & Co',      stall:'99',      buyer:'Mandi run', qty:2,   price:20,   total:40 },
+    { productName:'Capsicum Red /kg (8kg box)',              supplier:'G. Ferlazzo & Co',      stall:'99',      buyer:'Mandi run', qty:2,   price:20,   total:40 },
+    { productName:'Capsicum Yellow /kg (8kg box)',           supplier:'G. Ferlazzo & Co',      stall:'99',      buyer:'Mandi run (handwritten add-on)', qty:1, price:10, total:10 },
+    { productName:'Apples Pink Lady /kg (12kg box)',         supplier:'IFP Independent',       stall:'101',     buyer:'Mandi run', qty:1,   price:20,   total:20 },
+    { productName:'Apples Granny Smith /kg (12kg box)',      supplier:'IFP Independent',       stall:'101',     buyer:'Mandi run', qty:1,   price:30,   total:30 },
+    { productName:'Apples Royal Gala /kg (12kg box)',        supplier:'IFP Independent',       stall:'101',     buyer:'Mandi run', qty:1,   price:55,   total:55 },
+    { productName:'Pumpkin Grey /kg',                        supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:120, price:0.8,  total:96,  perUnit:true },
+    { productName:'Onion Red /kg (10kg box)',                supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:10,  price:8,    total:80 },
+    { productName:'Onion Brown /kg (10kg box)',              supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:10,  price:5.5,  total:55 },
+    { productName:'Potato Brushed /kg (5kg box)',            supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:10,  price:2.5,  total:25 },
+    { productName:'Potato White /kg (5kg box)',              supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:10,  price:4,    total:40 },
+    { productName:'Potato White Large /kg (15kg box)',       supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:1,   price:36,   total:36 },
+    { productName:'Pumpkin Jap /kg',                         supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:30,  price:0.9,  total:27,  perUnit:true },
+    { productName:'Pumpkin Butternut /kg',                   supplier:'Antonello Produce',     stall:'13',      buyer:'Mandi run', qty:12,  price:1,    total:12,  perUnit:true },
+    { productName:'Lettuce Baby Cos Twin Pack (box of 10)',  supplier:'Tripod Farmers Group',  stall:'109',     buyer:'Mandi run', qty:2,   price:22,   total:44 },
+    { productName:'Baby Spinach 1.5kg Bag',                  supplier:'Tripod Farmers Group',  stall:'109',     buyer:'Mandi run', qty:3,   price:13,   total:39 },
+    { productName:'Wild Rocket 1.5kg Bag',                   supplier:'Tripod Farmers Group',  stall:'109',     buyer:'Mandi run', qty:2,   price:18,   total:36 },
+    { productName:'Mesclun Supa Mix 1.5kg Bag',              supplier:'Tripod Farmers Group',  stall:'109',     buyer:'Mandi run', qty:3,   price:11,   total:33 },
+    { productName:'Avocado Hass Each (box of 18)',           supplier:'Sculli and Co',         stall:'—',       buyer:'Mandi run', qty:3,   price:25,   total:75 },
+    { productName:'Pineapple (box of 14)',                   supplier:'Sculli and Co',         stall:'—',       buyer:'Mandi run', qty:1,   price:60,   total:60 },
+    { productName:'Lettuce Iceberg (box)',                   supplier:'Gazzola Farms',         stall:'56',      buyer:'Mandi run', qty:2,   price:20,   total:40 },
+    { productName:'Cucumber Continental (box of 15)',        supplier:'Hygiene Packers',       stall:'12',      buyer:'Mandi run', qty:5,   price:25,   total:125 },
+    { productName:'Cucumber Continental (box of 30)',        supplier:'Hygiene Packers',       stall:'12',      buyer:'Mandi run', qty:1,   price:32,   total:32 },
+    { productName:'Tomato Gourmet /kg (10kg box)',           supplier:'Hygiene Packers',       stall:'12',      buyer:'Mandi run', qty:3,   price:20,   total:60 },
+    { productName:'Potato Peeled /kg (10kg box)',            supplier:'Hygiene Packers',       stall:'12',      buyer:'Mandi run', qty:4,   price:17,   total:68 },
+    { productName:'Grapes Red /kg (10kg box)',               supplier:'Market City Fruits',    stall:'85',      buyer:'Mandi run', qty:1,   price:60,   total:60 },
+    { productName:'Grapes Green /kg (10kg box)',             supplier:'Market City Fruits',    stall:'85',      buyer:'Mandi run', qty:1,   price:60,   total:60 },
+    { productName:'Long Melon (box)',                        supplier:'CK Tropical Produce',   stall:'42',      buyer:'Mandi run', qty:1,   price:35,   total:35 },
+    { productName:'Mushroom White Cup /kg (4kg box)',        supplier:'Costa Farms',           stall:'—',       buyer:'Mandi run', qty:2,   price:25,   total:50 },
+    { productName:'Broccolini Bunch (box of 10)',            supplier:'Melba Fresh',           stall:'66',      buyer:'Mandi run', qty:1,   price:20,   total:20 },
+    { productName:'Zucchini /kg (10kg box)',                 supplier:'Young Sang & Co',       stall:'45',      buyer:'Mandi run', qty:1,   price:25,   total:25 },
+    { productName:'Tomato Gourmet Large /kg (10kg box)',     supplier:'Young Sang & Co',       stall:'45',      buyer:'Mandi run', qty:2,   price:27,   total:54 },
+    { productName:'Eggplant /kg (7kg box)',                  supplier:'Young Sang & Co',       stall:'45',      buyer:'Mandi run', qty:1,   price:18,   total:18 },
+    { productName:'Chilli Long Red /kg',                     supplier:'Young Sang & Co',       stall:'45',      buyer:'Mandi run', qty:1,   price:25,   total:25 },
+    { productName:'Watermelon Seedless /kg',                 supplier:"Emilio's Finest",       stall:'53',      buyer:'Mandi run', qty:27,  price:2.5,  total:67.5, perUnit:true },
+    { productName:'Mandarin Afourer /kg (13kg box)',         supplier:'Louis Melbourne',       stall:'—',       buyer:'Mandi run', qty:1,   price:45,   total:45 },
+    { productName:'Orange Navel (bag)',                      supplier:'Louis Melbourne',       stall:'—',       buyer:'Mandi run', qty:10,  price:3.5,  total:35 }
   ] }
 };
 function loadHistory()  {
