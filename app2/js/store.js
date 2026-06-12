@@ -278,8 +278,8 @@ export const auth = {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -291,7 +291,8 @@ const mirror = {
   customers: LS.get(LSKEY.customers, {}) || {},
   orders: LS.get(LSKEY.orders, {}) || {},
   tiers: LS.get(LSKEY.tiers, {}) || {},
-  runs: LS.get(LSKEY.runs, {}) || {}
+  runs: LS.get(LSKEY.runs, {}) || {},
+  specials: LS.get(LSKEY.specials, {}) || {}
 };
 
 const DEFAULT_TIERS = {
@@ -373,9 +374,10 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs)
+    const [cust, ord, tr, rn, sp] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials)
     ]);
+    if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -400,6 +402,7 @@ export async function pull() {
     LS.set(LSKEY.orders, mirror.orders);
     LS.set(LSKEY.tiers, mirror.tiers);
     LS.set(LSKEY.runs, mirror.runs);
+    LS.set(LSKEY.specials, mirror.specials);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -486,6 +489,29 @@ export function saveTier(t) {
   return t;
 }
 
+export function specials() {
+  return Object.values(mirror.specials).filter(Boolean);
+}
+
+export function saveSpecial(s) {
+  if (!s.id) s.id = genId('sp');
+  patch('specials', s.id, s);
+  BUS.emit('change');
+  return s;
+}
+
+/** Active promo (flat price for all customers) on a product, or null. */
+export function specialFor(key) {
+  const today = todayStr();
+  for (const s of Object.values(mirror.specials)) {
+    if (!s || s.key !== key) continue;
+    if (s.price == null || s.price === '') continue;   // cleared = inactive
+    if (s.until && s.until < today) continue;           // expired
+    return s;
+  }
+  return null;
+}
+
 export function saveOrder(o) {
   if (!o.id) o.id = genId('o');
   if (!Array.isArray(o.lines)) o.lines = [];
@@ -519,7 +545,8 @@ export function ensureOpenOrder(custId) {
  *               fall back to the shelf price; staff set per-customer prices
  *               via customer.prices[key], which are PRICES, never costs)
  *   manual   -> ''
- * A per-customer override in customer.prices[key] (old-app shape) wins.
+ * Resolution order: per-customer price -> active special (flat promo) ->
+ * the customer's price-level/group rule -> shelf.
  * Returns number | ''.
  */
 export function tierPrice(custId, key) {
@@ -530,6 +557,10 @@ export function tierPrice(custId, key) {
     const p = num(cust.prices[key]);
     if (p != null) return round2(p);
   }
+
+  // An active special is a flat promo price for everyone (below per-customer).
+  const sp = specialFor(key);
+  if (sp) { const v = num(sp.price); if (v != null) return round2(v); }
 
   const tierId = (cust && cust.tierId) || 'retail';
   const tier = mirror.tiers[tierId] || DEFAULT_TIERS[tierId] ||

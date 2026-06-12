@@ -7,6 +7,7 @@ import {
   catalog, categories, searchCatalog,
   customers, orders, tiers,
   runs, runById, saveRun, deliveryInfo, saveTier,
+  specials, saveSpecial, specialFor,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   auth, pull
 } from './store.js';
@@ -238,11 +239,14 @@ function takeRow(p, line, cust) {
       ? '<span class="hdv-red">SET&nbsp;COST</span>'
       : `<span class="hdv-price dim">${typeof tp === 'number' ? money(tp) : '—'}</span>`;
   }
+  const onSpecial = !!specialFor(p.key);
   const sub = [p.cat, (typeof p.sell === 'number' && p.sell > 0) ? 'shop ' + money(p.sell) : '']
     .filter(Boolean).join(' · ');
+  const badge = onSpecial
+    ? ' <span class="hdv-tchip" style="background:#fdebd0;color:#b45309">SPECIAL</span>' : '';
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
-      <div class="hdv-name">${esc(p.name)}</div>
+      <div class="hdv-name">${esc(p.name)}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
     ${priceHtml}
@@ -919,6 +923,68 @@ function groupEditSheet(body, existing) {
   };
 }
 
+/* ---- specials (promo prices for all customers) ---------------------- */
+
+function specialsSheet(body) {
+  const activeList = () => asList(specials()).filter(s => s && s.price != null && s.price !== '' && (!s.until || s.until >= todayStr()));
+  const recFor = key => asList(specials()).find(s => s && s.key === key);
+
+  body.innerHTML = `
+    <div class="hdv-sheettitle">Specials</div>
+    <div class="hdv-sheetsub">A promo price for ALL customers on a product. Clear the box to remove it.</div>
+    <input class="hdv-in" id="sp-q" placeholder="Search a product to put on special…" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="sp-res"></div>
+    <div class="hdv-actions"><button class="hdv-btnP" data-act="done">Done</button></div>`;
+
+  const res = body.querySelector('#sp-res');
+  const qel = body.querySelector('#sp-q');
+
+  const rowHtml = p => {
+    const rec = recFor(p.key);
+    const v = (rec && rec.price != null && rec.price !== '') ? Number(rec.price) : '';
+    const shelf = (typeof p.sell === 'number' && p.sell > 0) ? 'shelf ' + money(p.sell) : 'no shelf price';
+    return `<div class="hdv-row">
+      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+        <div class="hdv-sub">${esc(shelf)}</div></div>
+      <input class="hdv-pin sp-price" data-key="${esc(p.key)}" type="number" step="0.01" min="0"
+        inputmode="decimal" placeholder="promo $" value="${v}">
+    </div>`;
+  };
+
+  const render = () => {
+    const q = qel.value.trim();
+    let list;
+    if (q) list = searchCatalog(q).slice(0, 25);
+    else {
+      const map = new Map(catalog().map(p => [p.key, p]));
+      list = activeList().map(s => map.get(s.key)).filter(Boolean);
+    }
+    if (!list.length) {
+      res.innerHTML = emptyHTML(q ? `No products match “${esc(q)}”` : 'No specials on right now — search to add one');
+      return;
+    }
+    res.innerHTML = (q ? '' : `<div class="hdv-sec">${list.length} on special</div>`) + list.map(rowHtml).join('');
+  };
+  render();
+
+  qel.addEventListener('input', render);
+  res.addEventListener('change', e => {
+    const inp = e.target.closest('.sp-price');
+    if (!inp) return;
+    const key = inp.dataset.key;
+    const p = catalog().find(x => x.key === key);
+    const rec = recFor(key) || { key, name: p ? p.name : key, until: '' };
+    const raw = inp.value.trim();
+    rec.price = raw === '' ? null : (parseFloat(raw) || 0);
+    saveSpecial(rec);
+    if (!qel.value.trim()) render();
+  });
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (t && t.dataset.act === 'done') closeSheet();
+  };
+}
+
 /* =========================================================== MORE view */
 
 export function renderMore(root) {
@@ -957,6 +1023,15 @@ export function renderMore(root) {
       <div class="hdv-count">Default pricing per customer type</div>
     </div>
     <button class="hdv-btnG slim" data-act="groups">Manage</button>
+  </div>`;
+
+  // specials
+  h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Specials</div>
+      <div class="hdv-count">Promo prices for all customers</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="specials">Manage</button>
   </div>`;
 
   // delivery runs
@@ -1004,6 +1079,7 @@ export function renderMore(root) {
     else if (act === 'sync') doSync(t);
     else if (act === 'runs') openSheet(runsAdminSheet);
     else if (act === 'groups') openSheet(groupsSheet);
+    else if (act === 'specials') openSheet(b => specialsSheet(b), { static: true });
   };
 }
 
