@@ -11,6 +11,9 @@ const path = require('path');
 
 const SRC = path.join(__dirname, '..', 'shopProducts.js');
 const OUT = path.join(__dirname, 'catalog.js');
+// v3 (app3) is a self-contained copy and reads its OWN catalog.js — keep it
+// in lockstep so a price change never leaves the in-house app stale.
+const OUT_V3 = path.join(__dirname, '..', 'app3', 'catalog.js');
 
 // shopProducts.js is a browser global (var SHOP_PRODUCTS = [...]). Eval it in
 // this (non-strict) scope so the var binding becomes visible here.
@@ -152,5 +155,6 @@ const body =
   '\n];\n';
 
 fs.writeFileSync(OUT, banner + body, 'utf8');
-console.log('wrote ' + OUT + ' — ' + out.length + ' products, cost-free (' +
+try { fs.writeFileSync(OUT_V3, banner + body, 'utf8'); } catch (e) { /* app3 may not exist */ }
+console.log('wrote ' + OUT + ' (+ app3) — ' + out.length + ' products, cost-free (' +
   (PP.addEach || []).length + ' per-piece units merged).');
