@@ -15,6 +15,23 @@ export const esc = s => String(s == null ? '' : s)
 export const money = n =>
   (typeof n === 'number' && isFinite(n)) ? '$' + n.toFixed(2) : '';
 
+/* The ONE percent formatter (whole numbers read fastest on the floor). */
+export const percent = n =>
+  (typeof n === 'number' && isFinite(n)) ? Math.round(n) + '%' : '';
+
+/* The ONE delta chip. Colour is paired with an explicit sign + arrow so the
+   meaning survives colourblindness and bright dawn-market screens. Cost
+   polarity is inverted via goodWhenDown (a cost going UP is bad = red). */
+export function deltaChip(delta, opts) {
+  if (typeof delta !== 'number' || !isFinite(delta) || delta === 0) return '';
+  const o = opts || {};
+  const fmt = o.fmt || money;
+  const up = delta > 0;
+  const good = o.goodWhenDown ? !up : up;
+  return `<span class="hdv-delta ${good ? 'good' : 'bad'}">` +
+    `${up ? '▲ +' : '▼ −'}${fmt(Math.abs(delta))}</span>`;
+}
+
 export const todayStr = () => {
   const d = new Date(), p = x => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -49,13 +66,18 @@ export function setActive(render) {
 function schedule() {
   if (pending) return;
   pending = true;
-  requestAnimationFrame(() => {
+  const run = () => {
     pending = false;
     const y = window.scrollY;
     if (activeRender) activeRender();
     window.scrollTo(0, y);
     refreshSheet();
-  });
+  };
+  // RAF never fires while the page is hidden (screen lock, backgrounded
+  // PWA) — a change landing then would stall the repaint until the next
+  // visible frame. Fall back to a macrotask so state is never stale.
+  if (document.visibilityState === 'hidden') setTimeout(run, 0);
+  else requestAnimationFrame(run);
 }
 
 /* Immediate re-render (chip taps, sub-view navigation, logout, …). */
@@ -357,8 +379,13 @@ const CSS = `
 :root{
   --hdv-bg:#fff; --hdv-card:#fff; --hdv-text:#0d2818; --hdv-sub:#6b7a70;
   --hdv-line:rgba(13,40,24,.12); --hdv-green:#15662f; --hdv-lt:#eaf4ec;
-  --hdv-red:#b91c1c; --hdv-yellow:#f4d03f;
+  --hdv-red:#b91c1c; --hdv-yellow:#f4d03f; --hdv-amber:#b45309;
   --hdv-shadow:0 4px 16px rgba(13,40,24,.14);
+  /* motion tokens (DESIGN.md §5): transform+opacity only, asymmetric in/out */
+  --dur-fast:120ms; --dur-base:200ms; --dur-screen:300ms;
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-decel:cubic-bezier(0,0,.2,1);
+  --ease-accel:cubic-bezier(.3,0,1,1);
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -400,12 +427,13 @@ const CSS = `
 .hdv-bar-cta{font-weight:800}
 .hdv-sheet{position:fixed;inset:0;z-index:60;visibility:hidden}
 .hdv-sheet.open{visibility:visible}
-.hdv-dim{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;transition:opacity .18s}
+.hdv-dim{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;
+  transition:opacity var(--dur-base) var(--ease-standard)}
 .hdv-sheet.open .hdv-dim{opacity:1}
 .hdv-panel{position:absolute;left:0;right:0;bottom:0;max-height:84vh;overflow-y:auto;
   background:var(--hdv-card);border-radius:18px 18px 0 0;
   padding:6px 14px calc(18px + env(safe-area-inset-bottom));
-  transform:translateY(100%);transition:transform .22s ease-out;
+  transform:translateY(100%);transition:transform var(--dur-base) var(--ease-decel);
   box-shadow:0 -8px 30px rgba(0,0,0,.25)}
 .hdv-sheet.open .hdv-panel{transform:translateY(0)}
 .hdv-grab{width:42px;height:5px;border-radius:3px;background:var(--hdv-line);margin:8px auto 4px}
@@ -462,4 +490,36 @@ const CSS = `
   font-size:14.5px;color:var(--hdv-text)}
 .hdv-mut{color:var(--hdv-sub)}
 .hdv-ver{text-align:center;color:var(--hdv-sub);font-size:12px;padding:18px 0 4px}
+/* ---- v3.2 spine (DESIGN.md §5): tokens applied app-wide ---- */
+.hdv-qty,.hdv-price,.hdv-total,.hdv-qtybtn,.hdv-delta{font-variant-numeric:tabular-nums}
+.hdv-qtybtn{min-width:36px;border:0;background:transparent;text-align:center;
+  font-family:inherit;font-size:16px;font-weight:700;color:var(--hdv-text);
+  padding:10px 2px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  text-decoration:underline dotted var(--hdv-sub);text-underline-offset:4px}
+.hdv-tick{flex:0 0 auto;width:40px;height:40px;border-radius:50%;
+  border:1.5px solid var(--hdv-line);background:transparent;color:transparent;
+  font-size:18px;font-weight:800;line-height:1;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform var(--dur-fast) var(--ease-standard)}
+.hdv-tick:active{transform:scale(.9)}
+.hdv-tick.on{background:var(--hdv-green);border-color:var(--hdv-green);color:#fff}
+.hdv-row.done{opacity:.45}
+.hdv-row.done .hdv-name{text-decoration:line-through}
+.hdv-prog{flex:0 0 auto;font-size:12px;font-weight:800;padding:5px 11px;
+  border-radius:999px;background:var(--hdv-lt);color:var(--hdv-green);white-space:nowrap}
+.hdv-delta{display:inline-block;font-size:11.5px;font-weight:800;padding:2px 7px;
+  border-radius:7px}
+.hdv-delta.good{background:var(--hdv-lt);color:var(--hdv-green)}
+.hdv-delta.bad{background:rgba(185,28,28,.12);color:var(--hdv-red)}
+.hdv-numgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 0 4px}
+.hdv-numbtn{min-height:54px;border:1.5px solid var(--hdv-line);border-radius:12px;
+  background:var(--hdv-card);color:var(--hdv-text);font-family:inherit;
+  font-size:22px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hdv-numbtn:active{transform:scale(.95)}
+.hdv-numout{text-align:center;font-size:34px;font-weight:800;color:var(--hdv-text);
+  font-variant-numeric:tabular-nums;padding:8px 0 2px;min-height:44px}
+@media (prefers-reduced-motion: reduce){
+  .hdv-dim,.hdv-panel,.hdv-toast,.hdv-tick,.hdv-sbtn,.hdv-numbtn{transition:none}
+  .hdv-skel-a,.hdv-skel-b{animation:none}
+}
 `;

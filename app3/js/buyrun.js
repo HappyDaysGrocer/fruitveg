@@ -3,7 +3,12 @@
    rolled up live from every OPEN customer order plus the team's manual adds
    (shared via /buyrun). It is never started or reset — open it any morning
    and it's current. Search to add anything; +/- adjusts your manual amount
-   on top of what the orders already need. */
+   on top of what the orders already need.
+
+   v3.2 (DESIGN.md): the paper-clipboard mechanic — tick each line as you
+   buy it (rows dim, a counter climbs "8/22 checked"; per-device, resets
+   daily like availability), and tap the quantity for a big numpad sheet on
+   box counts. Every action is a visible control — no hidden gestures. */
 
 import {
   catalog, orderedCats, searchCatalog,
@@ -11,7 +16,8 @@ import {
 } from './store.js';
 
 import {
-  setActive, esc, money, qText, chipsHTML, stepperHTML, emptyHTML, ensureCss, shareText
+  setActive, esc, money, qText, chipsHTML, stepperHTML, emptyHTML, ensureCss,
+  shareText, openSheet, closeSheet, toast, todayStr
 } from './catalog.js';
 
 let buyCat = '';
@@ -21,19 +27,51 @@ function nameFor(key) {
   return p ? p.name : (String(key).split('||')[1] || key);
 }
 
-/* One buy row: total to buy on the stepper; sub shows the breakdown. The
-   stepper adjusts the MANUAL part (you can't drop below what orders need). */
+/* ---- "reviewed" ticks: per-device, per-day (like availability's daily
+   reset). Local-only by design — it's the buyer's own walk progress. ---- */
+
+function revState() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('hd3.buyrev') || 'null'); } catch (e) { /* fresh */ }
+  if (!s || s.date !== todayStr()) s = { date: todayStr(), keys: {} };
+  return s;
+}
+
+function isRev(key) { return !!revState().keys[key]; }
+
+function toggleRev(key) {
+  const s = revState();
+  if (s.keys[key]) delete s.keys[key]; else s.keys[key] = true;
+  try { localStorage.setItem('hd3.buyrev', JSON.stringify(s)); } catch (e) { /* quota */ }
+}
+
+/* Local stepper variant: same hdv-step layout, but the number itself is a
+   button that opens the numpad sheet (big box counts beat 14 taps of +). */
+function buyStepper(key, qty) {
+  return `<div class="hdv-step">
+    <button class="hdv-sbtn" data-act="dec" data-key="${esc(key)}" aria-label="less">&minus;</button>
+    <button class="hdv-qtybtn" data-act="num" data-key="${esc(key)}"
+      aria-label="type amount">${Number(qty) || 0}</button>
+    <button class="hdv-sbtn plus" data-act="inc" data-key="${esc(key)}" aria-label="more">+</button>
+  </div>`;
+}
+
+/* One buy row: tick → name/breakdown → stepper. The stepper adjusts the
+   MANUAL part only (you can't drop below what orders need). */
 function buyRow(it) {
+  const done = isRev(it.key);
   const bits = [];
   if (it.fromOrders > 0) bits.push(it.fromOrders + ' from orders');
   if (it.manual > 0) bits.push('+' + it.manual + ' added');
   const sub = bits.join(' · ');
-  return `<div class="hdv-row sel">
+  return `<div class="hdv-row sel${done ? ' done' : ''}">
+    <button class="hdv-tick${done ? ' on' : ''}" data-act="rev" data-key="${esc(it.key)}"
+      aria-label="${done ? 'unmark' : 'mark'} bought">✓</button>
     <div class="hdv-info">
       <div class="hdv-name">${esc(it.name || nameFor(it.key))}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
-    ${stepperHTML(it.key, it.total)}
+    ${buyStepper(it.key, it.total)}
   </div>`;
 }
 
@@ -52,6 +90,50 @@ function searchRow(p, liveByKey) {
   </div>`;
 }
 
+/* Big-thumb numpad sheet: type the TOTAL you want; the manual part is
+   derived (total − orders), clamped so the run never drops below demand. */
+function numpadSheet(it) {
+  let entered = '';
+  return (body) => {
+    const floor = it.fromOrders || 0;
+    const draw = () => {
+      body.innerHTML = `
+        <div class="hdv-sheettitle">${esc(it.name)}</div>
+        <div class="hdv-sheetsub">${floor > 0
+          ? floor + ' needed by orders — total can’t go below that'
+          : 'Type the total to buy'}</div>
+        <div class="hdv-numout">${entered === '' ? (it.total || 0) : entered}</div>
+        <div class="hdv-numgrid">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
+            `<button class="hdv-numbtn" data-d="${d}">${d}</button>`).join('')}
+          <button class="hdv-numbtn" data-clear aria-label="clear">C</button>
+          <button class="hdv-numbtn" data-d="0">0</button>
+          <button class="hdv-numbtn" data-back aria-label="delete">⌫</button>
+        </div>
+        <div class="hdv-actions">
+          <button class="hdv-btnG" data-close="1">Cancel</button>
+          <button class="hdv-btnP" data-save>Save</button>
+        </div>`;
+    };
+    draw();
+    body.onclick = (e) => {
+      const d = e.target.closest('[data-d]');
+      if (d) {
+        if (entered.length < 4) entered += d.dataset.d;
+        draw(); return;
+      }
+      if (e.target.closest('[data-back]')) { entered = entered.slice(0, -1); draw(); return; }
+      if (e.target.closest('[data-clear]')) { entered = ''; draw(); return; }
+      if (e.target.closest('[data-save]')) {
+        const want = entered === '' ? (it.total || 0) : (parseInt(entered, 10) || 0);
+        if (want < floor) toast(floor + ' needed by orders — set to ' + floor);
+        setBuyManual(it.key, it.name, Math.max(0, want - floor));
+        closeSheet();
+      }
+    };
+  };
+}
+
 export function renderBuy(root) {
   ensureCss();
   setActive(() => renderBuy(root));
@@ -61,9 +143,13 @@ export function renderBuy(root) {
   const q = qText();
 
   const units = live.reduce((s, x) => s + x.total, 0);
+  const checked = live.filter((x) => isRev(x.key)).length;
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Buy run</div>
-    <button class="hdv-btnG slim" data-act="share">Share</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      ${live.length ? `<span class="hdv-prog">${checked}/${live.length} checked</span>` : ''}
+      <button class="hdv-btnG slim" data-act="share">Share</button>
+    </div>
   </div>
   <div class="hdv-sub" style="padding:0 12px 4px">${live.length} product${live.length === 1 ? '' : 's'} · ${units} to buy · always live from open orders</div>`;
 
@@ -99,6 +185,12 @@ export function renderBuy(root) {
     if (act === 'chip') { buyCat = t.dataset.cat; renderBuy(root); }
     else if (act === 'inc') setBuyManual(key, nameFor(key), buyManualQty(key) + 1);
     else if (act === 'dec') { const m = buyManualQty(key); if (m > 0) setBuyManual(key, nameFor(key), m - 1); }
+    else if (act === 'rev') { toggleRev(key); renderBuy(root); }
+    else if (act === 'num') {
+      const it = liveByKey.get(key) ||
+        { key, name: nameFor(key), fromOrders: 0, manual: buyManualQty(key), total: buyManualQty(key) };
+      openSheet(numpadSheet(it), { static: true });
+    }
     else if (act === 'share') shareText(buyText(live));
   };
 }
