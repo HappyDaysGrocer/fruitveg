@@ -393,12 +393,15 @@ const mirror = {
   avail: LS.get(LSKEY.avail, {}) || {}
 };
 
+// Seeds are deliberately ALL shelf-price: the real per-group rules live in
+// the LOCKED /pricetiers node (set via More -> Price levels) and sync after
+// login. Never bake margin/markup percentages into this public file.
 const DEFAULT_TIERS = {
   retail:     { id: 'retail',     name: 'Retail',     rule: { type: 'shop' } },
-  cafe:       { id: 'cafe',       name: 'Cafe',       rule: { type: 'shopAdj',  pct: -10 } },
-  restaurant: { id: 'restaurant', name: 'Restaurant', rule: { type: 'costPlus', pct: 20 } },
-  agedcare:   { id: 'agedcare',   name: 'Aged Care',  rule: { type: 'costPlus', pct: 12 } },
-  wholesale:  { id: 'wholesale',  name: 'Wholesale',  rule: { type: 'costPlus', pct: 8 } }
+  cafe:       { id: 'cafe',       name: 'Cafe',       rule: { type: 'shop' } },
+  restaurant: { id: 'restaurant', name: 'Restaurant', rule: { type: 'shop' } },
+  agedcare:   { id: 'agedcare',   name: 'Aged Care',  rule: { type: 'shop' } },
+  wholesale:  { id: 'wholesale',  name: 'Wholesale',  rule: { type: 'shop' } }
 };
 const TIER_ORDER = ['retail', 'cafe', 'restaurant', 'agedcare', 'wholesale'];
 
