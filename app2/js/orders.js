@@ -154,8 +154,9 @@ function renderTake(root, cust) {
     <span class="hdv-tchip">${esc(t ? t.name : (cust.tierId || ''))}</span>
   </div>
   <div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hdv-line)">
-    <button class="hdv-btnG slim" data-act="editcust">Edit customer</button>
-    <button class="hdv-btnG slim" data-act="prices">Special prices</button>
+    <button class="hdv-btnG slim" data-act="editcust">Edit</button>
+    <button class="hdv-btnG slim" data-act="prices">Prices</button>
+    <button class="hdv-btnG slim" data-act="history">History</button>
   </div>`;
 
   h += chipsHTML(categories(), takeCat);
@@ -201,6 +202,7 @@ function renderTake(root, cust) {
     else if (act === 'price') editPriceInline(t2, cust, key);
     else if (act === 'editcust') openSheet(b => customerSheet(b, cust), { static: true });
     else if (act === 'prices') openSheet(b => pricesSheet(b, cust.id), { static: true });
+    else if (act === 'history') openSheet(b => historySheet(b, cust.id));
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
   };
 }
@@ -310,9 +312,12 @@ function reviewSheet(body, custId) {
   const lines = o && Array.isArray(o.lines) ? o.lines : [];
   const total = orderTotal(lines);
   const needPrice = lines.some(l => l.price === '' || l.price == null);
+  const run = runById(cust.runId);
+  const di = run ? deliveryInfo(run) : null;
+  const delDate = di ? di.date : null;
 
   let h = `<div class="hdv-sheettitle">${esc(cust.name)}</div>
-    <div class="hdv-sheetsub">Open order · ${esc((o && o.date) || todayStr())}</div>`;
+    <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}</div>`;
 
   if (!lines.length) {
     h += emptyHTML('No lines on this order yet');
@@ -336,7 +341,7 @@ function reviewSheet(body, custId) {
     if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
     h += `<div class="hdv-actions">
       <button class="hdv-btnG" data-act="share">Share</button>
-      <button class="hdv-btnP" data-act="complete">Complete</button>
+      <button class="hdv-btnP" data-act="complete">Place order</button>
     </div>`;
   }
 
@@ -357,22 +362,93 @@ function reviewSheet(body, custId) {
 function completeOrder(custId) {
   const o = openOrderOf(custId);
   if (!o || !(o.lines || []).length) { toast('Nothing to complete'); return; }
-  o.status = 'completed';
+  const cust = asList(customers()).find(c => c && c.id === custId) || {};
+  const run = runById(cust.runId);
+  const di = run ? deliveryInfo(run) : null;
+  const delDate = di ? di.date : todayStr();
+  o.status = 'completed';            // 'open' | 'completed' (kept compatible with the classic app)
   o.completed = todayStr();
-  saveOrder(o);                 // patches /custorders, emits 'change'
+  o.placedAt = Date.now();
+  o.deliveryDate = delDate;
+  o.runId = cust.runId || '';
+  if (!o.orderNo) o.orderNo = makeOrderNo(delDate);
+  saveOrder(o);                      // patches /custorders, emits 'change'
   closeSheet();
   mode = 'list'; curId = null; clearSearch();
-  toast('Order completed');
+  toast('Order placed · ' + o.orderNo);
   rerenderNow();
+}
+
+/* Sortable order number: <deliveryYYYYMMDD>-#### (#### = that day's sequence). */
+function makeOrderNo(delDate) {
+  const ymd = String(delDate || todayStr()).replace(/-/g, '');
+  const sameDay = asList(orders()).filter(o => o && o.deliveryDate === delDate && o.orderNo);
+  return ymd + '-' + String(sameDay.length + 1).padStart(4, '0');
+}
+
+/* ---- order history + reorder ---------------------------------------- */
+
+function completedOrdersOf(custId) {
+  return asList(orders())
+    .filter(o => o && o.custId === custId && o.status === 'completed')
+    .sort((a, b) => (b.placedAt || 0) - (a.placedAt || 0) ||
+      String(b.deliveryDate || b.completed || '').localeCompare(String(a.deliveryDate || a.completed || '')));
+}
+
+function historySheet(body, custId) {
+  const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+  const list = completedOrdersOf(custId);
+  let h = `<div class="hdv-sheettitle">Order history · ${esc(cust.name)}</div>`;
+  if (!list.length) {
+    h += emptyHTML('No past orders yet');
+  } else {
+    h += list.map(o => {
+      const n = Array.isArray(o.lines) ? o.lines.length : 0;
+      return `<div class="hdv-row">
+        <div class="hdv-info">
+          <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
+          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}</div>
+        </div>
+        <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Order again</button>
+      </div>`;
+    }).join('');
+  }
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t || t.dataset.act !== 'again') return;
+    const src = asList(orders()).find(o => o && o.id === t.dataset.id);
+    if (src) reorder(custId, src);
+  };
+}
+
+/* Copy a past order's lines into the customer's open order. */
+function reorder(custId, src) {
+  const o = openOrderOf(custId) || ensureOpenOrder(custId);
+  if (!Array.isArray(o.lines)) o.lines = [];
+  for (const l of (src.lines || [])) {
+    const i = o.lines.findIndex(x => x.key === l.key);
+    if (i >= 0) o.lines[i].qty = (Number(o.lines[i].qty) || 0) + (Number(l.qty) || 0);
+    else o.lines.push({ key: l.key, name: l.name, sup: l.sup, unit: l.unit || '', qty: Number(l.qty) || 0, price: l.price, src: l.src || 'tier' });
+  }
+  saveOrder(o);
+  closeSheet();
+  toast('Copied to a new order');
+  mode = 'take'; curId = custId; clearSearch(); rerenderNow();
 }
 
 function orderText(cust, o) {
   if (!o) return '';
+  const run = runById(cust && cust.runId);
+  const di = run ? deliveryInfo(run) : null;
+  const del = o.deliveryDate || (di ? di.date : null);
   const rows = (o.lines || []).map(l => {
     const lp = Number(l.price) || 0, lq = Number(l.qty) || 0;
     return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '');
   });
-  return `Happy Days — order for ${cust ? cust.name : ''} (${o.date || todayStr()})\n` +
+  return `Happy Days — order for ${cust ? cust.name : ''}` +
+    (o.orderNo ? ` (${o.orderNo})` : '') +
+    (del ? `\nFor delivery: ${niceDate(del)}` : '') + '\n' +
     rows.join('\n') +
     `\nTotal: ${money(orderTotal(o.lines))}` +
     '\n\nHappy Days Fruit, Veg & Grocery · 0430 033 127';
