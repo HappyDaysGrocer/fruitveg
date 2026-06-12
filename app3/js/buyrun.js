@@ -17,7 +17,7 @@ import {
 
 import {
   setActive, esc, money, qText, chipsHTML, stepperHTML, emptyHTML, ensureCss,
-  shareText, openSheet, closeSheet, toast, todayStr
+  shareText, openSheet, closeSheet, toast, todayStr, productSheet
 } from './catalog.js';
 
 let buyCat = '';
@@ -67,7 +67,7 @@ function buyRow(it) {
   return `<div class="hdv-row sel${done ? ' done' : ''}">
     <button class="hdv-tick${done ? ' on' : ''}" data-act="rev" data-key="${esc(it.key)}"
       aria-label="${done ? 'unmark' : 'mark'} bought">✓</button>
-    <div class="hdv-info">
+    <div class="hdv-info" data-act="detail" data-key="${esc(it.key)}">
       <div class="hdv-name">${esc(it.name || nameFor(it.key))}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
@@ -82,7 +82,7 @@ function searchRow(p, liveByKey) {
   const sub = [p.cat, (it && it.fromOrders > 0) ? it.fromOrders + ' from orders' : '']
     .filter(Boolean).join(' · ');
   return `<div class="hdv-row${total > 0 ? ' sel' : ''}">
-    <div class="hdv-info">
+    <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
       <div class="hdv-name">${esc(p.name)}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
@@ -186,6 +186,7 @@ export function renderBuy(root) {
     else if (act === 'inc') setBuyManual(key, nameFor(key), buyManualQty(key) + 1);
     else if (act === 'dec') { const m = buyManualQty(key); if (m > 0) setBuyManual(key, nameFor(key), m - 1); }
     else if (act === 'rev') { toggleRev(key); renderBuy(root); }
+    else if (act === 'detail') openSheet(productSheet(key));
     else if (act === 'num') {
       const it = liveByKey.get(key) ||
         { key, name: nameFor(key), fromOrders: 0, manual: buyManualQty(key), total: buyManualQty(key) };

@@ -12,7 +12,7 @@ import {
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   customerId, createCustomerLogin,
   isOut, outList, setOut,
-  auth, pull, VERSION, PRICES_CHECKED
+  auth, pull, VERSION, PRICES_CHECKED, outboxCount, flushOutbox
 } from './store.js';
 
 import {
@@ -1284,11 +1284,13 @@ export function renderMore(root) {
       ${who ? 'Log out' : 'Sign in'}</button>
   </div>`;
 
-  // sync
+  // sync (v3.3: the outbox makes the offline reality visible reassurance)
+  const waiting = outboxCount();
   h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Sync</div>
-      <div class="hdv-count">${navigator.onLine ? 'Online' : 'Offline'} · last synced ${lastSyncText()}</div>
+      <div class="hdv-count">${navigator.onLine ? 'Online' : 'Offline'} · last synced ${lastSyncText()}
+        · ${waiting ? `<span style="color:var(--hdv-amber);font-weight:700">syncing ${waiting}…</span>` : 'all saved'}</div>
     </div>
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
   </div>`;

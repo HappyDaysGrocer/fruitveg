@@ -4,7 +4,10 @@
    Renders into the root element passed by app.js and re-renders
    reactively whenever the store emits 'change' or #q input changes. */
 
-import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth, isOut } from './store.js';
+import {
+  catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth,
+  isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty
+} from './store.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -282,7 +285,7 @@ function shopRow(p, withCat) {
   const badge = out
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>' : '';
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
-    <div class="hdv-info">
+    <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
       <div class="hdv-name">${esc(p.name)}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
@@ -297,8 +300,71 @@ function onShopClick(e) {
   if (act === 'chip') { shopCat = t.dataset.cat; rerenderNow(); }
   else if (act === 'inc') buy.add(key, 1);                  // store emits 'change'
   else if (act === 'dec') { if ((buy.qty(key) || 0) > 0) buy.add(key, -1); }
+  else if (act === 'detail') openSheet(productSheet(key));  // v3.3 one detail sheet
   else if (act === 'viewlist') openSheet(buyListSheet);
   else if (act === 'gologin') window.HD.go('orders');       // welcome screen
+}
+
+/* ---- unified product detail sheet (v3.3, DESIGN.md) ----
+   ONE component, opened by tapping a row's info area in Buy / Stock /
+   search. Sell is public; cost, profit, margin and 90-day velocity render
+   only once the locked overlay has loaded (secureLoaded) — never from a
+   static file. Non-static, so a store 'change' refreshes it live. */
+
+const gradeColor = (pct) =>
+  pct >= 35 ? 'var(--hdv-green)' : pct >= 18 ? 'var(--hdv-amber)' : 'var(--hdv-red)';
+
+export function productSheet(key) {
+  return (body) => {
+    const p = catalog().find((x) => x.key === key);
+    if (!p) { body.innerHTML = emptyHTML('Product not found'); return; }
+    const out = isOut(key);
+    const mi = secureLoaded() ? marginInfo(key) : null;
+    const ep = secureLoaded() ? eposFor(p.name) : null;
+    const manual = buyManualQty(key);
+
+    let h = `<div class="hdv-sheettitle">${esc(p.name)}</div>
+      <div class="hdv-sheetsub">${esc([p.cat, p.group].filter(Boolean).join(' · '))}
+        ${out ? ' · <span style="color:var(--hdv-red);font-weight:800">OUT TODAY</span>' : ''}</div>
+      <div class="hdv-kv"><span class="hdv-mut">Sell</span>
+        <b class="hdv-price" style="min-width:0">${money(p.sell) || '—'}</b></div>`;
+    if (mi && typeof mi.cost === 'number') {
+      h += `<div class="hdv-kv"><span class="hdv-mut">Cost</span>
+          <b class="hdv-price" style="min-width:0">${money(mi.cost)}</b></div>
+        <div class="hdv-kv"><span class="hdv-mut">Profit / margin</span>
+          <b class="hdv-price" style="min-width:0">${money(mi.profit)} ·
+            <span style="color:${gradeColor(mi.marginPct)}">${percent(mi.marginPct)}</span></b></div>`;
+    } else {
+      h += `<div class="hdv-sheetsub">Cost &amp; margin appear once the secure
+        cost data is loaded (sign in${secureLoaded() ? '' : ' — costs not uploaded yet'}).</div>`;
+    }
+    if (ep && (Number(ep.qty) || 0) > 0) {
+      h += `<div class="hdv-kv"><span class="hdv-mut">Sold (last 90 days)</span>
+        <b class="hdv-price" style="min-width:0">${Number(ep.qty)}${typeof ep.revIncVAT === 'number' ? ' · ' + money(ep.revIncVAT) : ''}</b></div>`;
+    }
+    if (manual > 0) {
+      h += `<div class="hdv-kv"><span class="hdv-mut">On the buy run</span>
+        <b class="hdv-price" style="min-width:0">+${manual} manual</b></div>`;
+    }
+    h += `<div class="hdv-actions">
+      <button class="hdv-btnG${out ? '' : ' danger'}" data-act-ps="out">
+        ${out ? 'Back in stock' : 'Out today'}</button>
+      <button class="hdv-btnP" data-act-ps="buy">Add to buy run</button>
+    </div>`;
+
+    body.innerHTML = h;
+    body.onclick = (e) => {
+      const t = e.target.closest('[data-act-ps]');
+      if (!t) return;
+      if (t.dataset.actPs === 'out') {
+        setOut(key, p.name, !isOut(key));       // 'change' refreshes this sheet
+        toast(isOut(key) ? 'Marked out for today' : 'Back in stock');
+      } else if (t.dataset.actPs === 'buy') {
+        setBuyManual(key, p.name, buyManualQty(key) + 1);
+        toast('Added to buy run');
+      }
+    };
+  };
 }
 
 /* ---- market list bottom sheet (chosen items, steppers, Clear, Share) */

@@ -10,6 +10,7 @@ import { renderShop, setActive, openSheet } from './catalog.js';
 import { renderOrders, renderMore, loginSheet } from './orders.js';
 import { renderMoney } from './money.js';
 import { renderBuy } from './buyrun.js';
+import { openCommandBar } from './searchBar.js';
 
 const VIEWS = { buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
 
@@ -128,6 +129,11 @@ function wireChrome() {
       go(nav.dataset.view);
     }
   });
+
+  // v3.3 command bar: the visible ⚡ button in the header (signed-in only —
+  // the gate hides the whole search wrap via body.hd3-locked).
+  const cmd = document.getElementById('cmdbtn');
+  if (cmd) cmd.addEventListener('click', () => { if (auth.user()) openCommandBar(); });
 
   // NOTE (integration): reactive re-rendering on bus 'change' and on #q
   // input is owned by the shared core in catalog.js (setActive) — it also

@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.2';
+export const VERSION = 'v3.3';
 export const PRICES_CHECKED = '12 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -525,6 +525,7 @@ seedRunsIfEmpty();
  */
 export function patch(node, id, rec) {
   const local = localNameFor(node);
+  const remote = REMOTE[local] || node;
   if (mirror[local] && id != null) {
     mirror[local][id] = rec;
     LS.set(LSKEY[local], mirror[local]);
@@ -534,11 +535,61 @@ export function patch(node, id, rec) {
     if (!t) return;
     // No Content-Type header: RTDB accepts the raw body and a "simple"
     // request avoids a CORS preflight round trip on every keystroke-save.
-    return fetch(FB.databaseURL + '/' + (REMOTE[local] || node) + '.json?auth=' + encodeURIComponent(t), {
+    return fetch(FB.databaseURL + '/' + remote + '.json?auth=' + encodeURIComponent(t), {
       method: 'PATCH',
       body: JSON.stringify({ [id]: rec })
     });
-  }).catch(() => { /* offline: mirror already updated, sync on next pull */ });
+  }).catch(() => queueWrite(remote, id, rec));
+}
+
+/* ---------- offline outbox (v3.3, DESIGN.md) ----------
+   A write made with no market signal lands in the mirror instantly (above)
+   and queues here for the network; the queue flushes on reconnect, on every
+   pull(), and via Sync now. Only NETWORK failures queue — a 4xx (auth/
+   permission) response resolves the fetch and is deliberately NOT retried,
+   it would never succeed and must not loop. Per node+id the LAST write wins
+   so a queue can't replay a stale quantity over a newer one. */
+
+let outbox = LS.get('hd3.outbox', []) || [];
+
+function queueWrite(node, id, rec) {
+  if (id == null) return;
+  outbox = outbox.filter((w) => !(w.node === node && w.id === id)); // last wins
+  outbox.push({ node, id, rec });
+  LS.set('hd3.outbox', outbox);
+  BUS.emit('outbox');
+}
+
+export function outboxCount() { return outbox.length; }
+
+let _flushing = false;
+export async function flushOutbox() {
+  if (_flushing || !outbox.length || !_auth) return;
+  _flushing = true;
+  try {
+    const t = await auth.token();
+    if (!t) return;
+    while (outbox.length) {
+      const w = outbox[0];
+      try {
+        await fetch(FB.databaseURL + '/' + w.node + '.json?auth=' + encodeURIComponent(t), {
+          method: 'PATCH',
+          body: JSON.stringify({ [w.id]: w.rec })
+        });
+      } catch (e) { return; }          // still offline — keep the rest, retry later
+      outbox.shift();
+      LS.set('hd3.outbox', outbox);
+      BUS.emit('outbox');
+    }
+  } catch (e) {
+    /* token refresh failed — retry on the next trigger */
+  } finally {
+    _flushing = false;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { flushOutbox(); });
 }
 
 /**
@@ -605,6 +656,7 @@ export async function pull() {
   }
   try { generateStandingOrders(); } catch (e) { /* never break a pull */ }
   loadSecureCatalog();   // v3: overlay costs/sales from the locked /catalog node
+  flushOutbox();         // v3.3: every pull is also a chance to drain queued writes
   BUS.emit('change');
 }
 
