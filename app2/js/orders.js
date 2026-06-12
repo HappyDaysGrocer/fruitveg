@@ -516,8 +516,9 @@ function invoiceText(invNo, cust, o) {
   const terms = cust.terms === 'COD' ? 'Pay on delivery'
     : cust.terms ? 'Payment terms: ' + cust.terms.replace('days', ' days') : '';
   return [
-    'INVOICE ' + invNo,
+    'TAX INVOICE ' + invNo,
     'Happy Days Fruit, Veg & Grocery (Mango People Pty Ltd)',
+    'ABN 95 688 893 156',
     'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
     'Ph 0430 033 127 · happydaysgrocer@gmail.com',
     '',
