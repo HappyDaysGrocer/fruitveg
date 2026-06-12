@@ -20,6 +20,8 @@ import {
   shareText, openSheet, closeSheet, toast, todayStr, productSheet
 } from './catalog.js';
 
+import { boxMath, boxLine } from './boxes.js';
+
 let buyCat = '';
 
 function nameFor(key) {
@@ -63,6 +65,8 @@ function buyRow(it) {
   const bits = [];
   if (it.fromOrders > 0) bits.push(it.fromOrders + ' from orders');
   if (it.manual > 0) bits.push('+' + it.manual + ' added');
+  const bx = boxLine(it.name || nameFor(it.key), it.total);   // "≈ 2 boxes of 12 kg"
+  if (bx) bits.push(bx);
   const sub = bits.join(' · ');
   return `<div class="hdv-row sel${done ? ' done' : ''}">
     <button class="hdv-tick${done ? ' on' : ''}" data-act="rev" data-key="${esc(it.key)}"
@@ -153,6 +157,10 @@ export function renderBuy(root) {
   const q = qText();
 
   const units = live.reduce((s, x) => s + x.total, 0);
+  const boxes = live.reduce((s, x) => {
+    const m = boxMath(x.name || nameFor(x.key), x.total);
+    return s + (m && !m.loose ? m.boxes : 0);
+  }, 0);
   const checked = live.filter((x) => isRev(x.key)).length;
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Buy run</div>
@@ -161,7 +169,7 @@ export function renderBuy(root) {
       <button class="hdv-btnG slim" data-act="share">Share</button>
     </div>
   </div>
-  <div class="hdv-sub" style="padding:0 12px 4px">${live.length} product${live.length === 1 ? '' : 's'} · ${units} to buy · always live from open orders</div>`;
+  <div class="hdv-sub" style="padding:0 12px 4px">${live.length} product${live.length === 1 ? '' : 's'} · ${units} to buy${boxes ? ' · ≈ ' + boxes + ' boxes' : ''} · always live from open orders</div>`;
 
   if (q) {
     const results = searchCatalog(q);
@@ -209,6 +217,10 @@ export function renderBuy(root) {
 function buyText(live) {
   const lines = live.slice()
     .sort((a, b) => String(a.cat).localeCompare(String(b.cat)) || String(a.name).localeCompare(String(b.name)))
-    .map((x) => `${x.total} x ${x.name || nameFor(x.key)}`);
+    .map((x) => {
+      const name = x.name || nameFor(x.key);
+      const bx = boxLine(name, x.total);
+      return `${x.total} x ${name}${bx ? '  (' + bx + ')' : ''}`;
+    });
   return 'Happy Days — buy run\n' + lines.join('\n');
 }

@@ -458,8 +458,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes', boxsizes: 'boxsizes' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes', boxsizes: 'hd3.boxsizes' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -477,7 +477,8 @@ const mirror = {
   avail: LS.get(LSKEY.avail, {}) || {},
   buyrun: LS.get(LSKEY.buyrun, {}) || {},
   stock: LS.get(LSKEY.stock, {}) || {},
-  barcodes: LS.get(LSKEY.barcodes, {}) || {}
+  barcodes: LS.get(LSKEY.barcodes, {}) || {},
+  boxsizes: LS.get(LSKEY.boxsizes, {}) || {}
 };
 
 // Seeds are deliberately ALL shelf-price: the real per-group rules live in
@@ -632,6 +633,18 @@ export function keyForBarcode(code) {
   return hit ? hit.key : null;
 }
 
+/** Owner-set box-size overrides from /boxsizes (written by the classic app's
+    "set box size", shared team-wide). Map: lowercased name -> {per, by}. */
+export function boxOverrides() {
+  const out = {};
+  for (const r of Object.values(mirror.boxsizes)) {
+    if (r && r.name && +r.per > 0) {
+      out[String(r.name).toLowerCase().trim()] = { per: +r.per, by: r.by };
+    }
+  }
+  return out;
+}
+
 /** Bind a barcode to a product (one record per code; re-assign overwrites). */
 export function assignBarcode(code, key, name) {
   code = String(code || '').trim();
@@ -668,10 +681,11 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st, av, br, stk, bc] = await Promise.all([
+    const [cust, ord, tr, rn, sp, st, av, br, stk, bc, bx] = await Promise.all([
       getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun),
-      // stock + barcodes are newer nodes — never let them break the core sync
-      getNode(REMOTE.stock).catch(() => null), getNode(REMOTE.barcodes).catch(() => null)
+      // newer nodes — never let them break the core sync
+      getNode(REMOTE.stock).catch(() => null), getNode(REMOTE.barcodes).catch(() => null),
+      getNode(REMOTE.boxsizes).catch(() => null)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
@@ -679,6 +693,7 @@ export async function pull() {
     if (br && typeof br === 'object') mirror.buyrun = Object.assign({}, mirror.buyrun, br);
     if (stk && typeof stk === 'object') mirror.stock = Object.assign({}, mirror.stock, stk);
     if (bc && typeof bc === 'object') mirror.barcodes = Object.assign({}, mirror.barcodes, bc);
+    if (bx && typeof bx === 'object') mirror.boxsizes = Object.assign({}, mirror.boxsizes, bx);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -709,6 +724,7 @@ export async function pull() {
     LS.set(LSKEY.buyrun, mirror.buyrun);
     LS.set(LSKEY.stock, mirror.stock);
     LS.set(LSKEY.barcodes, mirror.barcodes);
+    LS.set(LSKEY.boxsizes, mirror.boxsizes);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }

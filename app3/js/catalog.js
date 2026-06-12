@@ -9,6 +9,7 @@ import {
   isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty,
   stockFor
 } from './store.js';
+import { boxFor } from './boxes.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -361,6 +362,12 @@ export function productSheet(key) {
     if (st && typeof st.qty === 'number') {
       h += `<div class="hdv-kv"><span class="hdv-mut">On hand</span>
         <b class="hdv-price" style="min-width:0">${st.qty}${st.at ? ' · counted ' + esc(st.at) : ''}</b></div>`;
+    }
+    const bx = boxFor(p.name);
+    if (bx) {
+      h += `<div class="hdv-kv"><span class="hdv-mut">Mandi box</span>
+        <b class="hdv-price" style="min-width:0">${bx.loose ? 'loose · by weight'
+          : bx.per + ' ' + esc(bx.by === 'kg' ? 'kg' : bx.by) + '/box'}</b></div>`;
     }
     h += `<div class="hdv-actions">
       <button class="hdv-btnG${out ? '' : ' danger'}" data-act-ps="out">
