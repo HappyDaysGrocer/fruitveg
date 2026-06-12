@@ -374,8 +374,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -389,7 +389,8 @@ const mirror = {
   tiers: LS.get(LSKEY.tiers, {}) || {},
   runs: LS.get(LSKEY.runs, {}) || {},
   specials: LS.get(LSKEY.specials, {}) || {},
-  standing: LS.get(LSKEY.standing, {}) || {}
+  standing: LS.get(LSKEY.standing, {}) || {},
+  avail: LS.get(LSKEY.avail, {}) || {}
 };
 
 const DEFAULT_TIERS = {
@@ -476,11 +477,12 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing)
+    const [cust, ord, tr, rn, sp, st, av] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
+    if (av && typeof av === 'object') mirror.avail = Object.assign({}, mirror.avail, av);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -507,6 +509,7 @@ export async function pull() {
     LS.set(LSKEY.runs, mirror.runs);
     LS.set(LSKEY.specials, mirror.specials);
     LS.set(LSKEY.standing, mirror.standing);
+    LS.set(LSKEY.avail, mirror.avail);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -528,14 +531,15 @@ async function pullCustomer(t) {
       return r.ok ? r.json() : null;
     } catch (e) { return null; }
   };
-  const [me, idx, tr, rn, sp] = await Promise.all([
+  const [me, idx, tr, rn, sp, av] = await Promise.all([
     get('customers/' + cid), get('ordersByCustomer/' + cid),
-    get('pricetiers'), get('runs'), get('specials')
+    get('pricetiers'), get('runs'), get('specials'), get('availability')
   ]);
   if (me && typeof me === 'object') mirror.customers[cid] = me;
   if (tr && typeof tr === 'object' && Object.keys(tr).length) mirror.tiers = Object.assign({}, mirror.tiers, tr);
   if (rn && typeof rn === 'object' && Object.keys(rn).length) mirror.runs = Object.assign({}, mirror.runs, rn);
   if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
+  if (av && typeof av === 'object') mirror.avail = Object.assign({}, mirror.avail, av);
   const ids = idx && typeof idx === 'object' ? Object.keys(idx).sort().slice(-60) : [];
   const got = await Promise.all(ids.map((id) => get('custorders/' + encodeURIComponent(id))));
   got.forEach((o) => { if (o && o.id) mirror.orders[o.id] = o; });
@@ -544,6 +548,36 @@ async function pullCustomer(t) {
   LS.set(LSKEY.tiers, mirror.tiers);
   LS.set(LSKEY.runs, mirror.runs);
   LS.set(LSKEY.specials, mirror.specials);
+  LS.set(LSKEY.avail, mirror.avail);
+  BUS.emit('change');
+}
+
+/* ---------- availability — "out of stock today" ----------
+   Records keyed by id (product keys contain '/' so they can't be RTDB
+   child keys): { id, key, name, out:'YYYY-MM-DD' }. An item is out only
+   for the stamped date, so everything auto-resets at midnight. */
+
+export function isOut(key) {
+  const today = todayStr();
+  for (const a of Object.values(mirror.avail)) {
+    if (a && a.key === key && a.out === today) return true;
+  }
+  return false;
+}
+
+export function outList() {
+  const today = todayStr();
+  return Object.values(mirror.avail).filter((a) => a && a.out === today);
+}
+
+export function setOut(key, name, on) {
+  let rec = Object.values(mirror.avail).find((a) => a && a.key === key);
+  if (!rec) {
+    if (!on) return;
+    rec = { id: genId('av'), key, name: name || key };
+  }
+  rec.out = on ? todayStr() : '';
+  patch('avail', rec.id, rec);
   BUS.emit('change');
 }
 

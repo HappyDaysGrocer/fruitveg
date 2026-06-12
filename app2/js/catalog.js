@@ -4,7 +4,7 @@
    Renders into the root element passed by app.js and re-renders
    reactively whenever the store emits 'change' or #q input changes. */
 
-import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus } from './store.js';
+import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth, isOut } from './store.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -205,7 +205,14 @@ export function renderShop(root) {
   let list = q ? searchCatalog(q) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
 
-  let h = chipsHTML(groups(), shopCat);
+  let h = '';
+  if (!auth.user()) {
+    h += `<button data-act="gologin" style="display:block;width:calc(100% - 24px);margin:10px 12px 0;
+      border:0;border-radius:12px;background:var(--hdv-green);color:#fff;font-family:inherit;
+      font-size:14px;font-weight:700;padding:11px 14px;text-align:left;cursor:pointer">
+      Have an account? Sign in to see your prices &amp; order ›</button>`;
+  }
+  h += chipsHTML(groups(), shopCat);
 
   if (q) {
     if (!list.length) {
@@ -245,13 +252,16 @@ export function renderShop(root) {
 
 function shopRow(p, withCat) {
   const qty = buy.qty(p.key) || 0;
+  const out = isOut(p.key);
   const bits = [];
   if (withCat && p.cat) bits.push(p.cat);
   if (typeof p.sell === 'number' && p.sell > 0) bits.push(money(p.sell));
   const sub = bits.join(' · ');
+  const badge = out
+    ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>' : '';
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
-      <div class="hdv-name">${esc(p.name)}</div>
+      <div class="hdv-name">${esc(p.name)}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
     ${stepperHTML(p.key, qty)}
@@ -266,6 +276,7 @@ function onShopClick(e) {
   else if (act === 'inc') buy.add(key, 1);                  // store emits 'change'
   else if (act === 'dec') { if ((buy.qty(key) || 0) > 0) buy.add(key, -1); }
   else if (act === 'viewlist') openSheet(buyListSheet);
+  else if (act === 'gologin') window.HD.go('orders');       // welcome screen
 }
 
 /* ---- market list bottom sheet (chosen items, steppers, Clear, Share) */

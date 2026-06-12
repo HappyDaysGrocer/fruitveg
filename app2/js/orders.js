@@ -11,6 +11,7 @@ import {
   standingFor, saveStanding, generateStandingOrders,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   customerId, createCustomerLogin,
+  isOut, outList, setOut,
   auth, pull
 } from './store.js';
 
@@ -57,6 +58,20 @@ function niceDate(ymd) {
   return `${WD[dt.getDay()]} ${a[2]} ${MON[(a[1] || 1) - 1]}`;
 }
 function offsetWord(o) { o = Number(o) || 0; return o === 0 ? 'same day' : o === -1 ? 'night before' : Math.abs(o) + ' days before'; }
+/** "Order by 9pm tonight for delivery Sat 13 Jun" from deliveryInfo(). */
+function cutoffBannerText(di) {
+  if (!di) return '';
+  const cut = new Date(di.cutoffAt);
+  let hr = cut.getHours(); const ampm = hr >= 12 ? 'pm' : 'am';
+  hr = hr % 12 || 12;
+  const time = hr + (cut.getMinutes() ? ':' + String(cut.getMinutes()).padStart(2, '0') : '') + ampm;
+  const now = new Date();
+  const days = Math.round((new Date(cut.getFullYear(), cut.getMonth(), cut.getDate()) -
+    new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  const dayWord = days === 0 ? (cut.getHours() >= 17 ? 'tonight' : 'today')
+    : days === 1 ? 'tomorrow' : WD[cut.getDay()];
+  return `Order by ${time} ${dayWord} for delivery ${niceDate(di.date)}`;
+}
 function cutoffLabel(r) { return `${r.cutoffTime || '21:00'} (${offsetWord(r.cutoffDayOffset)})`; }
 function daysLabel(days) {
   days = Array.isArray(days) ? days : [];
@@ -68,6 +83,9 @@ function daysLabel(days) {
 export function renderOrders(root) {
   ensureCss();
   setActive(() => renderOrders(root));
+
+  // FRONT DOOR: not signed in -> welcome screen (customers land here).
+  if (!auth.user()) { renderWelcome(root); return; }
 
   // CUSTOMER MODE: a customer login only ever sees its own ordering screen.
   const myId = customerId();
@@ -87,6 +105,36 @@ export function renderOrders(root) {
     : null;
   if (mode === 'take' && cust) renderTake(root, cust);
   else { mode = 'list'; renderCustomers(root); }
+}
+
+/* ---- front door (signed out) ----------------------------------------- */
+
+function renderWelcome(root) {
+  root.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;text-align:center;
+      padding:42px 24px 24px;gap:6px">
+      <img src="../happydays-wordmark.png" alt="Happy Days"
+        style="height:84px;background:#fff;padding:8px 14px;border-radius:14px;
+        box-shadow:0 2px 10px rgba(13,40,24,.15)">
+      <div style="font-size:21px;font-weight:800;color:var(--hdv-text);margin-top:14px">
+        Welcome to Happy Days</div>
+      <div style="font-size:14.5px;color:var(--hdv-sub);max-width:300px;line-height:1.45">
+        Fresh fruit, veg &amp; groceries delivered to your business in Carrum Downs
+        and surrounds.</div>
+      <button class="hdv-btnP" data-act="signin" style="max-width:300px;width:100%;margin-top:18px">
+        Sign in to order</button>
+      <button class="hdv-btnG" data-act="browse" style="max-width:300px;width:100%">
+        Browse the shop</button>
+      <div style="font-size:13px;color:var(--hdv-sub);margin-top:16px">
+        Want an account? Call us on
+        <a class="hdv-link" href="tel:0430033127">0430 033 127</a></div>
+    </div>`;
+  root.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'signin') openSheet(loginSheet, { static: true });
+    else if (t.dataset.act === 'browse') window.HD.go('shop');
+  };
 }
 
 /* ---- customer cards -------------------------------------------------- */
@@ -189,6 +237,17 @@ function renderTake(root, cust) {
     <button class="hdv-btnG slim" data-act="standing">${stOn ? '↻ Repeat on' : 'Repeat'}</button>
   </div>`;
 
+  const cutText = cutoffBannerText(di);
+  if (cutText) {
+    h += `<div style="background:var(--hdv-lt);color:var(--hdv-green);font-size:13.5px;
+      font-weight:700;padding:9px 12px;border-bottom:1px solid var(--hdv-line)">
+      ⏱ ${esc(cutText)}</div>`;
+  } else if (run) {
+    h += `<div style="background:rgba(185,28,28,.08);color:var(--hdv-red);font-size:13.5px;
+      font-weight:700;padding:9px 12px;border-bottom:1px solid var(--hdv-line)">
+      Ordering is closed for the coming days — call us on 0430 033 127</div>`;
+  }
+
   h += chipsHTML(groups(), takeCat);
 
   // Order guide: the customer's usual products first (only on the unfiltered view)
@@ -263,17 +322,22 @@ function takeRow(p, line, cust) {
       : `<span class="hdv-price dim">${typeof tp === 'number' ? money(tp) : '—'}</span>`;
   }
   const onSpecial = !!specialFor(p.key);
+  const out = isOut(p.key);
   const sub = [p.cat, (typeof p.sell === 'number' && p.sell > 0) ? 'shop ' + money(p.sell) : '']
     .filter(Boolean).join(' · ');
-  const badge = onSpecial
+  let badge = onSpecial
     ? ' <span class="hdv-tchip" style="background:#fdebd0;color:#b45309">SPECIAL</span>' : '';
+  if (out) badge += ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>';
+  // Out + nothing on the order: no stepper (can't add). Out + qty>0: keep
+  // the stepper so the line can still be reduced/removed.
+  const stepper = (out && qty === 0) ? '' : stepperHTML(p.key, qty);
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
       <div class="hdv-name">${esc(p.name)}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
     ${priceHtml}
-    ${stepperHTML(p.key, qty)}
+    ${stepper}
   </div>`;
 }
 
@@ -287,6 +351,7 @@ function orderTotal(lines) {
 /* +/- on a take-order row. Only calls ensureOpenOrder when actually
    adding, so just LOOKING at a customer never creates an empty order. */
 function changeLine(cust, key, delta) {
+  if (delta > 0 && isOut(key)) { toast('Out of stock today'); return; }
   let o = openOrderOf(cust.id);
   if (!o) {
     if (delta <= 0) return;
@@ -1239,6 +1304,18 @@ export function renderMore(root) {
     <button class="hdv-btnG slim" data-act="groups">Manage</button>
   </div>`;
 
+  // stock (out today)
+  if (!isCust) {
+    const n = outList().length;
+    h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Stock — out today</div>
+      <div class="hdv-count">${n ? n + ' item' + (n === 1 ? '' : 's') + ' marked out' : 'Mark items customers can’t order today'}</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="stock">Manage</button>
+  </div>`;
+  }
+
   // specials
   if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
@@ -1304,6 +1381,58 @@ export function renderMore(root) {
     else if (act === 'groups') openSheet(groupsSheet);
     else if (act === 'specials') openSheet(b => specialsSheet(b), { static: true });
     else if (act === 'broadcast') openSheet(b => broadcastSheet(b), { static: true });
+    else if (act === 'stock') openSheet(b => stockSheet(b), { static: true });
+  };
+}
+
+/* ---- stock: mark items out for today --------------------------------- */
+
+function stockSheet(body) {
+  body.innerHTML = `
+    <div class="hdv-sheettitle">Stock — out today</div>
+    <div class="hdv-sheetsub">Marked items can’t be ordered today; everything resets at midnight.</div>
+    <input class="hdv-in" id="st-q" placeholder="Search a product…" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="st-res"></div>
+    <div class="hdv-actions"><button class="hdv-btnP" data-act="stdone">Done</button></div>`;
+
+  const res = body.querySelector('#st-res');
+  const qel = body.querySelector('#st-q');
+
+  const rowHtml = p => {
+    const out = isOut(p.key);
+    return `<div class="hdv-row">
+      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+        <div class="hdv-sub">${esc(p.cat)}</div></div>
+      <button class="${out ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="sttog"
+        data-key="${esc(p.key)}" data-name="${esc(p.name)}">${out ? 'Back in stock' : 'Out today'}</button>
+    </div>`;
+  };
+
+  const render = () => {
+    const q = qel.value.trim();
+    let list;
+    if (q) list = searchCatalog(q).slice(0, 25);
+    else {
+      const map = new Map(catalog().map(p => [p.key, p]));
+      list = outList().map(a => map.get(a.key) || { key: a.key, name: a.name, cat: '' });
+    }
+    if (!list.length) {
+      res.innerHTML = emptyHTML(q ? `No products match “${esc(q)}”` : 'Nothing marked out — search to mark an item');
+      return;
+    }
+    res.innerHTML = (q ? '' : `<div class="hdv-sec">${list.length} out today</div>`) + list.map(rowHtml).join('');
+  };
+  render();
+
+  qel.addEventListener('input', render);
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'stdone') { closeSheet(); return; }
+    if (t.dataset.act !== 'sttog') return;
+    const key = t.dataset.key;
+    setOut(key, t.dataset.name, !isOut(key));
+    render();
   };
 }
 
