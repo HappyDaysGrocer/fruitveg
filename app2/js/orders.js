@@ -6,7 +6,7 @@
 import {
   catalog, categories, searchCatalog,
   customers, orders, tiers,
-  runs, runById, saveRun, deliveryInfo,
+  runs, runById, saveRun, deliveryInfo, saveTier,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   auth, pull
 } from './store.js';
@@ -585,7 +585,7 @@ function customerSheet(body, existing) {
     <div style="${row}">
       <div style="${half}"><label class="hdv-lbl" for="cf-type">Type</label>
         <select class="hdv-in" id="cf-type">${typeOpts}</select></div>
-      <div style="${half}"><label class="hdv-lbl" for="cf-tier">Price tier</label>
+      <div style="${half}"><label class="hdv-lbl" for="cf-tier">Price level</label>
         <select class="hdv-in" id="cf-tier">${tierOpts}</select></div>
     </div>
     <div style="${row}">
@@ -790,6 +790,106 @@ function runEditSheet(body, existing) {
   };
 }
 
+/* ---- price levels (customer groups) --------------------------------- */
+
+function ruleLabel(rule) {
+  rule = rule || { type: 'shop' };
+  if (rule.type === 'shopAdj') {
+    const p = Number(rule.pct) || 0;
+    if (p === 0) return 'Shelf price';
+    return p < 0 ? `${Math.abs(p)}% off shelf` : `${p}% above shelf`;
+  }
+  if (rule.type === 'costPlus') return 'Shelf price · set a discount to use this group';
+  if (rule.type === 'manual') return 'Manual price each time';
+  return 'Shelf price';
+}
+
+function groupsSheet(body) {
+  const list = asList(tiers());
+  let h = `<div class="hdv-sheettitle">Price levels (customer groups)</div>
+    <div class="hdv-sheetsub">A default price for each customer type. Individual customer prices still override these.</div>`;
+  if (!list.length) h += emptyHTML('No price levels yet — add one');
+  for (const t of list) {
+    h += `<div class="hdv-row">
+      <div class="hdv-info">
+        <div class="hdv-name">${esc(t.name)}</div>
+        <div class="hdv-sub">${esc(ruleLabel(t.rule))}</div>
+      </div>
+      <button class="hdv-btnG slim" data-act="editgrp" data-id="${esc(t.id)}">Edit</button>
+    </div>`;
+  }
+  h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="addgrp">+ Add group</button></div>`;
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'editgrp') openSheet(b => groupEditSheet(b, asList(tiers()).find(x => x && x.id === t.dataset.id)), { static: true });
+    else if (t.dataset.act === 'addgrp') openSheet(b => groupEditSheet(b, null), { static: true });
+  };
+}
+
+function groupEditSheet(body, existing) {
+  const t = existing || { rule: { type: 'shop' } };
+  const rule = t.rule || { type: 'shop' };
+  const isAdj = rule.type === 'shopAdj';
+  const pct = Number(rule.pct) || 0;
+
+  body.innerHTML = `
+    <div class="hdv-sheettitle">${existing ? 'Edit price level' : 'New price level'}</div>
+    <label class="hdv-lbl" for="gf-name">Name *</label>
+    <input class="hdv-in" id="gf-name" placeholder="e.g. Cafés" value="${esc(t.name || '')}">
+    <label class="hdv-lbl" for="gf-type">Pricing</label>
+    <select class="hdv-in" id="gf-type">
+      <option value="shop"${!isAdj ? ' selected' : ''}>Shelf price (no change)</option>
+      <option value="shopAdj"${isAdj ? ' selected' : ''}>% off / above shelf</option>
+    </select>
+    <div id="gf-pctwrap" style="${isAdj ? '' : 'display:none'}">
+      <label class="hdv-lbl" for="gf-pct">Adjustment % <span class="hdv-mut">(−10 = 10% cheaper, 5 = 5% dearer)</span></label>
+      <input class="hdv-in" id="gf-pct" type="number" step="1" inputmode="numeric" value="${isAdj ? pct : -10}">
+      <div class="hdv-sub" id="gf-eg" style="padding:2px 2px 0"></div>
+    </div>
+    <div class="hdv-err" id="gf-err"></div>
+    <div class="hdv-actions">
+      <button class="hdv-btnG" data-act="cancel">Cancel</button>
+      <button class="hdv-btnP" data-act="save">Save</button>
+    </div>`;
+
+  const typeSel = body.querySelector('#gf-type');
+  const pctWrap = body.querySelector('#gf-pctwrap');
+  const pctInp = body.querySelector('#gf-pct');
+  const eg = body.querySelector('#gf-eg');
+  const updateEg = () => {
+    const p = Number(pctInp.value) || 0;
+    const out = Math.round(4.99 * (1 + p / 100) * 100) / 100;
+    eg.textContent = `Example: a ${money(4.99)} item becomes ${money(out)}`;
+  };
+  const syncType = () => {
+    pctWrap.style.display = typeSel.value === 'shopAdj' ? '' : 'none';
+    if (typeSel.value === 'shopAdj') updateEg();
+  };
+  typeSel.addEventListener('change', syncType);
+  pctInp.addEventListener('input', updateEg);
+  syncType();
+
+  body.onclick = e => {
+    const tt = e.target.closest('[data-act]');
+    if (!tt) return;
+    if (tt.dataset.act === 'cancel') { openSheet(groupsSheet); return; }
+    if (tt.dataset.act !== 'save') return;
+    const name = body.querySelector('#gf-name').value.trim();
+    if (!name) { body.querySelector('#gf-err').textContent = 'Name is required'; return; }
+    saveTier(Object.assign({}, t, {
+      id: t.id || ('tier' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)),
+      name,
+      rule: typeSel.value === 'shopAdj'
+        ? { type: 'shopAdj', pct: Math.round(Number(pctInp.value) || 0) }
+        : { type: 'shop' }
+    }));
+    toast('Price level saved');
+    openSheet(groupsSheet);
+  };
+}
+
 /* =========================================================== MORE view */
 
 export function renderMore(root) {
@@ -819,6 +919,15 @@ export function renderMore(root) {
       <div class="hdv-count">${navigator.onLine ? 'Online' : 'Offline'} · last synced ${lastSyncText()}</div>
     </div>
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
+  </div>`;
+
+  // price levels
+  h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Price levels (customer groups)</div>
+      <div class="hdv-count">Default pricing per customer type</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="groups">Manage</button>
   </div>`;
 
   // delivery runs
@@ -865,6 +974,7 @@ export function renderMore(root) {
     else if (act === 'logout') { auth.logout(); toast('Logged out'); rerenderNow(); }
     else if (act === 'sync') doSync(t);
     else if (act === 'runs') openSheet(runsAdminSheet);
+    else if (act === 'groups') openSheet(groupsSheet);
   };
 }
 

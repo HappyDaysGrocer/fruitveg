@@ -479,6 +479,13 @@ export function saveRun(r) {
   return r;
 }
 
+export function saveTier(t) {
+  if (!t.id) t.id = genId('tier');
+  patch('tiers', t.id, t);          // -> /pricetiers (the price-level groups)
+  BUS.emit('change');
+  return t;
+}
+
 export function saveOrder(o) {
   if (!o.id) o.id = genId('o');
   if (!Array.isArray(o.lines)) o.lines = [];
