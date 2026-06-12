@@ -1144,6 +1144,15 @@ export function renderMore(root) {
     <button class="hdv-btnG slim" data-act="specials">Manage</button>
   </div>`;
 
+  // broadcast
+  h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Message customers</div>
+      <div class="hdv-count">Text a special or notice to a customer group</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="broadcast">Open</button>
+  </div>`;
+
   // delivery runs
   h += `<div class="hdv-card">
     <div class="hdv-info">
@@ -1190,7 +1199,77 @@ export function renderMore(root) {
     else if (act === 'runs') openSheet(runsAdminSheet);
     else if (act === 'groups') openSheet(groupsSheet);
     else if (act === 'specials') openSheet(b => specialsSheet(b), { static: true });
+    else if (act === 'broadcast') openSheet(b => broadcastSheet(b), { static: true });
   };
+}
+
+/* ---- broadcast: message a customer group ----------------------------- */
+
+function broadcastSheet(body) {
+  let group = '';   // '' = everyone
+
+  const render = () => {
+    const msg = (body.querySelector('#bc-msg') || {}).value || '';
+    const all = asList(customers());
+    const list = group ? all.filter(c => c.type === group) : all;
+    const withPhone = list.filter(c => String(c.phone || '').trim());
+
+    const chips = [['', 'All'], ['cafe', 'Cafés'], ['restaurant', 'Restaurants'], ['agedcare', 'Aged care'], ['wholesale', 'Wholesale'], ['retail', 'Retail']]
+      .map(([v, l]) => `<button class="hdv-chip${group === v ? ' on' : ''}" data-act="bgrp" data-g="${v}">${l}</button>`).join('');
+
+    let rows = '';
+    if (!list.length) {
+      rows = emptyHTML('No customers in this group yet');
+    } else {
+      rows = list.map(c => {
+        const phone = String(c.phone || '').trim();
+        const sms = phone
+          ? `<a class="hdv-link" href="sms:${esc(phone.replace(/\s+/g, ''))}${msg ? '?&body=' + encodeURIComponent(msg) : ''}">SMS ›</a>`
+          : '<span class="hdv-mut" style="font-size:12px">no phone</span>';
+        return `<div class="hdv-row">
+          <div class="hdv-info"><div class="hdv-name">${esc(c.name)}</div>
+            <div class="hdv-sub">${esc([typeLabel(c.type), phone].filter(Boolean).join(' · '))}</div></div>
+          ${sms}
+        </div>`;
+      }).join('');
+    }
+
+    body.innerHTML = `
+      <div class="hdv-sheettitle">Message customers</div>
+      <div class="hdv-sheetsub">Write once, then tap SMS on each customer — or copy all numbers</div>
+      <div class="hdv-chips" style="position:static;padding:8px 0">${chips}</div>
+      <label class="hdv-lbl" for="bc-msg">Message</label>
+      <textarea class="hdv-in" id="bc-msg" rows="3"
+        placeholder="e.g. Zucchini special today — $1 each. Order by 9pm for tomorrow.">${esc(msg)}</textarea>
+      <div class="hdv-sec">${withPhone.length} of ${list.length} have a phone number</div>
+      ${rows}
+      <div class="hdv-actions">
+        <button class="hdv-btnG" data-act="bcopy">Copy numbers</button>
+        <button class="hdv-btnP" data-act="bdone">Done</button>
+      </div>`;
+  };
+  render();
+
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    const act = t.dataset.act;
+    if (act === 'bgrp') { group = t.dataset.g; render(); }
+    else if (act === 'bcopy') {
+      const all = asList(customers());
+      const list = group ? all.filter(c => c.type === group) : all;
+      const nums = list.map(c => String(c.phone || '').trim()).filter(Boolean).join(', ');
+      if (!nums) { toast('No phone numbers in this group'); return; }
+      navigator.clipboard.writeText(nums)
+        .then(() => toast('Numbers copied'))
+        .catch(() => toast('Could not copy'));
+    }
+    else if (act === 'bdone') closeSheet();
+  };
+  // refresh SMS links when the message changes (links carry the body text)
+  body.addEventListener('change', e => {
+    if (e.target && e.target.id === 'bc-msg') render();
+  });
 }
 
 function doSync(btn) {
