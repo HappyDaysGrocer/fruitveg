@@ -255,14 +255,26 @@ export const auth = {
     if (!res.ok) {
       throw new Error(friendlyAuthError(data && data.error && data.error.message));
     }
-    setAuth({
+    const blob = {
       idToken: data.idToken,
       refreshToken: data.refreshToken,
       // refresh 60s early so an in-flight request never carries a dead token
       expiresAt: Date.now() + (Number(data.expiresIn) || 3600) * 1000 - 60000,
       uid: data.localId,
       email
-    });
+    };
+    // Customer login? /custUsers/<uid> maps a Firebase uid to its customer
+    // record (written by staff when they create the login). Best effort —
+    // until the security rules are published this just comes back denied.
+    try {
+      const r = await fetch(FB.databaseURL + '/custUsers/' +
+        encodeURIComponent(data.localId) + '.json?auth=' + encodeURIComponent(data.idToken));
+      if (r.ok) {
+        const cid = await r.json();
+        if (typeof cid === 'string' && cid) blob.custId = cid;
+      }
+    } catch (e) { /* offline / rules not live yet */ }
+    setAuth(blob);
     return auth.user();
   },
 
@@ -270,7 +282,11 @@ export const auth = {
 
   user() {
     if (!_auth) return null;
-    return { uid: _auth.uid, email: _auth.email, name: String(_auth.email || '').split('@')[0] };
+    return {
+      uid: _auth.uid, email: _auth.email,
+      name: String(_auth.email || '').split('@')[0],
+      custId: _auth.custId || null
+    };
   },
 
   /** Resolves a valid idToken (auto-refresh) or null when signed out. */
@@ -297,7 +313,8 @@ export const auth = {
         refreshToken: d.refresh_token || _auth.refreshToken,
         expiresAt: Date.now() + (Number(d.expires_in) || 3600) * 1000 - 60000,
         uid: d.user_id || _auth.uid,
-        email: _auth.email
+        email: _auth.email,
+        custId: _auth.custId || undefined   // keep the customer binding
       });
       return _auth.idToken;
     } catch (e) {
@@ -305,6 +322,51 @@ export const auth = {
     }
   }
 };
+
+/** The customer id bound to the signed-in login, or null for staff/guests. */
+export function customerId() {
+  return (_auth && _auth.custId) || null;
+}
+
+/* Fire-and-forget PATCH to an arbitrary RTDB path (no local mirror). */
+function fbPatch(path, body) {
+  if (!_auth) return Promise.resolve();
+  return auth.token().then((t) => {
+    if (!t) return;
+    return fetch(FB.databaseURL + '/' + path + '.json?auth=' + encodeURIComponent(t), {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    });
+  }).catch(() => { /* offline / rules pending */ });
+}
+
+/**
+ * STAFF action: create a Firebase login for a customer and bind it via
+ * /custUsers/<uid> = custId. Never touches the staff member's own session
+ * (the sign-up response tokens are deliberately ignored).
+ */
+export async function createCustomerLogin(custId, username, password) {
+  const u = String(username || '').trim();
+  const email = u.indexOf('@') >= 0 ? u : u + '@happydaysgrocer.app';
+  const res = await fetch(
+    'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB.apiKey,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    }
+  );
+  let d = {};
+  try { d = await res.json(); } catch (e) { /* fall through */ }
+  if (!res.ok) {
+    const code = String(d && d.error && d.error.message || '');
+    if (code.indexOf('EMAIL_EXISTS') === 0) throw new Error('That username is already taken');
+    if (code.indexOf('WEAK_PASSWORD') === 0) throw new Error('Password too weak — 6+ characters');
+    throw new Error('Could not create the login');
+  }
+  await fbPatch('custUsers', { [d.localId]: custId });
+  return { uid: d.localId, email };
+}
 
 /* =========================================================================
    FIREBASE MIRRORS — customers / orders(custorders) / tiers(pricetiers)
@@ -405,6 +467,7 @@ export async function pull() {
     BUS.emit('change');
     return;
   }
+  if (customerId()) return pullCustomer(t);   // scoped: own record + own orders
 
   const getNode = async (node) => {
     const res = await fetch(FB.databaseURL + '/' + node + '.json?auth=' + encodeURIComponent(t));
@@ -448,6 +511,39 @@ export async function pull() {
     /* offline or server error — keep stale mirrors, still resolve */
   }
   try { generateStandingOrders(); } catch (e) { /* never break a pull */ }
+  BUS.emit('change');
+}
+
+/**
+ * Customer-scoped pull: a customer login reads ONLY its own customer
+ * record, its own orders (via the /ordersByCustomer fan-out index), and
+ * the shared pricing/run/special config the rules allow it to see.
+ * Never rejects; failed reads (rules pending / offline) keep stale mirrors.
+ */
+async function pullCustomer(t) {
+  const cid = customerId();
+  const get = async (p) => {
+    try {
+      const r = await fetch(FB.databaseURL + '/' + p + '.json?auth=' + encodeURIComponent(t));
+      return r.ok ? r.json() : null;
+    } catch (e) { return null; }
+  };
+  const [me, idx, tr, rn, sp] = await Promise.all([
+    get('customers/' + cid), get('ordersByCustomer/' + cid),
+    get('pricetiers'), get('runs'), get('specials')
+  ]);
+  if (me && typeof me === 'object') mirror.customers[cid] = me;
+  if (tr && typeof tr === 'object' && Object.keys(tr).length) mirror.tiers = Object.assign({}, mirror.tiers, tr);
+  if (rn && typeof rn === 'object' && Object.keys(rn).length) mirror.runs = Object.assign({}, mirror.runs, rn);
+  if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
+  const ids = idx && typeof idx === 'object' ? Object.keys(idx).sort().slice(-60) : [];
+  const got = await Promise.all(ids.map((id) => get('custorders/' + encodeURIComponent(id))));
+  got.forEach((o) => { if (o && o.id) mirror.orders[o.id] = o; });
+  LS.set(LSKEY.customers, mirror.customers);
+  LS.set(LSKEY.orders, mirror.orders);
+  LS.set(LSKEY.tiers, mirror.tiers);
+  LS.set(LSKEY.runs, mirror.runs);
+  LS.set(LSKEY.specials, mirror.specials);
   BUS.emit('change');
 }
 
@@ -613,6 +709,7 @@ export function generateStandingOrders() {
         channel: 'standing',
         lines
       });
+      fbPatch('ordersByCustomer/' + s.custId, { [oid]: true });
       made++;
     }
     s.lastGenerated = di.date;
@@ -638,6 +735,9 @@ export function saveOrder(o) {
   if (!o.id) o.id = genId('o');
   if (!Array.isArray(o.lines)) o.lines = [];
   patch('custorders', o.id, o);
+  // Fan-out index so a customer login can list ONLY its own orders
+  // (RTDB rules can't filter a whole-node read).
+  if (o.custId) fbPatch('ordersByCustomer/' + o.custId, { [o.id]: true });
   BUS.emit('change');
   return o;
 }

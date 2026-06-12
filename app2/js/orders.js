@@ -10,6 +10,7 @@ import {
   specials, saveSpecial, specialFor,
   standingFor, saveStanding, generateStandingOrders,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
+  customerId, createCustomerLogin,
   auth, pull
 } from './store.js';
 
@@ -67,6 +68,20 @@ function daysLabel(days) {
 export function renderOrders(root) {
   ensureCss();
   setActive(() => renderOrders(root));
+
+  // CUSTOMER MODE: a customer login only ever sees its own ordering screen.
+  const myId = customerId();
+  if (myId) {
+    const me = asList(customers()).find(c => c && c.id === myId);
+    mode = 'take'; curId = myId;
+    if (me) { renderTake(root, me); return; }
+    root.innerHTML = emptyHTML(
+      'Your account isn’t linked to a customer yet — ' +
+      'call Happy Days on 0430 033 127');
+    root.onclick = null;
+    return;
+  }
+
   const cust = mode === 'take'
     ? asList(customers()).find(c => c && c.id === curId)
     : null;
@@ -154,10 +169,12 @@ function renderTake(root, cust) {
     ? (di ? `${run.name} · next delivery ${niceDate(di.date)}` : run.name)
     : 'No delivery run set';
 
+  const self = cust.id === customerId();   // customer ordering for themselves
+
   let h = `<div class="hdv-back">
-    <button class="hdv-backbtn" data-act="back">‹ Customers</button>
+    ${self ? '' : '<button class="hdv-backbtn" data-act="back">‹ Customers</button>'}
     <div class="hdv-info">
-      <div class="hdv-name">${esc(cust.name)}</div>
+      <div class="hdv-name">${self ? 'Your order · ' : ''}${esc(cust.name)}</div>
       <div class="hdv-sub">${esc(delLabel)}</div>
     </div>
     <span class="hdv-tchip">${esc(t ? t.name : (cust.tierId || ''))}</span>
@@ -166,8 +183,8 @@ function renderTake(root, cust) {
   const st = standingFor(cust.id);
   const stOn = st && st.active !== false && (st.lines || []).length;
   h += `<div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hdv-line)">
-    <button class="hdv-btnG slim" data-act="editcust">Edit</button>
-    <button class="hdv-btnG slim" data-act="prices">Prices</button>
+    ${self ? '' : `<button class="hdv-btnG slim" data-act="editcust">Edit</button>
+    <button class="hdv-btnG slim" data-act="prices">Prices</button>`}
     <button class="hdv-btnG slim" data-act="history">History</button>
     <button class="hdv-btnG slim" data-act="standing">${stOn ? '↻ Repeat on' : 'Repeat'}</button>
   </div>`;
@@ -820,6 +837,15 @@ function customerSheet(body, existing) {
     </div>
     <label class="hdv-lbl" for="cf-notes">Notes</label>
     <input class="hdv-in" id="cf-notes" placeholder="Delivery / picking notes" value="${val(c.notes)}">
+    ${existing ? `
+    <label class="hdv-lbl">Customer login <span class="hdv-mut">(lets them order for themselves)</span></label>
+    <div style="${row}">
+      <div style="${half}"><input class="hdv-in" id="cf-luser" placeholder="username"
+        autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+      <div style="${half}"><input class="hdv-in" id="cf-lpass" placeholder="temp password (6+)"
+        autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+    </div>
+    <button class="hdv-btnG slim" data-act="mklogin" style="margin-top:4px">Create login</button>` : ''}
     <div class="hdv-err" id="cf-err"></div>
     <div class="hdv-actions">
       <button class="hdv-btnG" data-act="cancel">Cancel</button>
@@ -830,6 +856,17 @@ function customerSheet(body, existing) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     if (t.dataset.act === 'cancel') { closeSheet(); return; }
+    if (t.dataset.act === 'mklogin') {
+      const err = body.querySelector('#cf-err');
+      const u = (body.querySelector('#cf-luser') || {}).value || '';
+      const p = (body.querySelector('#cf-lpass') || {}).value || '';
+      if (!u.trim() || p.length < 6) { err.textContent = 'Enter a username and a 6+ character password'; return; }
+      t.disabled = true; t.textContent = 'Creating…';
+      createCustomerLogin(c.id, u, p)
+        .then(r => { err.textContent = ''; toast('Login created: ' + r.email); t.textContent = 'Login created ✓'; })
+        .catch(e2 => { err.textContent = e2.message || 'Could not create the login'; t.disabled = false; t.textContent = 'Create login'; });
+      return;
+    }
     if (t.dataset.act !== 'save') return;
     const g = id => body.querySelector(id).value.trim();
     const name = g('#cf-name');
@@ -1191,8 +1228,10 @@ export function renderMore(root) {
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
   </div>`;
 
+  const isCust = !!customerId();   // customer logins see no admin tools
+
   // price levels
-  h += `<div class="hdv-card">
+  if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Price levels (customer groups)</div>
       <div class="hdv-count">Default pricing per customer type</div>
@@ -1201,7 +1240,7 @@ export function renderMore(root) {
   </div>`;
 
   // specials
-  h += `<div class="hdv-card">
+  if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Specials</div>
       <div class="hdv-count">Promo prices for all customers</div>
@@ -1210,7 +1249,7 @@ export function renderMore(root) {
   </div>`;
 
   // broadcast
-  h += `<div class="hdv-card">
+  if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Message customers</div>
       <div class="hdv-count">Text a special or notice to a customer group</div>
@@ -1219,7 +1258,7 @@ export function renderMore(root) {
   </div>`;
 
   // delivery runs
-  h += `<div class="hdv-card">
+  if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Delivery runs &amp; cut-offs</div>
       <div class="hdv-count">When customers order by &amp; which days you deliver</div>
@@ -1228,7 +1267,7 @@ export function renderMore(root) {
   </div>`;
 
   // classic app
-  h += `<div class="hdv-card">
+  if (!isCust) h += `<div class="hdv-card">
     <div class="hdv-info">
       <div class="hdv-name">Classic app</div>
       <div class="hdv-count">The original Happy Days app</div>
