@@ -278,8 +278,8 @@ export const auth = {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -290,7 +290,8 @@ function localNameFor(node) {
 const mirror = {
   customers: LS.get(LSKEY.customers, {}) || {},
   orders: LS.get(LSKEY.orders, {}) || {},
-  tiers: LS.get(LSKEY.tiers, {}) || {}
+  tiers: LS.get(LSKEY.tiers, {}) || {},
+  runs: LS.get(LSKEY.runs, {}) || {}
 };
 
 const DEFAULT_TIERS = {
@@ -309,6 +310,25 @@ function seedTiersIfEmpty() {
   }
 }
 seedTiersIfEmpty(); // pricing must work before the first sync ever happens
+
+/* ---------- delivery runs (cut-off + delivery days) ---------- */
+
+const DEFAULT_RUNS = {
+  morning: {
+    id: 'morning', name: 'Morning delivery', code: 'AM',
+    cutoffTime: '21:00', cutoffDayOffset: -1,   // order by 9pm the night before
+    deliveryDays: [1, 2, 3, 4, 5, 6],           // Mon–Sat (0 = Sun)
+    active: true
+  }
+};
+
+function seedRunsIfEmpty() {
+  if (Object.keys(mirror.runs).length === 0) {
+    mirror.runs = JSON.parse(JSON.stringify(DEFAULT_RUNS));
+    LS.set(LSKEY.runs, mirror.runs);
+  }
+}
+seedRunsIfEmpty();
 
 /**
  * Fire-and-forget PATCH. Also keeps the local mirror + localStorage in sync
@@ -341,6 +361,7 @@ export function patch(node, id, rec) {
  */
 export async function pull() {
   seedTiersIfEmpty();
+  seedRunsIfEmpty();
   let t = null;
   try { t = await auth.token(); } catch (e) { /* treat as logged out */ }
   if (!t) { BUS.emit('change'); return; }
@@ -352,8 +373,8 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers)
+    const [cust, ord, tr, rn] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs)
     ]);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
@@ -366,9 +387,19 @@ export async function pull() {
         body: JSON.stringify(DEFAULT_TIERS)
       }).catch(() => {});
     }
+    if (rn && typeof rn === 'object' && Object.keys(rn).length) {
+      mirror.runs = Object.assign({}, mirror.runs, rn);
+    } else {
+      // Remote runs node is empty: seed it with the defaults (fire & forget).
+      fetch(FB.databaseURL + '/' + REMOTE.runs + '.json?auth=' + encodeURIComponent(t), {
+        method: 'PATCH',
+        body: JSON.stringify(DEFAULT_RUNS)
+      }).catch(() => {});
+    }
     LS.set(LSKEY.customers, mirror.customers);
     LS.set(LSKEY.orders, mirror.orders);
     LS.set(LSKEY.tiers, mirror.tiers);
+    LS.set(LSKEY.runs, mirror.runs);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -395,6 +426,42 @@ export function tiers() {
   });
 }
 
+export function runs() {
+  return Object.values(mirror.runs).filter(Boolean)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
+export function runById(id) {
+  return (id && mirror.runs[id]) ||
+    Object.values(mirror.runs).find((r) => r && r.id === id) || null;
+}
+
+/**
+ * Next available delivery date for a run, honouring its cut-off.
+ * cutoffDayOffset: 0 = cut-off on the delivery day, -1 = the day before, etc.
+ * Returns { date:'YYYY-MM-DD', cutoffAt:ms, weekday:0-6 } or null.
+ */
+export function deliveryInfo(run, now) {
+  if (!run) return null;
+  now = now || new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const days = (Array.isArray(run.deliveryDays) && run.deliveryDays.length)
+    ? run.deliveryDays : [1, 2, 3, 4, 5, 6];
+  const parts = String(run.cutoffTime || '21:00').split(':');
+  const hh = parseInt(parts[0], 10) || 0, mm = parseInt(parts[1], 10) || 0;
+  const offset = Number(run.cutoffDayOffset) || 0;
+  for (let i = 0; i < 14; i++) {
+    const cand = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    if (!days.includes(cand.getDay())) continue;
+    const cut = new Date(cand.getFullYear(), cand.getMonth(), cand.getDate() + offset, hh, mm, 0, 0);
+    if (now.getTime() <= cut.getTime()) {
+      return { date: ymd(cand), cutoffAt: cut.getTime(), weekday: cand.getDay() };
+    }
+  }
+  return null;
+}
+
 /* ---------- writers ---------- */
 
 export function saveCustomer(c) {
@@ -403,6 +470,13 @@ export function saveCustomer(c) {
   patch('customers', c.id, c);
   BUS.emit('change');
   return c;
+}
+
+export function saveRun(r) {
+  if (!r.id) r.id = genId('run');
+  patch('runs', r.id, r);
+  BUS.emit('change');
+  return r;
 }
 
 export function saveOrder(o) {

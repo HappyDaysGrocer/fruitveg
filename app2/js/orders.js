@@ -6,6 +6,7 @@
 import {
   catalog, categories, searchCatalog,
   customers, orders, tiers,
+  runs, runById, saveRun, deliveryInfo,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   auth, pull
 } from './store.js';
@@ -37,6 +38,24 @@ function tierMap() {
 
 function openOrderOf(custId) {
   return asList(orders()).find(o => o && o.custId === custId && o.status === 'open');
+}
+
+/* ----- small formatters for customers / runs / dates ----- */
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TYPE_LABELS = { restaurant: 'Restaurant', cafe: 'Cafe', agedcare: 'Aged care', wholesale: 'Wholesale', retail: 'Retail' };
+function typeLabel(x) { return TYPE_LABELS[x] || x || ''; }
+function niceDate(ymd) {
+  if (!ymd) return '';
+  const a = String(ymd).split('-').map(n => parseInt(n, 10));
+  const dt = new Date(a[0], (a[1] || 1) - 1, a[2] || 1);
+  return `${WD[dt.getDay()]} ${a[2]} ${MON[(a[1] || 1) - 1]}`;
+}
+function offsetWord(o) { o = Number(o) || 0; return o === 0 ? 'same day' : o === -1 ? 'night before' : Math.abs(o) + ' days before'; }
+function cutoffLabel(r) { return `${r.cutoffTime || '21:00'} (${offsetWord(r.cutoffDayOffset)})`; }
+function daysLabel(days) {
+  days = Array.isArray(days) ? days : [];
+  return days.length ? days.slice().sort((a, b) => a - b).map(d => WD[d]).join(' ') : '—';
 }
 
 /* ========================================================= ORDERS view */
@@ -75,13 +94,17 @@ function renderCustomers(root) {
     const t = tm[c.tierId];
     const open = openOrderOf(c.id);
     const n = open && Array.isArray(open.lines) ? open.lines.length : 0;
+    const meta = [
+      c.type ? typeLabel(c.type) : '',
+      n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order',
+      c.phone ? esc(c.phone) : ''
+    ].filter(Boolean).join(' · ');
     h += `<div class="hdv-card" data-act="cust" data-id="${esc(c.id)}">
       <div class="hdv-info">
         <div class="hdv-name">${esc(c.name || '(unnamed)')}</div>
-        <div class="hdv-count">${
-          n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order'
-        }${c.phone ? ' · ' + esc(c.phone) : ''}</div>
+        <div class="hdv-count">${meta}</div>
       </div>
+      <button class="hdv-btnG slim" data-act="edit" data-id="${esc(c.id)}">Edit</button>
       <span class="hdv-tchip">${esc(t ? t.name : (c.tierId || 'retail'))}</span>
     </div>`;
   }
@@ -94,8 +117,11 @@ function renderCustomers(root) {
     if (t.dataset.act === 'cust') {
       mode = 'take'; curId = t.dataset.id; takeCat = '';
       clearSearch(); rerenderNow();
+    } else if (t.dataset.act === 'edit') {
+      const c = asList(customers()).find(x => x && x.id === t.dataset.id);
+      if (c) openSheet(b => customerSheet(b, c), { static: true });
     } else if (t.dataset.act === 'newcust') {
-      openSheet(newCustomerSheet, { static: true });
+      openSheet(b => customerSheet(b, null), { static: true });
     }
   };
 }
@@ -113,10 +139,23 @@ function renderTake(root, cust) {
   let list = q ? searchCatalog(q) : catalog();
   if (takeCat) list = list.filter(p => p.cat === takeCat);
 
+  const run = runById(cust.runId);
+  const di = run ? deliveryInfo(run) : null;
+  const delLabel = run
+    ? (di ? `${run.name} · next delivery ${niceDate(di.date)}` : run.name)
+    : 'No delivery run set';
+
   let h = `<div class="hdv-back">
     <button class="hdv-backbtn" data-act="back">‹ Customers</button>
-    <div class="hdv-info"><div class="hdv-name">${esc(cust.name)}</div></div>
+    <div class="hdv-info">
+      <div class="hdv-name">${esc(cust.name)}</div>
+      <div class="hdv-sub">${esc(delLabel)}</div>
+    </div>
     <span class="hdv-tchip">${esc(t ? t.name : (cust.tierId || ''))}</span>
+  </div>
+  <div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hdv-line)">
+    <button class="hdv-btnG slim" data-act="editcust">Edit customer</button>
+    <button class="hdv-btnG slim" data-act="prices">Special prices</button>
   </div>`;
 
   h += chipsHTML(categories(), takeCat);
@@ -160,6 +199,8 @@ function renderTake(root, cust) {
     else if (act === 'inc') changeLine(cust, key, 1);
     else if (act === 'dec') changeLine(cust, key, -1);
     else if (act === 'price') editPriceInline(t2, cust, key);
+    else if (act === 'editcust') openSheet(b => customerSheet(b, cust), { static: true });
+    else if (act === 'prices') openSheet(b => pricesSheet(b, cust.id), { static: true });
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
   };
 }
@@ -337,25 +378,61 @@ function orderText(cust, o) {
     '\n\nHappy Days Fruit, Veg & Grocery · 0430 033 127';
 }
 
-/* ---- new-customer mini-form (name / phone / tier) --------------------- */
+/* ---- customer add / edit form --------------------------------------- */
 
-function newCustomerSheet(body) {
+function customerSheet(body, existing) {
+  const c = existing || {};
+  const val = x => esc(x == null ? '' : x);
   const tlist = asList(tiers());
-  const opts = (tlist.length ? tlist : [{ id: 'retail', name: 'retail' }])
-    .map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  const tierOpts = (tlist.length ? tlist : [{ id: 'retail', name: 'retail' }])
+    .map(t => `<option value="${esc(t.id)}"${c.tierId === t.id ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  const runOpts = '<option value="">— none —</option>' + asList(runs())
+    .map(r => `<option value="${esc(r.id)}"${c.runId === r.id ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
+  const typeOpts = [['restaurant', 'Restaurant'], ['cafe', 'Cafe'], ['agedcare', 'Aged care'], ['wholesale', 'Wholesale'], ['retail', 'Retail']]
+    .map(([v, l]) => `<option value="${v}"${c.type === v ? ' selected' : ''}>${l}</option>`).join('');
+  const termOpts = [['COD', 'COD (pay on delivery)'], ['7days', '7 days'], ['14days', '14 days'], ['30days', '30 days']]
+    .map(([v, l]) => `<option value="${v}"${c.terms === v ? ' selected' : ''}>${l}</option>`).join('');
+  const half = 'flex:1;min-width:0';
+  const row = 'display:flex;gap:10px';
 
   body.innerHTML = `
-    <div class="hdv-sheettitle">New customer</div>
-    <label class="hdv-lbl" for="hdv-nc-name">Name</label>
-    <input class="hdv-in" id="hdv-nc-name" placeholder="e.g. Corner Cafe" autocomplete="off">
-    <label class="hdv-lbl" for="hdv-nc-phone">Phone</label>
-    <input class="hdv-in" id="hdv-nc-phone" type="tel" placeholder="04xx xxx xxx" autocomplete="off">
-    <label class="hdv-lbl" for="hdv-nc-tier">Price tier</label>
-    <select class="hdv-in" id="hdv-nc-tier">${opts}</select>
-    <div class="hdv-err" id="hdv-nc-err"></div>
+    <div class="hdv-sheettitle">${existing ? 'Edit customer' : 'New customer'}</div>
+    <label class="hdv-lbl" for="cf-name">Name *</label>
+    <input class="hdv-in" id="cf-name" placeholder="e.g. Corner Cafe" autocomplete="off" value="${val(c.name)}">
+    <div style="${row}">
+      <div style="${half}"><label class="hdv-lbl" for="cf-type">Type</label>
+        <select class="hdv-in" id="cf-type">${typeOpts}</select></div>
+      <div style="${half}"><label class="hdv-lbl" for="cf-tier">Price tier</label>
+        <select class="hdv-in" id="cf-tier">${tierOpts}</select></div>
+    </div>
+    <div style="${row}">
+      <div style="${half}"><label class="hdv-lbl" for="cf-phone">Phone</label>
+        <input class="hdv-in" id="cf-phone" type="tel" placeholder="04xx xxx xxx" value="${val(c.phone)}"></div>
+      <div style="${half}"><label class="hdv-lbl" for="cf-contact">Contact person</label>
+        <input class="hdv-in" id="cf-contact" placeholder="e.g. Maria" value="${val(c.contact)}"></div>
+    </div>
+    <label class="hdv-lbl" for="cf-email">Email</label>
+    <input class="hdv-in" id="cf-email" type="email" autocapitalize="none" spellcheck="false" placeholder="name@email.com" value="${val(c.email)}">
+    <label class="hdv-lbl" for="cf-addr">Address</label>
+    <input class="hdv-in" id="cf-addr" placeholder="Street address" value="${val(c.address)}">
+    <div style="${row}">
+      <div style="${half}"><label class="hdv-lbl" for="cf-sub">Suburb</label>
+        <input class="hdv-in" id="cf-sub" placeholder="Suburb" value="${val(c.suburb)}"></div>
+      <div style="${half}"><label class="hdv-lbl" for="cf-run">Delivery run</label>
+        <select class="hdv-in" id="cf-run">${runOpts}</select></div>
+    </div>
+    <div style="${row}">
+      <div style="${half}"><label class="hdv-lbl" for="cf-min">Min order $</label>
+        <input class="hdv-in" id="cf-min" type="number" inputmode="decimal" min="0" placeholder="0" value="${c.minOrder != null ? esc(c.minOrder) : ''}"></div>
+      <div style="${half}"><label class="hdv-lbl" for="cf-terms">Payment terms</label>
+        <select class="hdv-in" id="cf-terms">${termOpts}</select></div>
+    </div>
+    <label class="hdv-lbl" for="cf-notes">Notes</label>
+    <input class="hdv-in" id="cf-notes" placeholder="Delivery / picking notes" value="${val(c.notes)}">
+    <div class="hdv-err" id="cf-err"></div>
     <div class="hdv-actions">
       <button class="hdv-btnG" data-act="cancel">Cancel</button>
-      <button class="hdv-btnP" data-act="save">Save customer</button>
+      <button class="hdv-btnP" data-act="save">${existing ? 'Save changes' : 'Save customer'}</button>
     </div>`;
 
   body.onclick = e => {
@@ -363,20 +440,170 @@ function newCustomerSheet(body) {
     if (!t) return;
     if (t.dataset.act === 'cancel') { closeSheet(); return; }
     if (t.dataset.act !== 'save') return;
-    const name = body.querySelector('#hdv-nc-name').value.trim();
-    if (!name) {
-      body.querySelector('#hdv-nc-err').textContent = 'Name is required';
+    const g = id => body.querySelector(id).value.trim();
+    const name = g('#cf-name');
+    if (!name) { body.querySelector('#cf-err').textContent = 'Name is required'; return; }
+    const minRaw = g('#cf-min');
+    saveCustomer(Object.assign({}, c, {
+      id: c.id || ('c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+      name,
+      type: g('#cf-type'),
+      tierId: g('#cf-tier'),
+      phone: g('#cf-phone'),
+      contact: g('#cf-contact'),
+      email: g('#cf-email'),
+      address: g('#cf-addr'),
+      suburb: g('#cf-sub'),
+      runId: g('#cf-run'),
+      minOrder: minRaw === '' ? null : (parseFloat(minRaw) || 0),
+      terms: g('#cf-terms'),
+      notes: g('#cf-notes'),
+      prices: c.prices || {}
+    }));
+    closeSheet();
+    toast(existing ? 'Customer saved' : 'Customer added');
+  };
+}
+
+/* ---- per-customer special prices (a sparse price list) --------------- */
+
+function pricesSheet(body, custId) {
+  const findCust = () => asList(customers()).find(c => c && c.id === custId);
+  let cust = findCust() || { id: custId, name: '?', prices: {} };
+
+  body.innerHTML = `
+    <div class="hdv-sheettitle">Special prices · ${esc(cust.name)}</div>
+    <div class="hdv-sheetsub">Search a product and set this customer's price. Blank = standard shelf price.</div>
+    <input class="hdv-in" id="pe-q" placeholder="Search products…" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="pe-res"></div>
+    <div class="hdv-actions"><button class="hdv-btnP" data-act="done">Done</button></div>`;
+
+  const res = body.querySelector('#pe-res');
+  const qel = body.querySelector('#pe-q');
+
+  const rowHtml = p => {
+    const cur = cust.prices && cust.prices[p.key];
+    const shelf = (typeof p.sell === 'number' && p.sell > 0) ? 'shelf ' + money(p.sell) : 'no shelf price';
+    const v = (cur === '' || cur == null) ? '' : Number(cur);
+    return `<div class="hdv-row">
+      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+        <div class="hdv-sub">${esc(shelf)}</div></div>
+      <input class="hdv-pin pe-price" data-key="${esc(p.key)}" type="number" step="0.01" min="0"
+        inputmode="decimal" placeholder="${typeof p.sell === 'number' ? p.sell.toFixed(2) : '—'}" value="${v}">
+    </div>`;
+  };
+
+  const render = () => {
+    cust = findCust() || cust;
+    const q = qel.value.trim();
+    let list;
+    if (q) {
+      list = searchCatalog(q).slice(0, 25);
+    } else {
+      const map = new Map(catalog().map(p => [p.key, p]));
+      list = Object.keys(cust.prices || {}).map(k => map.get(k)).filter(Boolean);
+    }
+    if (!list.length) {
+      res.innerHTML = emptyHTML(q ? `No products match “${esc(q)}”` : 'No special prices yet — search to add one');
       return;
     }
-    saveCustomer({
-      id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    res.innerHTML = (q ? '' : `<div class="hdv-sec">${list.length} special price${list.length === 1 ? '' : 's'}</div>`) +
+      list.map(rowHtml).join('');
+  };
+  render();
+
+  qel.addEventListener('input', render);
+  res.addEventListener('change', e => {
+    const inp = e.target.closest('.pe-price');
+    if (!inp) return;
+    cust = findCust() || cust;
+    const prices = Object.assign({}, cust.prices || {});
+    const raw = inp.value.trim();
+    if (raw === '') delete prices[inp.dataset.key];
+    else { const v = parseFloat(raw); if (isFinite(v) && v >= 0) prices[inp.dataset.key] = Math.round(v * 100) / 100; }
+    saveCustomer(Object.assign({}, cust, { prices }));
+    cust = findCust() || cust;
+    if (!qel.value.trim()) render();        // refresh the overrides list
+  });
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (t && t.dataset.act === 'done') closeSheet();
+  };
+}
+
+/* ---- delivery runs & cut-offs --------------------------------------- */
+
+function runsAdminSheet(body) {
+  const rlist = asList(runs());
+  let h = `<div class="hdv-sheettitle">Delivery runs &amp; cut-offs</div>
+    <div class="hdv-sheetsub">When customers must order by, and which days you deliver</div>`;
+  if (!rlist.length) h += emptyHTML('No runs yet — add one');
+  for (const r of rlist) {
+    const di = deliveryInfo(r);
+    h += `<div class="hdv-row">
+      <div class="hdv-info">
+        <div class="hdv-name">${esc(r.name)}${r.active === false ? ' · off' : ''}</div>
+        <div class="hdv-sub">Order by ${esc(cutoffLabel(r))} · delivers ${esc(daysLabel(r.deliveryDays))}${di ? ` · next ${esc(niceDate(di.date))}` : ''}</div>
+      </div>
+      <button class="hdv-btnG slim" data-act="editrun" data-id="${esc(r.id)}">Edit</button>
+    </div>`;
+  }
+  h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="addrun">+ Add a run</button></div>`;
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'editrun') openSheet(b => runEditSheet(b, runById(t.dataset.id)), { static: true });
+    else if (t.dataset.act === 'addrun') openSheet(b => runEditSheet(b, null), { static: true });
+  };
+}
+
+function runEditSheet(body, existing) {
+  const r = existing || { cutoffTime: '21:00', cutoffDayOffset: -1, deliveryDays: [1, 2, 3, 4, 5, 6], active: true };
+  const offOpts = [[0, 'Same day'], [-1, 'The day before'], [-2, '2 days before']]
+    .map(([v, l]) => `<option value="${v}"${Number(r.cutoffDayOffset) === v ? ' selected' : ''}>${l}</option>`).join('');
+  const dayBtns = WD.map((w, i) =>
+    `<label style="display:flex;align-items:center;gap:5px;border:1px solid var(--hdv-line);border-radius:8px;padding:7px 10px;font-size:14px;color:var(--hdv-text)">
+      <input type="checkbox" class="rd-dc" value="${i}"${(r.deliveryDays || []).includes(i) ? ' checked' : ''}> ${w}</label>`).join('');
+
+  body.innerHTML = `
+    <div class="hdv-sheettitle">${existing ? 'Edit run' : 'New delivery run'}</div>
+    <label class="hdv-lbl" for="rf-name">Name *</label>
+    <input class="hdv-in" id="rf-name" placeholder="e.g. Morning delivery" value="${esc(r.name || '')}">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"><label class="hdv-lbl" for="rf-time">Order cut-off time</label>
+        <input class="hdv-in" id="rf-time" type="time" value="${esc(r.cutoffTime || '21:00')}"></div>
+      <div style="flex:1"><label class="hdv-lbl" for="rf-off">Cut-off is</label>
+        <select class="hdv-in" id="rf-off">${offOpts}</select></div>
+    </div>
+    <label class="hdv-lbl">Delivery days</label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${dayBtns}</div>
+    <label class="hdv-lbl" style="display:flex;align-items:center;gap:8px;margin-top:12px">
+      <input type="checkbox" id="rf-active"${r.active !== false ? ' checked' : ''}> Active</label>
+    <div class="hdv-err" id="rf-err"></div>
+    <div class="hdv-actions">
+      <button class="hdv-btnG" data-act="back">Back</button>
+      <button class="hdv-btnP" data-act="save">Save run</button>
+    </div>`;
+
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'back') { openSheet(runsAdminSheet); return; }
+    if (t.dataset.act !== 'save') return;
+    const name = body.querySelector('#rf-name').value.trim();
+    if (!name) { body.querySelector('#rf-err').textContent = 'Name is required'; return; }
+    const days = Array.from(body.querySelectorAll('.rd-dc')).filter(x => x.checked).map(x => parseInt(x.value, 10));
+    saveRun(Object.assign({}, r, {
+      id: r.id || ('run' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)),
       name,
-      phone: body.querySelector('#hdv-nc-phone').value.trim(),
-      tierId: body.querySelector('#hdv-nc-tier').value,
-      address: '', contact: '', prices: {}
-    });                                   // emits 'change' -> list re-renders
-    closeSheet();
-    toast('Customer added');
+      cutoffTime: body.querySelector('#rf-time').value || '21:00',
+      cutoffDayOffset: parseInt(body.querySelector('#rf-off').value, 10) || 0,
+      deliveryDays: days,
+      active: body.querySelector('#rf-active').checked
+    }));
+    toast('Run saved');
+    openSheet(runsAdminSheet);
   };
 }
 
@@ -409,6 +636,15 @@ export function renderMore(root) {
       <div class="hdv-count">${navigator.onLine ? 'Online' : 'Offline'} · last synced ${lastSyncText()}</div>
     </div>
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
+  </div>`;
+
+  // delivery runs
+  h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Delivery runs &amp; cut-offs</div>
+      <div class="hdv-count">When customers order by &amp; which days you deliver</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="runs">Manage</button>
   </div>`;
 
   // classic app
@@ -445,6 +681,7 @@ export function renderMore(root) {
     if (act === 'login') openSheet(loginSheet, { static: true });
     else if (act === 'logout') { auth.logout(); toast('Logged out'); rerenderNow(); }
     else if (act === 'sync') doSync(t);
+    else if (act === 'runs') openSheet(runsAdminSheet);
   };
 }
 
