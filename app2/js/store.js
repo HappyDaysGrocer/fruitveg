@@ -81,6 +81,7 @@ function buildCatalog(rows) {
     const item = {
       key: cat + '||' + name,         // this exact key joins all stores
       cat,
+      group: String(r.g || cat).trim(), // Woolies-style aisle (display only)
       name,
       sell: num(r.s),                 // retail shelf price only — no cost
       barcode: r.b == null ? '' : String(r.b).trim()
@@ -140,6 +141,39 @@ export function categories() {
   const seen = new Set();
   CATALOG.forEach((i) => { if (i.cat) seen.add(i.cat); });
   return Array.from(seen).sort((a, b) => a.localeCompare(b));
+}
+
+/* Woolies-style aisle order: produce first (kept exactly as-is), then the
+   grocery aisles. Unknown groups append alphabetically at the end. */
+const GROUP_ORDER = [
+  'A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs',
+  'Dairy, Eggs & Fridge', 'Pantry', 'Snacks & Confectionery',
+  'Drinks', 'Freezer', 'Household & Personal Care'
+];
+
+function groupRank(g) {
+  const i = GROUP_ORDER.indexOf(g);
+  return i < 0 ? 999 : i;
+}
+
+/** Distinct aisles, in shopping order (produce first, then grocery). */
+export function groups() {
+  const seen = new Set();
+  CATALOG.forEach((i) => { if (i.group) seen.add(i.group); });
+  return Array.from(seen).sort((a, b) =>
+    groupRank(a) - groupRank(b) || a.localeCompare(b));
+}
+
+/** Distinct categories (sections), aisle-ordered; optionally within one aisle. */
+export function orderedCats(group) {
+  const seen = new Map();   // cat -> group
+  CATALOG.forEach((i) => {
+    if (!i.cat) return;
+    if (group && i.group !== group) return;
+    if (!seen.has(i.cat)) seen.set(i.cat, i.group);
+  });
+  return Array.from(seen.keys()).sort((a, b) =>
+    groupRank(seen.get(a)) - groupRank(seen.get(b)) || a.localeCompare(b));
 }
 
 /** Multi-word, any-order match on the product name. "" -> full catalogue. */

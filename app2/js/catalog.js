@@ -4,7 +4,7 @@
    Renders into the root element passed by app.js and re-renders
    reactively whenever the store emits 'change' or #q input changes. */
 
-import { catalog, categories, searchCatalog, buy, bus } from './store.js';
+import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus } from './store.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -203,9 +203,9 @@ export function renderShop(root) {
 
   const q = qText();
   let list = q ? searchCatalog(q) : items;
-  if (shopCat) list = list.filter(p => p.cat === shopCat);
+  if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
 
-  let h = chipsHTML(categories(), shopCat);
+  let h = chipsHTML(groups(), shopCat);
 
   if (q) {
     if (!list.length) {
@@ -215,13 +215,14 @@ export function renderShop(root) {
       h += list.map(p => shopRow(p, true)).join('');
     }
   } else {
-    // Empty search -> order-guide style: grouped by category w/ headers
+    // Empty search -> aisle/shelf layout: sections are the fine categories,
+    // ordered by aisle (produce A-B…S-Z first, then the grocery aisles).
     const byCat = new Map();
     for (const p of list) {
       if (!byCat.has(p.cat)) byCat.set(p.cat, []);
       byCat.get(p.cat).push(p);
     }
-    for (const c of (shopCat ? [shopCat] : categories())) {
+    for (const c of orderedCats(shopCat || undefined)) {
       const g = byCat.get(c);
       if (!g || !g.length) continue;
       h += `<div class="hdv-sec">${esc(c)}</div>` + g.map(p => shopRow(p, false)).join('');

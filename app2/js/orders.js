@@ -4,7 +4,7 @@
    shop details). Reuses the UI kit + reactive core from catalog.js. */
 
 import {
-  catalog, categories, searchCatalog,
+  catalog, categories, groups, orderedCats, searchCatalog,
   customers, orders, tiers,
   runs, runById, saveRun, deliveryInfo, saveTier,
   specials, saveSpecial, specialFor,
@@ -146,7 +146,7 @@ function renderTake(root, cust) {
 
   const q = qText();
   let list = q ? searchCatalog(q) : catalog();
-  if (takeCat) list = list.filter(p => p.cat === takeCat);
+  if (takeCat) list = list.filter(p => p.group === takeCat);   // chip = aisle
 
   const run = runById(cust.runId);
   const di = run ? deliveryInfo(run) : null;
@@ -172,7 +172,7 @@ function renderTake(root, cust) {
     <button class="hdv-btnG slim" data-act="standing">${stOn ? '↻ Repeat on' : 'Repeat'}</button>
   </div>`;
 
-  h += chipsHTML(categories(), takeCat);
+  h += chipsHTML(groups(), takeCat);
 
   // Order guide: the customer's usual products first (only on the unfiltered view)
   if (!q && !takeCat) {
@@ -194,7 +194,7 @@ function renderTake(root, cust) {
       if (!byCat.has(p.cat)) byCat.set(p.cat, []);
       byCat.get(p.cat).push(p);
     }
-    for (const c of (takeCat ? [takeCat] : categories())) {
+    for (const c of orderedCats(takeCat || undefined)) {
       const g = byCat.get(c);
       if (!g || !g.length) continue;
       h += `<div class="hdv-sec">${esc(c)}</div>` +

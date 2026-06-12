@@ -22,6 +22,62 @@ const SHOP_PRODUCTS = new Function(code + '\nreturn SHOP_PRODUCTS;')();
 // counter items, nothing "club", no croissants, no wastage lines).
 const EXCLUDE_CAT = /^(cafe\b|cafe-|club\b|croissant|wastage|cakes\b|brownie\b|cookie\b|iced coffee\b)/i;
 const EXCLUDE_NAME = /club\s*membership|croissant|wastage/i;
+// Barista counter drinks living inside the retail Coffee/Tea categories —
+// made at the till, not delivered (owner 2026-06-12: no cafe items).
+const EXCLUDE_EXACT = new Set([
+  'Babyccino', 'Cappuccino', 'Flat White', 'Latte', 'Long Black',
+  'Long Macchiato', 'Magic', 'Mocha', 'Piccolo', 'Short black',
+  'Short Macchiato', 'Chai Latte', 'Hot Chocolate', 'Matcha Latte',
+  'Tea- Chamomile', 'Tea- Earl Grey', 'Tea- English Breakfast',
+  'Tea- Green Tea', 'Tea- Lemon grass and Ginger', 'Tea- Peppermint'
+]);
+
+// Woolworths-style aisle for each EPOS category (produce cats A-B…S-Z and
+// Herbs stay untouched per the owner). Aisle rides in the row's `g` field;
+// the fine category stays in `c` (the catalogue KEY — never changes).
+const GROUP_MAP = {
+  'Alternative Milk': 'Dairy, Eggs & Fridge',
+  'Butter': 'Dairy, Eggs & Fridge',
+  'Cheese': 'Dairy, Eggs & Fridge',
+  'Vegan Cheese': 'Dairy, Eggs & Fridge',
+  'Yogurt': 'Dairy, Eggs & Fridge',
+  'Dips': 'Dairy, Eggs & Fridge',
+  'Asain': 'Pantry',
+  'Biscuits': 'Pantry',
+  'Canned Goods': 'Pantry',
+  'Cereal': 'Pantry',
+  'Confectionary': 'Pantry',
+  'Dhal': 'Pantry',
+  'Dry Nuts': 'Pantry',
+  'Flour': 'Pantry',
+  'Grain': 'Pantry',
+  'Honey': 'Pantry',
+  'Jam': 'Pantry',
+  'Oil': 'Pantry',
+  'Olives': 'Pantry',
+  'Pasata': 'Pantry',
+  'Pasta': 'Pantry',
+  'Pasta Sauce': 'Pantry',
+  'Rice': 'Pantry',
+  'Sauce': 'Pantry',
+  'Seed': 'Pantry',
+  'Spice': 'Pantry',
+  'Sugar': 'Pantry',
+  'Chips': 'Snacks & Confectionery',
+  'Chocolate': 'Snacks & Confectionery',
+  'Chocolates': 'Snacks & Confectionery',
+  'Coffee': 'Drinks',
+  'Tea': 'Drinks',
+  'Juice': 'Drinks',
+  'Soft Drink': 'Drinks',
+  'Water': 'Drinks',
+  'Non Alcoholic Wine': 'Drinks',
+  'Frozen': 'Freezer',
+  'Ice Cream': 'Freezer',
+  'Cleaning': 'Household & Personal Care',
+  'Toilet': 'Household & Personal Care',
+  'Party Goods': 'Household & Personal Care'
+};
 
 // Column map: [category0, stall1, phone2, name3, defaultQty4, boxPrice5,
 //              cost6, sellPrice7, mustCheck8, barcode9]  — we keep 0,3,7,9 only.
@@ -29,12 +85,18 @@ const rows = (Array.isArray(SHOP_PRODUCTS) ? SHOP_PRODUCTS : [])
   .filter((r) => Array.isArray(r) && String(r[3] == null ? '' : r[3]).trim())
   .filter((r) => !EXCLUDE_CAT.test(String(r[0] == null ? '' : r[0]).trim()))
   .filter((r) => !EXCLUDE_NAME.test(String(r[3] == null ? '' : r[3])))
-  .map((r) => ({
-    c: String(r[0] == null ? '' : r[0]).trim(), // category
-    n: String(r[3]).trim(),                      // name
-    s: (r[7] == null || r[7] === '') ? null : Number(r[7]), // sell (retail)
-    b: r[9] == null ? '' : String(r[9]).trim()   // barcode
-  }));
+  .filter((r) => !EXCLUDE_EXACT.has(String(r[3] == null ? '' : r[3]).trim()))
+  .map((r) => {
+    const c = String(r[0] == null ? '' : r[0]).trim();
+    const row = {
+      c,                                           // category (part of the KEY)
+      n: String(r[3]).trim(),                      // name
+      s: (r[7] == null || r[7] === '') ? null : Number(r[7]), // sell (retail)
+      b: r[9] == null ? '' : String(r[9]).trim()   // barcode
+    };
+    if (GROUP_MAP[c]) row.g = GROUP_MAP[c];        // Woolies-style aisle
+    return row;
+  });
 
 // ---- per-piece sell units (owner's per-piece pricing sheet) ----
 // perpiece.json: drop[] removes products, rename[] renames, addEach[]
