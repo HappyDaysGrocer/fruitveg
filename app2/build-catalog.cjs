@@ -20,7 +20,7 @@ const SHOP_PRODUCTS = new Function(code + '\nreturn SHOP_PRODUCTS;')();
 
 // Categories NOT offered for delivery/ordering (owner 2026-06-12: no cafe
 // counter items, nothing "club", no croissants, no wastage lines).
-const EXCLUDE_CAT = /^(cafe\b|cafe-|club\b|croissant|wastage)/i;
+const EXCLUDE_CAT = /^(cafe\b|cafe-|club\b|croissant|wastage|cakes\b|brownie\b|cookie\b|iced coffee\b)/i;
 const EXCLUDE_NAME = /club\s*membership|croissant|wastage/i;
 
 // Column map: [category0, stall1, phone2, name3, defaultQty4, boxPrice5,
