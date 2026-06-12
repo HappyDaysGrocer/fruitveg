@@ -1,0 +1,27 @@
+{
+  "name": "Happy Days In-House",
+  "short_name": "HD In-House",
+  "description": "Directors & staff in-house app for Happy Days — buy run, stock, orders, costs & margins. Login required.",
+  "id": "hd-inhouse",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d2818",
+  "theme_color": "#0d2818",
+  "categories": ["business", "food", "productivity"],
+  "icons": [
+    {
+      "src": "../icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "../icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

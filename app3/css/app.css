@@ -1,0 +1,554 @@
+/* ==========================================================================
+   Happy Days v2 — design system
+   Tokens -> base -> components (.row .stepper .chip .sheet .btn .card .navbtn)
+   -> views helpers -> skeleton -> dark mode -> reduced motion
+   ========================================================================== */
+
+/* ---------- 1. Tokens ---------- */
+:root {
+  /* brand */
+  --green:       #15662f;
+  --green-deep:  #0f4d23;
+  --green-bg:    #eaf4ec;
+  --yellow:      #f4d03f;
+  --red:         #b91c1c;
+  --ink:         #0d2818;
+
+  /* semantic */
+  --bg:          #eef6f0;
+  --surface:     #ffffff;
+  --surface-2:   #f4f9f5;
+  --line:        #dbe7dd;
+  --muted:       #5f7263;
+  --brand:       var(--green);
+  --on-brand:    #ffffff;
+  --brand-soft:  #dff0e3;   /* qty>0 row tint, chips */
+  --danger:      var(--red);
+  --danger-soft: #fdecec;
+  --accent:      var(--yellow);
+  --accent-soft: #fdf6dc;
+
+  /* skeleton shimmer */
+  --skel-a: #e3ece5;
+  --skel-b: #f3f8f4;
+
+  /* shape + elevation */
+  --radius:    12px;
+  --radius-lg: 20px;
+  --shadow:    0 1px 2px rgba(13, 40, 24, .06), 0 2px 8px rgba(13, 40, 24, .05);
+  --shadow-lg: 0 -8px 30px rgba(13, 40, 24, .18);
+
+  /* sizing */
+  --tap:    44px;                                   /* min touch target */
+  --nav-h:  56px;                                   /* bottom nav buttons */
+  --sat:    env(safe-area-inset-top, 0px);
+  --sab:    env(safe-area-inset-bottom, 0px);
+  --sal:    env(safe-area-inset-left, 0px);
+  --sar:    env(safe-area-inset-right, 0px);
+  --maxw:   560px;                                  /* phone-first column */
+
+  color-scheme: light dark;
+}
+
+/* header height feeds sticky offsets (chip rail etc.) */
+body          { --hdr-h: calc(111px + var(--sat)); }
+body.scrolled { --hdr-h: calc(63px  + var(--sat)); }
+
+/* ---------- 2. Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0 auto;
+  max-width: var(--maxw);
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  /* room for fixed bottom nav (+ any summary bar the views add) */
+  padding-bottom: calc(var(--nav-h) + var(--sab) + 16px);
+}
+
+img { max-width: 100%; display: block; }
+svg { flex: none; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-height: var(--tap);
+  padding: 8px 12px;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+  border-color: var(--brand);
+}
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
+input[type="search"]::-webkit-search-decoration { display: none; }
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+h1, h2, h3 { margin: 0; line-height: 1.25; }
+
+/* ---------- 3. Header (sticky, brand row collapses on scroll) ---------- */
+.hdr {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: calc(8px + var(--sat)) calc(14px + var(--sar)) 10px calc(14px + var(--sal));
+}
+
+.brand {
+  height: 40px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  transition: height .25s ease, margin .25s ease, opacity .2s ease;
+}
+.brand img { height: 38px; width: auto; background: #fff; padding: 2px 6px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+
+body.scrolled .brand { height: 0; margin-bottom: 0; opacity: 0; }
+
+.searchwrap { position: relative; height: var(--tap); }
+.searchwrap .search-ico {
+  position: absolute;
+  left: 12px; top: 50%;
+  width: 18px; height: 18px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.searchwrap input {
+  height: var(--tap);
+  padding-left: 38px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  font-size: 16px; /* prevents iOS zoom-on-focus */
+}
+
+/* ---------- 4. Main view ---------- */
+#view {
+  min-height: 50dvh;
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+}
+
+/* category section headers (empty-search grouped list) */
+#view h2, .section-title {
+  position: sticky;
+  top: var(--hdr-h);
+  z-index: 4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--bg);
+  margin: 0;
+  padding: 14px 14px 6px;
+}
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 24px;
+}
+
+/* ---------- 5. Chip + chip rail ---------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  -webkit-user-select: none; user-select: none;
+}
+.chip.active, .chip[aria-pressed="true"] {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+}
+.chip.sm   { min-height: 24px; padding: 2px 10px; font-size: 12px; }
+.chip.soft { background: var(--brand-soft); border-color: transparent; color: var(--green-deep); }
+.chip.warn, .chip.setcost {
+  background: var(--danger-soft);
+  border-color: transparent;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* horizontal scrolling rail, sticky under the header */
+.chips {
+  position: sticky;
+  top: var(--hdr-h);
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 14px;
+  background: var(--bg);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  transition: top .25s ease;
+}
+.chips::-webkit-scrollbar { display: none; }
+
+/* ---------- 6. Product / list row ---------- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  transition: background .15s ease;
+}
+.row:first-child { border-top: 1px solid var(--line); }
+
+.row-main { flex: 1 1 auto; min-width: 0; }
+
+.row .name, .row-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.row .price, .row .sub, .row-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* qty > 0 highlight (either class works) */
+.row.active, .row.has-qty { background: var(--brand-soft); }
+.row.active .price, .row.has-qty .price { color: var(--green-deep); }
+
+/* tappable price (take-order screen: tap to edit -> manual) */
+.row .price-edit, .price-edit {
+  min-height: 32px;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------- 7. Stepper (big +/- with qty) ---------- */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.stepper > button, .stepper .step {
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--green-deep);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stepper > button:active { background: var(--brand-soft); transform: scale(.96); }
+.stepper > button:disabled { opacity: .35; }
+.stepper .qty, .stepper output, .stepper > span {
+  min-width: 34px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.row.active .stepper > button, .row.has-qty .stepper > button {
+  background: var(--surface);
+}
+
+/* ---------- 8. Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 18px;
+  border-radius: var(--radius);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 15px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  -webkit-user-select: none; user-select: none;
+}
+.btn:active { transform: scale(.98); filter: brightness(1.08); }
+.btn:disabled { opacity: .45; pointer-events: none; }
+
+.btn.ghost, .btn.secondary {
+  background: var(--surface);
+  color: var(--green-deep);
+  border-color: var(--line);
+}
+.btn.soft   { background: var(--brand-soft); color: var(--green-deep); }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.danger.ghost { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.btn.accent { background: var(--accent); color: var(--ink); }
+.btn.block  { width: 100%; }
+.btn.sm     { min-height: 36px; padding: 0 12px; font-size: 14px; }
+
+/* ---------- 9. Card ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  margin: 12px 14px;
+}
+.card.tappable:active { background: var(--surface-2); }
+.card h3 { font-size: 16px; margin-bottom: 4px; }
+.card .sub { font-size: 13px; color: var(--muted); }
+
+/* ---------- 10. Bottom nav ---------- */
+.nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  z-index: 35;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--sab);
+}
+.navbtn {
+  flex: 1;
+  height: var(--nav-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  position: relative;
+}
+.navbtn svg { width: 24px; height: 24px; }
+.navbtn.active, .navbtn[aria-current="page"] { color: var(--brand); }
+.navbtn.active::after, .navbtn[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 50%;
+  width: 32px; height: 3px;
+  transform: translateX(-50%);
+  border-radius: 0 0 3px 3px;
+  background: var(--brand);
+}
+
+/* ---------- 11. Sticky bottom summary bar (above the nav) ---------- */
+.sumbar, .totalbar, .bottombar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--nav-h) + var(--sab));
+  max-width: var(--maxw);
+  margin-inline: auto;
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 14px;
+  background: var(--green-deep);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 -2px 12px rgba(13, 40, 24, .22);
+  animation: rise .22s ease;
+}
+.sumbar .btn, .totalbar .btn, .bottombar .btn {
+  background: #fff;
+  color: var(--green-deep);
+  margin-left: auto;
+}
+@keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
+
+/* when a summary bar is present, give the list extra clearance */
+body:has(.sumbar, .totalbar, .bottombar) #view { padding-bottom: 64px; }
+
+/* ---------- 12. Bottom sheet ---------- */
+.backdrop, .sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(13, 40, 24, .5);
+  animation: fade-in .2s ease;
+}
+.backdrop.closing, .sheet-backdrop.closing { animation: fade-out .2s ease forwards; }
+
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  top: auto;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  max-height: 86dvh;
+  background: var(--surface);
+  color: var(--ink);
+  border: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-lg);
+  padding: 6px 16px calc(16px + var(--sab));
+  width: 100%;
+  animation: sheet-up .3s cubic-bezier(.2, .9, .3, 1);
+}
+.sheet::before {              /* grab handle */
+  content: "";
+  flex: none;
+  width: 42px; height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 6px auto 12px;
+}
+.sheet.closing { animation: sheet-down .22s ease forwards; }
+.sheet h2, .sheet h3 { font-size: 18px; padding: 0 0 10px; position: static; background: none; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
+.sheet-foot { flex: none; display: flex; gap: 10px; padding-top: 12px; }
+.sheet-foot .btn { flex: 1; }
+
+/* also works as <dialog class="sheet"> */
+dialog.sheet { inset-inline: 0; }
+dialog.sheet::backdrop { background: rgba(13, 40, 24, .5); }
+
+[hidden] { display: none !important; }
+
+@keyframes sheet-up   { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-down { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes fade-in    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out   { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---------- 13. Toast (no alert()s allowed) ---------- */
+.toast {
+  position: fixed;
+  left: 50%; bottom: calc(var(--nav-h) + var(--sab) + 70px);
+  transform: translateX(-50%);
+  z-index: 50;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  animation: rise .2s ease;
+  max-width: 90vw;
+  text-align: center;
+}
+
+/* ---------- 14. Skeleton shimmer ---------- */
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--skel-a) 25%, var(--skel-b) 40%, var(--skel-a) 60%);
+  background-size: 300% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: -100% 0; }
+}
+.sk-line       { height: 14px; margin: 4px 0; }
+.sk-line.sm    { height: 10px; }
+.sk-pill       { width: 124px; height: var(--tap); border-radius: var(--radius); flex: none; }
+.w25 { width: 25%; } .w28 { width: 28%; } .w30 { width: 30%; } .w32 { width: 32%; }
+.w35 { width: 35%; } .w50 { width: 50%; } .w55 { width: 55%; } .w60 { width: 60%; }
+.w62 { width: 62%; } .w65 { width: 65%; } .w70 { width: 70%; }
+.skeleton-list { padding-top: 10px; }
+
+/* ---------- 15. Small utilities ---------- */
+.flex    { display: flex; align-items: center; gap: 10px; }
+.col     { display: flex; flex-direction: column; gap: 8px; }
+.grow    { flex: 1 1 auto; min-width: 0; }
+.right   { margin-left: auto; }
+.center  { text-align: center; }
+.muted   { color: var(--muted); }
+.small   { font-size: 13px; }
+.big     { font-size: 18px; font-weight: 700; }
+.danger-text { color: var(--danger); }
+.brand-text  { color: var(--brand); }
+.num     { font-variant-numeric: tabular-nums; }
+.mt      { margin-top: 12px; }
+.mb      { margin-bottom: 12px; }
+.pad     { padding: 14px; }
+.divider { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+
+/* ---------- 16. Dark mode ---------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #0c1810;
+    --surface:     #15241a;
+    --surface-2:   #1c2f22;
+    --line:        #27402e;
+    --ink:         #e8f2ea;
+    --muted:       #94aa9a;
+    --brand:       #1d8740;
+    --green-deep:  #9fd6ae;   /* readable "deep green" text on dark */
+    --brand-soft:  #1d3526;
+    --danger:      #ef7070;
+    --danger-soft: #3a1f1f;
+    --accent-soft: #3a3315;
+    --skel-a:      #1b2c21;
+    --skel-b:      #23392a;
+    --shadow:      0 1px 2px rgba(0, 0, 0, .4), 0 2px 8px rgba(0, 0, 0, .3);
+    --shadow-lg:   0 -8px 30px rgba(0, 0, 0, .55);
+  }
+  /* wordmark PNG is full-colour on white — show it on a clean white chip, never invert */
+  .brand img { filter: none; }
+  .sumbar, .totalbar, .bottombar { background: #1d8740; }
+  .sumbar .btn, .totalbar .btn, .bottombar .btn { background: #0c1810; color: #e8f2ea; }
+  .toast { background: #e8f2ea; color: #0c1810; }
+  .backdrop, .sheet-backdrop, dialog.sheet::backdrop { background: rgba(0, 0, 0, .6); }
+}
+
+/* ---------- 17. Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
