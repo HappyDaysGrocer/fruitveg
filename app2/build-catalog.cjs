@@ -36,12 +36,12 @@ const EXCLUDE_EXACT = new Set([
 // Herbs stay untouched per the owner). Aisle rides in the row's `g` field;
 // the fine category stays in `c` (the catalogue KEY — never changes).
 const GROUP_MAP = {
-  'Alternative Milk': 'Dairy, Eggs & Fridge',
-  'Butter': 'Dairy, Eggs & Fridge',
-  'Cheese': 'Dairy, Eggs & Fridge',
-  'Vegan Cheese': 'Dairy, Eggs & Fridge',
-  'Yogurt': 'Dairy, Eggs & Fridge',
-  'Dips': 'Dairy, Eggs & Fridge',
+  'Alternative Milk': 'Dairy & Fridge',
+  'Butter': 'Dairy & Fridge',
+  'Cheese': 'Dairy & Fridge',
+  'Vegan Cheese': 'Dairy & Fridge',
+  'Yogurt': 'Dairy & Fridge',
+  'Dips': 'Dairy & Fridge',
   'Asain': 'Pantry',
   'Biscuits': 'Pantry',
   'Canned Goods': 'Pantry',

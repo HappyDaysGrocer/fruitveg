@@ -147,7 +147,7 @@ export function categories() {
    grocery aisles. Unknown groups append alphabetically at the end. */
 const GROUP_ORDER = [
   'A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs',
-  'Dairy, Eggs & Fridge', 'Pantry', 'Snacks & Confectionery',
+  'Dairy & Fridge', 'Pantry', 'Snacks & Confectionery',
   'Drinks', 'Freezer', 'Household & Personal Care'
 ];
 
