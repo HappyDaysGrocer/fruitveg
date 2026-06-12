@@ -91,7 +91,10 @@ function searchRow(p, liveByKey) {
 }
 
 /* Big-thumb numpad sheet: type the TOTAL you want; the manual part is
-   derived (total − orders), clamped so the run never drops below demand. */
+   derived (total − orders), clamped so the run never drops below demand.
+   Decimals allowed (6.5 kg is a real buy) — one dot, max 2 decimal places. */
+const round2 = (x) => Math.round(x * 100) / 100;
+
 function numpadSheet(it) {
   let entered = '';
   return (body) => {
@@ -106,7 +109,7 @@ function numpadSheet(it) {
         <div class="hdv-numgrid">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
             `<button class="hdv-numbtn" data-d="${d}">${d}</button>`).join('')}
-          <button class="hdv-numbtn" data-clear aria-label="clear">C</button>
+          <button class="hdv-numbtn" data-dot aria-label="decimal point">·</button>
           <button class="hdv-numbtn" data-d="0">0</button>
           <button class="hdv-numbtn" data-back aria-label="delete">⌫</button>
         </div>
@@ -115,19 +118,26 @@ function numpadSheet(it) {
           <button class="hdv-btnP" data-save>Save</button>
         </div>`;
     };
+    const decimals = () => {
+      const i = entered.indexOf('.');
+      return i < 0 ? 0 : entered.length - i - 1;
+    };
     draw();
     body.onclick = (e) => {
       const d = e.target.closest('[data-d]');
       if (d) {
-        if (entered.length < 4) entered += d.dataset.d;
+        if (entered.length < 6 && decimals() < 2) entered += d.dataset.d;
+        draw(); return;
+      }
+      if (e.target.closest('[data-dot]')) {
+        if (!entered.includes('.')) entered = (entered === '' ? '0' : entered) + '.';
         draw(); return;
       }
       if (e.target.closest('[data-back]')) { entered = entered.slice(0, -1); draw(); return; }
-      if (e.target.closest('[data-clear]')) { entered = ''; draw(); return; }
       if (e.target.closest('[data-save]')) {
-        const want = entered === '' ? (it.total || 0) : (parseInt(entered, 10) || 0);
+        const want = entered === '' ? (it.total || 0) : (parseFloat(entered) || 0);
         if (want < floor) toast(floor + ' needed by orders — set to ' + floor);
-        setBuyManual(it.key, it.name, Math.max(0, want - floor));
+        setBuyManual(it.key, it.name, round2(Math.max(0, want - floor)));
         closeSheet();
       }
     };
