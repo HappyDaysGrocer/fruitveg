@@ -455,17 +455,81 @@ function historySheet(body, custId) {
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
           <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}</div>
         </div>
-        <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Order again</button>
+        <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
+        <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Again</button>
       </div>`;
     }).join('');
   }
   body.innerHTML = h;
   body.onclick = e => {
     const t = e.target.closest('[data-act]');
-    if (!t || t.dataset.act !== 'again') return;
+    if (!t) return;
     const src = asList(orders()).find(o => o && o.id === t.dataset.id);
-    if (src) reorder(custId, src);
+    if (!src) return;
+    if (t.dataset.act === 'again') reorder(custId, src);
+    else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
   };
+}
+
+/* ---- invoice (GST-free — owner 2026-06-12: "currently we are all gst free") */
+
+function invoiceSheet(body, custId, orderId) {
+  const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+  const o = asList(orders()).find(x => x && x.id === orderId);
+  if (!o) { body.innerHTML = emptyHTML('Order not found'); return; }
+  const lines = Array.isArray(o.lines) ? o.lines : [];
+  const total = orderTotal(lines);
+  const invNo = 'INV-' + (o.orderNo || String(o.id).slice(-8).toUpperCase());
+
+  let h = `<div class="hdv-sheettitle">Invoice ${esc(invNo)}</div>
+    <div class="hdv-sheetsub">${esc(cust.name)} · ${o.deliveryDate ? 'delivered ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')}</div>`;
+  h += lines.map(l => {
+    const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
+    return `<div class="hdv-row">
+      <div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>
+        <div class="hdv-sub">${lq} × ${money(lp)}</div></div>
+      <span class="hdv-price">${money(lq * lp)}</span>
+    </div>`;
+  }).join('');
+  h += `<div class="hdv-total"><span>Total (GST-free)</span><span>${money(total)}</span></div>`;
+  if (cust.terms) h += `<div class="hdv-sub" style="padding:4px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
+  h += `<div class="hdv-actions">
+    <button class="hdv-btnG" data-act="ishare">Share invoice</button>
+    <button class="hdv-btnP" data-act="idone">Done</button>
+  </div>`;
+
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
+    else if (t.dataset.act === 'idone') closeSheet();
+  };
+}
+
+function invoiceText(invNo, cust, o) {
+  const lines = (o.lines || []).map(l => {
+    const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
+    return `${lq} x ${l.name} @ ${money(lp)} = ${money(lq * lp)}`;
+  });
+  const total = orderTotal(o.lines);
+  const terms = cust.terms === 'COD' ? 'Pay on delivery'
+    : cust.terms ? 'Payment terms: ' + cust.terms.replace('days', ' days') : '';
+  return [
+    'INVOICE ' + invNo,
+    'Happy Days Fruit, Veg & Grocery (Mango People Pty Ltd)',
+    'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
+    'Ph 0430 033 127 · happydaysgrocer@gmail.com',
+    '',
+    'Bill to: ' + (cust.name || ''),
+    o.deliveryDate ? 'Delivery date: ' + niceDate(o.deliveryDate) : '',
+    'Order: ' + (o.orderNo || o.id),
+    '',
+    lines.join('\n'),
+    '',
+    'TOTAL: ' + money(total) + '  (all items GST-free)',
+    terms
+  ].filter(s => s !== '').join('\n');
 }
 
 /* Copy a past order's lines into the customer's open order. */
