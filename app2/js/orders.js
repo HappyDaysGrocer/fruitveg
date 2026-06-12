@@ -168,6 +168,15 @@ function renderTake(root, cust) {
 
   h += chipsHTML(categories(), takeCat);
 
+  // Order guide: the customer's usual products first (only on the unfiltered view)
+  if (!q && !takeCat) {
+    const usuals = usualsFor(cust.id);
+    if (usuals.length) {
+      h += `<div class="hdv-sec">★ Usuals</div>` +
+        usuals.map(p => takeRow(p, lineByKey[p.key], cust)).join('');
+    }
+  }
+
   if (!list.length) {
     h += emptyHTML(q ? `No products match “${esc(q)}”` : 'Catalogue is empty');
   } else if (q) {
@@ -400,6 +409,23 @@ function completedOrdersOf(custId) {
     .filter(o => o && o.custId === custId && o.status === 'completed')
     .sort((a, b) => (b.placedAt || 0) - (a.placedAt || 0) ||
       String(b.deliveryDate || b.completed || '').localeCompare(String(a.deliveryDate || a.completed || '')));
+}
+
+/* This customer's most-ordered products (their "order guide" / usuals),
+   ranked by how often they've ordered each, then by total quantity. */
+function usualsFor(custId, limit = 12) {
+  const freq = new Map();
+  for (const o of asList(orders())) {
+    if (!o || o.custId !== custId || o.status !== 'completed') continue;
+    for (const l of (o.lines || [])) {
+      const f = freq.get(l.key) || { n: 0, qty: 0 };
+      f.n += 1; f.qty += Number(l.qty) || 0; freq.set(l.key, f);
+    }
+  }
+  const map = new Map(catalog().map(p => [p.key, p]));
+  return Array.from(freq.entries())
+    .sort((a, b) => b[1].n - a[1].n || b[1].qty - a[1].qty)
+    .map(([k]) => map.get(k)).filter(Boolean).slice(0, limit);
 }
 
 function historySheet(body, custId) {
