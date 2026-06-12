@@ -9,7 +9,8 @@ import {
 } from './store.js';
 
 import {
-  setActive, esc, money, qText, chipsHTML, emptyHTML, ensureCss
+  setActive, esc, money, qText, chipsHTML, emptyHTML, ensureCss,
+  openSheet, productSheet
 } from './catalog.js';
 
 let mGroup = '';   // selected aisle chip
@@ -26,7 +27,7 @@ function row(p) {
   const cost = (m.cost != null) ? money(m.cost) : '—';
   const sell = (m.sell != null) ? money(m.sell) : '—';
   const pct = (m.marginPct != null) ? m.marginPct + '%' : '—';
-  return `<div class="hdv-row">
+  return `<div class="hdv-row" data-act="detail" data-key="${esc(p.key)}">
     <div class="hdv-info">
       <div class="hdv-name">${esc(p.name)}</div>
       <div class="hdv-sub">cost ${cost} · sell ${sell}</div>
@@ -80,6 +81,8 @@ export function renderMoney(root) {
   root.innerHTML = h;
   root.onclick = e => {
     const t = e.target.closest('[data-act]');
-    if (t && t.dataset.act === 'chip') { mGroup = t.dataset.cat; renderMoney(root); }
+    if (!t) return;
+    if (t.dataset.act === 'chip') { mGroup = t.dataset.cat; renderMoney(root); }
+    else if (t.dataset.act === 'detail') openSheet(productSheet(t.dataset.key));
   };
 }

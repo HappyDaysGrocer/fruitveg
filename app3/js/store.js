@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.3';
+export const VERSION = 'v3.4';
 export const PRICES_CHECKED = '12 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -458,8 +458,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -475,7 +475,9 @@ const mirror = {
   specials: LS.get(LSKEY.specials, {}) || {},
   standing: LS.get(LSKEY.standing, {}) || {},
   avail: LS.get(LSKEY.avail, {}) || {},
-  buyrun: LS.get(LSKEY.buyrun, {}) || {}
+  buyrun: LS.get(LSKEY.buyrun, {}) || {},
+  stock: LS.get(LSKEY.stock, {}) || {},
+  barcodes: LS.get(LSKEY.barcodes, {}) || {}
 };
 
 // Seeds are deliberately ALL shelf-price: the real per-group rules live in
@@ -592,6 +594,56 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => { flushOutbox(); });
 }
 
+/* ---------- stocktake + progressive barcodes (v3.4, DESIGN.md) ----------
+   /stock = latest on-hand count per product (id-keyed records — product
+   keys contain '/'). /barcodes = the team's own barcode→product bindings,
+   layered OVER the static catalogue's barcode field so a wrong or missing
+   static code is correctable from the shop floor, no rebuild needed. */
+
+/** Latest count record for a product key, or null. */
+export function stockFor(key) {
+  let best = null;
+  for (const r of Object.values(mirror.stock)) {
+    if (r && r.key === key && (!best || String(r.at || '') >= String(best.at || ''))) best = r;
+  }
+  return best;
+}
+
+/** Commit one counted quantity. */
+export function setStockCount(key, name, qty) {
+  let rec = Object.values(mirror.stock).find((r) => r && r.key === key);
+  if (!rec) rec = { id: genId('st'), key, name: name || key };
+  rec.qty = Number(qty) || 0;
+  rec.at = todayStr();
+  rec.by = (_auth && _auth.email) ? String(_auth.email).split('@')[0] : '';
+  patch('stock', rec.id, rec);
+  BUS.emit('change');
+}
+
+/** Resolve a scanned barcode to a product key: the team's assignments win
+    (they correct the static data), then the static catalogue's own field. */
+export function keyForBarcode(code) {
+  code = String(code || '').trim();
+  if (!code) return null;
+  for (const r of Object.values(mirror.barcodes)) {
+    if (r && r.code === code && r.key) return r.key;
+  }
+  const hit = CATALOG.find((p) => p.barcode && String(p.barcode) === code);
+  return hit ? hit.key : null;
+}
+
+/** Bind a barcode to a product (one record per code; re-assign overwrites). */
+export function assignBarcode(code, key, name) {
+  code = String(code || '').trim();
+  if (!code || !key) return;
+  let rec = Object.values(mirror.barcodes).find((r) => r && r.code === code);
+  if (!rec) rec = { id: genId('bc'), code };
+  rec.key = key;
+  rec.name = name || key;
+  patch('barcodes', rec.id, rec);
+  BUS.emit('change');
+}
+
 /**
  * Pull the 3 nodes into the local mirrors. NEVER rejects — on any network
  * or auth failure it resolves with the stale mirrors. Remote records win
@@ -616,13 +668,17 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st, av, br] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun)
+    const [cust, ord, tr, rn, sp, st, av, br, stk, bc] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun),
+      // stock + barcodes are newer nodes — never let them break the core sync
+      getNode(REMOTE.stock).catch(() => null), getNode(REMOTE.barcodes).catch(() => null)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
     if (av && typeof av === 'object') mirror.avail = Object.assign({}, mirror.avail, av);
     if (br && typeof br === 'object') mirror.buyrun = Object.assign({}, mirror.buyrun, br);
+    if (stk && typeof stk === 'object') mirror.stock = Object.assign({}, mirror.stock, stk);
+    if (bc && typeof bc === 'object') mirror.barcodes = Object.assign({}, mirror.barcodes, bc);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -651,6 +707,8 @@ export async function pull() {
     LS.set(LSKEY.standing, mirror.standing);
     LS.set(LSKEY.avail, mirror.avail);
     LS.set(LSKEY.buyrun, mirror.buyrun);
+    LS.set(LSKEY.stock, mirror.stock);
+    LS.set(LSKEY.barcodes, mirror.barcodes);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }

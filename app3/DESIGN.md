@@ -161,12 +161,17 @@ order demand. We ADD facets and v1 ports; we REMOVE nothing.
 - **v3.3 — flow accelerators:** command bar (searchBar.js); offline outbox + "syncing
   N… / all saved" status (More sync row + quiet indicator); unified product detail
   sheet (sell/cost/margin/velocity/reprice) reachable from every row.
-- **v3.4 — money comes alive:** hero takings + Today/Week/Month/YTD + sparklines +
+- **v3.4 — stock jobs** *(renumbered: shipped ahead of Money, which is owner-gated)*:
+  scan-first stocktake (BarcodeDetector + fallback), progressive barcode assignment
+  (/barcodes layered over the static catalogue's codes), draft-then-apply counts
+  (/stock), "On hand" in the product detail sheet, Money rows wired to the detail
+  sheet. Sell-price entry deliberately DEFERRED: in-app sell overrides would fork the
+  source of truth (static catalog.js feeds v2 customers too) — sell changes go through
+  the shopProducts.js → build-catalog pipeline until a single-source design exists.
+- **v3.5 — money comes alive:** hero takings + Today/Week/Month/YTD + sparklines +
   count-up; Needs-Attention strip with in-place actions; deep links with state pre-set.
   ⚠ Gated on the owner's one-time Firebase password paste (locked /catalog + /finance
   population) and the EPOS daily feed landing in a locked node.
-- **v3.5 — stock jobs:** scan-first stocktake (BarcodeDetector + fallback), progressive
-  barcode assignment, draft-then-apply counts, sell-price entry sheet.
 - **v3.6 — buy run pro:** stall walk-order grouping (locked facet), par suggestions,
   box conversion in the run, per-stall Send. Suppliers directory in More.
 - Later: picking slip polish, recipes/menu costing, bakery wastage, invoice-scan AI,

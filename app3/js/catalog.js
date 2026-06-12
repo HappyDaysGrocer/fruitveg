@@ -6,7 +6,8 @@
 
 import {
   catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth,
-  isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty
+  isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty,
+  stockFor
 } from './store.js';
 
 /* ------------------------------------------------------------ helpers */
@@ -94,6 +95,7 @@ export function rerenderNow() {
    pass {static:true} for forms so typing never gets wiped. */
 
 let sheetWrap = null, sheetBody = null, sheetBuilder = null, sheetStatic = false;
+let sheetOnClose = null;
 
 function ensureSheet() {
   if (sheetWrap) return;
@@ -113,8 +115,10 @@ function ensureSheet() {
 
 export function openSheet(build, opts) {
   ensureSheet();
+  if (sheetOnClose) { try { sheetOnClose(); } catch (e) { /* never block */ } }
   sheetBuilder = build;
   sheetStatic = !!(opts && opts.static);
+  sheetOnClose = (opts && opts.onClose) || null;   // cleanup hook (camera etc.)
   sheetBody.innerHTML = '';
   // The body element is a singleton: clear handlers a previous sheet set
   // via property assignment so they can't leak into this one. (onclick is
@@ -130,6 +134,8 @@ export function closeSheet() {
   if (!sheetWrap) return;
   sheetWrap.classList.remove('open');
   sheetBuilder = null;
+  if (sheetOnClose) { try { sheetOnClose(); } catch (e) { /* never block */ } }
+  sheetOnClose = null;
   document.body.style.overflow = '';
 }
 
@@ -236,6 +242,10 @@ export function renderShop(root) {
       border:0;border-radius:12px;background:var(--hdv-green);color:#fff;font-family:inherit;
       font-size:14px;font-weight:700;padding:11px 14px;text-align:left;cursor:pointer">
       Have an account? Sign in to see your prices &amp; order ›</button>`;
+  } else {
+    // v3.4: stocktake lives in the Stock tab — count mode is one tap away
+    h += `<div class="hdv-head"><div class="hdv-h1">Stock</div>
+      <button class="hdv-btnG slim" data-act="count">Count stock</button></div>`;
   }
   h += chipsHTML(groups(), shopCat);
 
@@ -301,6 +311,7 @@ function onShopClick(e) {
   else if (act === 'inc') buy.add(key, 1);                  // store emits 'change'
   else if (act === 'dec') { if ((buy.qty(key) || 0) > 0) buy.add(key, -1); }
   else if (act === 'detail') openSheet(productSheet(key));  // v3.3 one detail sheet
+  else if (act === 'count') import('./stock.js').then((m) => m.openCountSheet());
   else if (act === 'viewlist') openSheet(buyListSheet);
   else if (act === 'gologin') window.HD.go('orders');       // welcome screen
 }
@@ -345,6 +356,11 @@ export function productSheet(key) {
     if (manual > 0) {
       h += `<div class="hdv-kv"><span class="hdv-mut">On the buy run</span>
         <b class="hdv-price" style="min-width:0">+${manual} manual</b></div>`;
+    }
+    const st = stockFor(key);
+    if (st && typeof st.qty === 'number') {
+      h += `<div class="hdv-kv"><span class="hdv-mut">On hand</span>
+        <b class="hdv-price" style="min-width:0">${st.qty}${st.at ? ' · counted ' + esc(st.at) : ''}</b></div>`;
     }
     h += `<div class="hdv-actions">
       <button class="hdv-btnG${out ? '' : ' danger'}" data-act-ps="out">
