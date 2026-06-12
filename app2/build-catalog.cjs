@@ -18,10 +18,17 @@ const code = fs.readFileSync(SRC, 'utf8');
 // Run the browser-global script in its own scope and hand back the array.
 const SHOP_PRODUCTS = new Function(code + '\nreturn SHOP_PRODUCTS;')();
 
+// Categories NOT offered for delivery/ordering (owner 2026-06-12: no cafe
+// counter items, nothing "club", no croissants, no wastage lines).
+const EXCLUDE_CAT = /^(cafe\b|cafe-|club\b|croissant|wastage)/i;
+const EXCLUDE_NAME = /club\s*membership|croissant|wastage/i;
+
 // Column map: [category0, stall1, phone2, name3, defaultQty4, boxPrice5,
 //              cost6, sellPrice7, mustCheck8, barcode9]  — we keep 0,3,7,9 only.
 const rows = (Array.isArray(SHOP_PRODUCTS) ? SHOP_PRODUCTS : [])
   .filter((r) => Array.isArray(r) && String(r[3] == null ? '' : r[3]).trim())
+  .filter((r) => !EXCLUDE_CAT.test(String(r[0] == null ? '' : r[0]).trim()))
+  .filter((r) => !EXCLUDE_NAME.test(String(r[3] == null ? '' : r[3])))
   .map((r) => ({
     c: String(r[0] == null ? '' : r[0]).trim(), // category
     n: String(r[3]).trim(),                      // name
