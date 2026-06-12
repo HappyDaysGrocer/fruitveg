@@ -5,7 +5,7 @@
    and a cost/margin "Money" view fed by the locked /catalog node.
    ========================================================================= */
 
-import { initCatalog, pull, auth } from './store.js';
+import { initCatalog, pull, auth, VERSION } from './store.js';
 import { renderShop, setActive, openSheet } from './catalog.js';
 import { renderOrders, renderMore, loginSheet } from './orders.js';
 import { renderMoney } from './money.js';
@@ -72,7 +72,7 @@ function renderLoginWall() {
   viewEl.innerHTML =
     '<div class="hd3-gate">' +
       '<img src="../happydays-wordmark.png" alt="Happy Days" class="hd3-gate-logo">' +
-      '<div class="hd3-gate-title">In-house app</div>' +
+      '<div class="hd3-gate-title">In-house app ' + VERSION + '</div>' +
       '<div class="hd3-gate-sub">Directors &amp; staff only. Sign in to continue.</div>' +
       '<button class="hd3-gate-btn" data-act="signin">Sign in</button>' +
     '</div>';

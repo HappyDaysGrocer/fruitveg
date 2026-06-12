@@ -9,6 +9,13 @@ const FB = {
   databaseURL: 'https://happydaysgrocer-dc980-default-rtdb.asia-southeast1.firebasedatabase.app'
 };
 
+/* ---------- version (one source of truth, shown in gate + More) ----------
+   Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
+   PRICES_CHECKED = the date the catalogue was last verified against the
+   live EPOS till prices (update whenever the price sync is run). */
+export const VERSION = 'v3.1';
+export const PRICES_CHECKED = '12 Jun 2026';
+
 /* ---------- tiny utilities ---------- */
 
 const round2 = (x) => Math.round(x * 100) / 100;

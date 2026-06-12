@@ -12,7 +12,7 @@ import {
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   customerId, createCustomerLogin,
   isOut, outList, setOut,
-  auth, pull
+  auth, pull, VERSION, PRICES_CHECKED
 } from './store.js';
 
 import {
@@ -1367,7 +1367,7 @@ export function renderMore(root) {
       <a class="hdv-link" href="mailto:happydaysgrocer@gmail.com">happydaysgrocer@gmail.com</a></div>
   </div>`;
 
-  h += '<div class="hdv-ver">Happy Days v2.0.0</div><div class="hdv-pad"></div>';
+  h += `<div class="hdv-ver">Happy Days In-House ${VERSION} · till prices synced ${PRICES_CHECKED}</div><div class="hdv-pad"></div>`;
 
   root.innerHTML = h;
   root.onclick = e => {
