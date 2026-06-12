@@ -354,6 +354,9 @@ function reviewSheet(body, custId) {
       </div>`;
     }).join('');
     h += `<div class="hdv-total"><span>Total</span><span>${money(total)}</span></div>`;
+    if (cust.minOrder && total < Number(cust.minOrder)) {
+      h += `<div class="hdv-err">Below minimum order ${money(Number(cust.minOrder))} — short ${money(Number(cust.minOrder) - total)}</div>`;
+    }
     if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
     h += `<div class="hdv-actions">
       <button class="hdv-btnG" data-act="share">Share</button>
