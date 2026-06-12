@@ -9,10 +9,11 @@ import { initCatalog, pull, auth } from './store.js';
 import { renderShop, setActive, openSheet } from './catalog.js';
 import { renderOrders, renderMore, loginSheet } from './orders.js';
 import { renderMoney } from './money.js';
+import { renderBuy } from './buyrun.js';
 
-const VIEWS = { shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
+const VIEWS = { buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
 
-let current = 'shop';
+let current = 'buy';
 
 /* The shell guarantees <main id="view">; create one defensively if missing
    so a markup typo degrades gracefully instead of hard-crashing the boot. */
@@ -27,11 +28,11 @@ if (!viewEl) {
 
 function hashView() {
   const h = (location.hash || '').replace('#', '');
-  return VIEWS[h] ? h : 'shop';
+  return VIEWS[h] ? h : 'buy';
 }
 
 export function go(view) {
-  if (!VIEWS[view]) view = 'shop';
+  if (!VIEWS[view]) view = 'buy';
   if (view !== current) history.pushState({ view }, '', '#' + view);
   current = view;
   render();
@@ -39,7 +40,7 @@ export function go(view) {
 
 window.addEventListener('popstate', (e) => {
   const v = (e.state && e.state.view) || hashView();
-  current = VIEWS[v] ? v : 'shop';
+  current = VIEWS[v] ? v : 'buy';
   render();
 });
 

@@ -451,8 +451,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -467,7 +467,8 @@ const mirror = {
   runs: LS.get(LSKEY.runs, {}) || {},
   specials: LS.get(LSKEY.specials, {}) || {},
   standing: LS.get(LSKEY.standing, {}) || {},
-  avail: LS.get(LSKEY.avail, {}) || {}
+  avail: LS.get(LSKEY.avail, {}) || {},
+  buyrun: LS.get(LSKEY.buyrun, {}) || {}
 };
 
 // Seeds are deliberately ALL shelf-price: the real per-group rules live in
@@ -557,12 +558,13 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st, av] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail)
+    const [cust, ord, tr, rn, sp, st, av, br] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
     if (av && typeof av === 'object') mirror.avail = Object.assign({}, mirror.avail, av);
+    if (br && typeof br === 'object') mirror.buyrun = Object.assign({}, mirror.buyrun, br);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -590,6 +592,7 @@ export async function pull() {
     LS.set(LSKEY.specials, mirror.specials);
     LS.set(LSKEY.standing, mirror.standing);
     LS.set(LSKEY.avail, mirror.avail);
+    LS.set(LSKEY.buyrun, mirror.buyrun);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -660,6 +663,60 @@ export function setOut(key, name, on) {
   rec.out = on ? todayStr() : '';
   patch('avail', rec.id, rec);
   BUS.emit('change');
+}
+
+/* ---------- BUY RUN — always-live shared market buy list ----------
+   The team's "to buy" total per product = what every OPEN customer order
+   needs (rolled up live) PLUS manual additions. Manual adds are shared via
+   /buyrun (id-keyed records, merge-safe) so the list is the same on every
+   phone and is current the moment anyone opens it — it is never "started"
+   or "reset". */
+
+export function setBuyManual(key, name, qty) {
+  let rec = Object.values(mirror.buyrun).find((b) => b && b.key === key);
+  qty = Number(qty) || 0;
+  if (!rec) {
+    if (qty <= 0) return;
+    rec = { id: genId('br'), key, name: name || key };
+  }
+  rec.qty = qty < 0 ? 0 : qty;
+  patch('buyrun', rec.id, rec);
+  BUS.emit('change');
+}
+
+export function buyManualQty(key) {
+  const rec = Object.values(mirror.buyrun).find((b) => b && b.key === key);
+  return rec ? (Number(rec.qty) || 0) : 0;
+}
+
+/** The live buy list: orders-needed + manual, per product, with breakdown. */
+export function buyRunList() {
+  const need = new Map();   // key -> {key, name, cat, fromOrders, manual}
+  const add = (key, name, cat, fromOrders, manual) => {
+    const cur = need.get(key) || { key, name, cat: cat || '', fromOrders: 0, manual: 0 };
+    cur.fromOrders += fromOrders; cur.manual += manual;
+    if (name && !cur.name) cur.name = name;
+    if (cat && !cur.cat) cur.cat = cat;
+    need.set(key, cur);
+  };
+  // open customer orders -> aggregated demand
+  for (const o of Object.values(mirror.orders)) {
+    if (!o || o.status !== 'open' || !Array.isArray(o.lines)) continue;
+    for (const l of o.lines) {
+      if (!l || !l.key) continue;
+      const it = CATALOG_BY_KEY.get(l.key);
+      add(l.key, l.name || (it && it.name), (it && it.cat) || l.sup || '', Number(l.qty) || 0, 0);
+    }
+  }
+  // manual additions
+  for (const b of Object.values(mirror.buyrun)) {
+    if (!b || !b.key || !(Number(b.qty) > 0)) continue;
+    const it = CATALOG_BY_KEY.get(b.key);
+    add(b.key, b.name || (it && it.name), it && it.cat, 0, Number(b.qty) || 0);
+  }
+  return Array.from(need.values())
+    .map((x) => ({ ...x, total: x.fromOrders + x.manual }))
+    .filter((x) => x.total > 0);
 }
 
 /* ---------- read accessors (arrays, ready to render) ---------- */

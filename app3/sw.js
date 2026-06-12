@@ -16,6 +16,7 @@ const PRECACHE = [
   './js/catalog.js',
   './js/orders.js',
   './js/money.js',
+  './js/buyrun.js',
   './catalog.js',
   './manifest.webmanifest'
 ];
