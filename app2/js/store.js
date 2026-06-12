@@ -278,8 +278,8 @@ export const auth = {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -292,7 +292,8 @@ const mirror = {
   orders: LS.get(LSKEY.orders, {}) || {},
   tiers: LS.get(LSKEY.tiers, {}) || {},
   runs: LS.get(LSKEY.runs, {}) || {},
-  specials: LS.get(LSKEY.specials, {}) || {}
+  specials: LS.get(LSKEY.specials, {}) || {},
+  standing: LS.get(LSKEY.standing, {}) || {}
 };
 
 const DEFAULT_TIERS = {
@@ -365,7 +366,11 @@ export async function pull() {
   seedRunsIfEmpty();
   let t = null;
   try { t = await auth.token(); } catch (e) { /* treat as logged out */ }
-  if (!t) { BUS.emit('change'); return; }
+  if (!t) {
+    try { generateStandingOrders(); } catch (e) { /* local-only generation */ }
+    BUS.emit('change');
+    return;
+  }
 
   const getNode = async (node) => {
     const res = await fetch(FB.databaseURL + '/' + node + '.json?auth=' + encodeURIComponent(t));
@@ -374,10 +379,11 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp] = await Promise.all([
-      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials)
+    const [cust, ord, tr, rn, sp, st] = await Promise.all([
+      getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
+    if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -403,9 +409,11 @@ export async function pull() {
     LS.set(LSKEY.tiers, mirror.tiers);
     LS.set(LSKEY.runs, mirror.runs);
     LS.set(LSKEY.specials, mirror.specials);
+    LS.set(LSKEY.standing, mirror.standing);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
+  try { generateStandingOrders(); } catch (e) { /* never break a pull */ }
   BUS.emit('change');
 }
 
@@ -444,13 +452,15 @@ export function runById(id) {
  * cutoffDayOffset: 0 = cut-off on the delivery day, -1 = the day before, etc.
  * Returns { date:'YYYY-MM-DD', cutoffAt:ms, weekday:0-6 } or null.
  */
-export function deliveryInfo(run, now) {
+export function deliveryInfo(run, now, onlyDays) {
   if (!run) return null;
   now = now || new Date();
   const pad = (n) => String(n).padStart(2, '0');
   const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  const days = (Array.isArray(run.deliveryDays) && run.deliveryDays.length)
+  let days = (Array.isArray(run.deliveryDays) && run.deliveryDays.length)
     ? run.deliveryDays : [1, 2, 3, 4, 5, 6];
+  if (Array.isArray(onlyDays) && onlyDays.length) days = days.filter((d) => onlyDays.includes(d));
+  if (!days.length) return null;
   const parts = String(run.cutoffTime || '21:00').split(':');
   const hh = parseInt(parts[0], 10) || 0, mm = parseInt(parts[1], 10) || 0;
   const offset = Number(run.cutoffDayOffset) || 0;
@@ -498,6 +508,84 @@ export function saveSpecial(s) {
   patch('specials', s.id, s);
   BUS.emit('change');
   return s;
+}
+
+/* ---------- standing (repeat) orders ---------- */
+
+export function standingList() {
+  return Object.values(mirror.standing).filter(Boolean);
+}
+
+export function standingFor(custId) {
+  return Object.values(mirror.standing).find((s) => s && s.custId === custId) || null;
+}
+
+export function saveStanding(s) {
+  if (!s.id) s.id = genId('st');
+  patch('standing', s.id, s);
+  BUS.emit('change');
+  return s;
+}
+
+/**
+ * Auto-place standing orders. For each active standing order, find the next
+ * delivery date (run cut-off still open, weekday in the standing weekdays);
+ * if not yet generated for that date, place a real order priced at TODAY'S
+ * tier prices. Deterministic order id (standingId + date) makes generation
+ * idempotent across devices — concurrent runs rewrite the same record.
+ * Called on boot and after every pull(); cheap no-op when nothing is due.
+ */
+export function generateStandingOrders() {
+  if (!CATALOG.length) return 0;                  // prices not loaded yet
+  let made = 0;
+  for (const s of Object.values(mirror.standing)) {
+    if (!s || s.active === false) continue;
+    if (!Array.isArray(s.lines) || !s.lines.length) continue;
+    if (!Array.isArray(s.weekdays) || !s.weekdays.length) continue;
+    const cust = mirror.customers[s.custId] ||
+      Object.values(mirror.customers).find((c) => c && c.id === s.custId);
+    if (!cust) continue;
+    const run = (cust.runId && mirror.runs[cust.runId]) ||
+      Object.values(mirror.runs).find((r) => r && r.active !== false);
+    const di = deliveryInfo(run, null, s.weekdays);
+    if (!di) continue;
+    if (s.lastGenerated && s.lastGenerated >= di.date) continue;   // already done
+    const oid = 'so' + s.id + '_' + di.date.replace(/-/g, '');
+    if (!mirror.orders[oid]) {
+      const lines = s.lines.map((l) => {
+        const item = CATALOG_BY_KEY.get(l.key);
+        const tp = tierPrice(s.custId, l.key);
+        return {
+          key: l.key,
+          name: (item && item.name) || l.name || l.key,
+          sup: (item && item.cat) || l.sup || '',
+          unit: l.unit || '',
+          qty: Number(l.qty) || 0,
+          price: typeof tp === 'number' ? tp : '',
+          src: 'tier'
+        };
+      }).filter((l) => l.qty > 0);
+      if (!lines.length) continue;
+      patch('custorders', oid, {
+        id: oid,
+        custId: s.custId,
+        runId: cust.runId || (run && run.id) || '',
+        date: todayStr(),
+        status: 'completed',
+        completed: todayStr(),
+        placedAt: Date.now(),
+        deliveryDate: di.date,
+        orderNo: di.date.replace(/-/g, '') + '-R' + String(s.id).slice(-4),
+        channel: 'standing',
+        lines
+      });
+      made++;
+    }
+    s.lastGenerated = di.date;
+    patch('standing', s.id, s);
+  }
+  if (made) BUS.emit('change');
+  return made;
 }
 
 /** Active promo (flat price for all customers) on a product, or null. */

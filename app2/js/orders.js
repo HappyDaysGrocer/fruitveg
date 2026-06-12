@@ -8,6 +8,7 @@ import {
   customers, orders, tiers,
   runs, runById, saveRun, deliveryInfo, saveTier,
   specials, saveSpecial, specialFor,
+  standingFor, saveStanding, generateStandingOrders,
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   auth, pull
 } from './store.js';
@@ -160,11 +161,15 @@ function renderTake(root, cust) {
       <div class="hdv-sub">${esc(delLabel)}</div>
     </div>
     <span class="hdv-tchip">${esc(t ? t.name : (cust.tierId || ''))}</span>
-  </div>
-  <div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hdv-line)">
+  </div>`;
+
+  const st = standingFor(cust.id);
+  const stOn = st && st.active !== false && (st.lines || []).length;
+  h += `<div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hdv-line)">
     <button class="hdv-btnG slim" data-act="editcust">Edit</button>
     <button class="hdv-btnG slim" data-act="prices">Prices</button>
     <button class="hdv-btnG slim" data-act="history">History</button>
+    <button class="hdv-btnG slim" data-act="standing">${stOn ? '↻ Repeat on' : 'Repeat'}</button>
   </div>`;
 
   h += chipsHTML(categories(), takeCat);
@@ -220,6 +225,7 @@ function renderTake(root, cust) {
     else if (act === 'editcust') openSheet(b => customerSheet(b, cust), { static: true });
     else if (act === 'prices') openSheet(b => pricesSheet(b, cust.id), { static: true });
     else if (act === 'history') openSheet(b => historySheet(b, cust.id));
+    else if (act === 'standing') openSheet(b => standingSheet(b, cust), { static: true });
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
   };
 }
@@ -475,6 +481,110 @@ function reorder(custId, src) {
   closeSheet();
   toast('Copied to a new order');
   mode = 'take'; curId = custId; clearSearch(); rerenderNow();
+}
+
+/* ---- standing (repeat) orders ---------------------------------------- */
+
+function standingSheet(body, cust) {
+  let st = standingFor(cust.id) ||
+    { custId: cust.id, weekdays: [], lines: [], active: true };
+  // work on a copy so Cancel discards cleanly
+  st = JSON.parse(JSON.stringify(st));
+  if (!Array.isArray(st.lines)) st.lines = [];
+  if (!Array.isArray(st.weekdays)) st.weekdays = [];
+
+  const render = () => {
+    const dayBtns = WD.map((w, i) =>
+      `<label style="display:flex;align-items:center;gap:5px;border:1px solid var(--hdv-line);border-radius:8px;padding:7px 10px;font-size:14px;color:var(--hdv-text)">
+        <input type="checkbox" class="st-day" value="${i}"${st.weekdays.includes(i) ? ' checked' : ''}> ${w}</label>`).join('');
+
+    let linesHtml;
+    if (!st.lines.length) {
+      linesHtml = emptyHTML('No items yet — copy them from an order below');
+    } else {
+      linesHtml = st.lines.map((l, i) => `<div class="hdv-row">
+        <div class="hdv-info"><div class="hdv-name">${esc(l.name || l.key)}</div></div>
+        <div class="hdv-step">
+          <button class="hdv-sbtn" data-act="sdec" data-i="${i}" aria-label="less">&minus;</button>
+          <span class="hdv-qty">${Number(l.qty) || 0}</span>
+          <button class="hdv-sbtn plus" data-act="sinc" data-i="${i}" aria-label="more">+</button>
+        </div>
+      </div>`).join('');
+    }
+
+    const open = openOrderOf(cust.id);
+    const last = completedOrdersOf(cust.id)[0];
+
+    body.innerHTML = `
+      <div class="hdv-sheettitle">Repeat order · ${esc(cust.name)}</div>
+      <div class="hdv-sheetsub">Placed automatically before each delivery's cut-off, at that day's prices</div>
+      <label class="hdv-lbl">Delivery days</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px">${dayBtns}</div>
+      <label class="hdv-lbl">Items</label>
+      ${linesHtml}
+      <div style="display:flex;gap:8px;padding:8px 0 0">
+        ${open && (open.lines || []).length ? '<button class="hdv-btnG slim" data-act="copyopen">Copy current order</button>' : ''}
+        ${last && (last.lines || []).length ? '<button class="hdv-btnG slim" data-act="copylast">Copy last order</button>' : ''}
+      </div>
+      <label class="hdv-lbl" style="display:flex;align-items:center;gap:8px;margin-top:12px">
+        <input type="checkbox" id="st-active"${st.active !== false ? ' checked' : ''}> Active</label>
+      <div class="hdv-err" id="st-err"></div>
+      <div class="hdv-actions">
+        <button class="hdv-btnG" data-act="cancel">Cancel</button>
+        <button class="hdv-btnP" data-act="save">Save repeat order</button>
+      </div>`;
+  };
+  render();
+
+  const grabDays = () => {
+    st.weekdays = Array.from(body.querySelectorAll('.st-day'))
+      .filter(x => x.checked).map(x => parseInt(x.value, 10));
+  };
+
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    const act = t.dataset.act;
+    if (act === 'cancel') { closeSheet(); return; }
+    if (act === 'sinc' || act === 'sdec') {
+      grabDays();
+      const i = parseInt(t.dataset.i, 10);
+      const l = st.lines[i];
+      if (!l) return;
+      l.qty = (Number(l.qty) || 0) + (act === 'sinc' ? 1 : -1);
+      if (l.qty <= 0) st.lines.splice(i, 1);
+      st.active = body.querySelector('#st-active').checked;
+      render();
+      return;
+    }
+    if (act === 'copyopen' || act === 'copylast') {
+      grabDays();
+      const src = act === 'copyopen' ? openOrderOf(cust.id) : completedOrdersOf(cust.id)[0];
+      if (src) {
+        st.lines = (src.lines || []).map(l =>
+          ({ key: l.key, name: l.name, sup: l.sup, unit: l.unit || '', qty: Number(l.qty) || 0 }));
+      }
+      st.active = body.querySelector('#st-active').checked;
+      render();
+      return;
+    }
+    if (act !== 'save') return;
+    grabDays();
+    st.active = body.querySelector('#st-active').checked;
+    if (st.active && !st.weekdays.length) {
+      body.querySelector('#st-err').textContent = 'Pick at least one delivery day';
+      return;
+    }
+    if (st.active && !st.lines.length) {
+      body.querySelector('#st-err').textContent = 'Add at least one item (copy an order)';
+      return;
+    }
+    saveStanding(st);
+    generateStandingOrders();      // place immediately if a window is open
+    closeSheet();
+    toast(st.active ? 'Repeat order on' : 'Repeat order saved (off)');
+    rerenderNow();
+  };
 }
 
 /* ---- daily ops: market buy list + per-customer pick slips ----------- */
