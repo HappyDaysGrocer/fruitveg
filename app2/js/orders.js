@@ -24,6 +24,8 @@ import {
 let mode = 'list';   // 'list' (customer cards) | 'take' (take-order screen)
 let curId = null;    // customer id when mode === 'take'
 let takeCat = '';    // category chip on the take-order screen
+let pickDate = '';   // selected delivery date in the picking sheet
+let pickMode = 'buy'; // 'buy' (aggregated) | 'cust' (per-customer slips)
 
 function clearSearch() {
   const q = document.getElementById('q');
@@ -81,7 +83,10 @@ function renderCustomers(root) {
 
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Customers</div>
-    <button class="hdv-btnG slim" data-act="newcust">+ New customer</button>
+    <div style="display:flex;gap:8px">
+      <button class="hdv-btnG slim" data-act="picking">Picking</button>
+      <button class="hdv-btnG slim" data-act="newcust">+ New</button>
+    </div>
   </div>`;
 
   if (!list.length) {
@@ -122,6 +127,8 @@ function renderCustomers(root) {
       if (c) openSheet(b => customerSheet(b, c), { static: true });
     } else if (t.dataset.act === 'newcust') {
       openSheet(b => customerSheet(b, null), { static: true });
+    } else if (t.dataset.act === 'picking') {
+      openSheet(pickingSheet);
     }
   };
 }
@@ -435,6 +442,106 @@ function reorder(custId, src) {
   closeSheet();
   toast('Copied to a new order');
   mode = 'take'; curId = custId; clearSearch(); rerenderNow();
+}
+
+/* ---- daily ops: market buy list + per-customer pick slips ----------- */
+
+function custName(id) {
+  const c = asList(customers()).find(x => x && x.id === id);
+  return c ? c.name : '(unknown)';
+}
+
+function placedFor(date) {
+  return asList(orders()).filter(o =>
+    o && o.status === 'completed' && o.deliveryDate === date &&
+    Array.isArray(o.lines) && o.lines.length);
+}
+
+/* Sum every placed line for a delivery date by product -> what to buy. */
+function aggregateBuy(dayOrders) {
+  const agg = new Map();
+  for (const o of dayOrders) for (const l of (o.lines || [])) {
+    const cur = agg.get(l.key) || { name: l.name, cat: l.sup, qty: 0 };
+    cur.qty += Number(l.qty) || 0;
+    agg.set(l.key, cur);
+  }
+  return Array.from(agg.values());
+}
+
+function pickingSheet(body) {
+  const completed = asList(orders()).filter(o =>
+    o && o.status === 'completed' && o.deliveryDate && Array.isArray(o.lines) && o.lines.length);
+  const dates = Array.from(new Set(completed.map(o => o.deliveryDate))).sort();
+
+  if (!dates.length) {
+    body.innerHTML = `<div class="hdv-sheettitle">Orders &amp; picking</div>` +
+      emptyHTML('No placed orders yet — take an order and tap “Place order”');
+    body.onclick = e => { const t = e.target.closest('[data-act]'); if (t && t.dataset.act === 'pdone') closeSheet(); };
+    return;
+  }
+  if (!pickDate || !dates.includes(pickDate)) {
+    const today = todayStr();
+    pickDate = dates.find(d => d >= today) || dates[dates.length - 1];
+  }
+
+  const dayOrders = placedFor(pickDate);
+  const dateChips = dates.map(d =>
+    `<button class="hdv-chip${d === pickDate ? ' on' : ''}" data-act="pdate" data-d="${esc(d)}">${esc(niceDate(d))}</button>`).join('');
+
+  let h = `<div class="hdv-sheettitle">Run · ${esc(niceDate(pickDate))}</div>
+    <div class="hdv-sheetsub">${dayOrders.length} order${dayOrders.length === 1 ? '' : 's'} placed for this delivery</div>
+    <div class="hdv-chips" style="position:static;padding:8px 0">${dateChips}</div>
+    <div style="display:flex;gap:8px;padding:2px 0 6px">
+      <button class="${pickMode === 'buy' ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="pmode" data-m="buy">Buy list</button>
+      <button class="${pickMode === 'cust' ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="pmode" data-m="cust">By customer</button>
+    </div>`;
+
+  if (pickMode === 'buy') {
+    const items = aggregateBuy(dayOrders);
+    const byCat = new Map();
+    for (const it of items) { if (!byCat.has(it.cat)) byCat.set(it.cat, []); byCat.get(it.cat).push(it); }
+    for (const [cat, arr] of Array.from(byCat.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+      h += `<div class="hdv-sec">${esc(cat || 'Other')}</div>`;
+      arr.sort((a, b) => a.name.localeCompare(b.name));
+      h += arr.map(it => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(it.name)}</div></div><span class="hdv-price">${it.qty}</span></div>`).join('');
+    }
+  } else {
+    for (const o of dayOrders.slice().sort((a, b) => custName(a.custId).localeCompare(custName(b.custId)))) {
+      h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''}</div>`;
+      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div></div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
+    }
+  }
+
+  h += `<div class="hdv-actions">
+    <button class="hdv-btnG" data-act="pshare">Share</button>
+    <button class="hdv-btnP" data-act="pdone">Done</button>
+  </div>`;
+
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    const act = t.dataset.act;
+    if (act === 'pdate') { pickDate = t.dataset.d; pickingSheet(body); }
+    else if (act === 'pmode') { pickMode = t.dataset.m; pickingSheet(body); }
+    else if (act === 'pshare') shareText(pickText(pickDate, pickMode));
+    else if (act === 'pdone') closeSheet();
+  };
+}
+
+function pickText(date, m) {
+  const day = placedFor(date);
+  let txt = `Happy Days — ${m === 'buy' ? 'buy list' : 'pick slips'} for delivery ${niceDate(date)}\n`;
+  if (m === 'buy') {
+    txt += aggregateBuy(day).sort((a, b) => a.name.localeCompare(b.name))
+      .map(it => `${it.qty} x ${it.name}`).join('\n');
+  } else {
+    for (const o of day) {
+      txt += `\n— ${custName(o.custId)}${o.orderNo ? ' (' + o.orderNo + ')' : ''} —\n` +
+        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}`).join('\n') + '\n';
+    }
+  }
+  return txt;
 }
 
 function orderText(cust, o) {
