@@ -364,6 +364,41 @@ export const auth = {
 
   logout() { setAuth(null); },
 
+  /** Set a new password for the signed-in account (the phone's live session
+      authorises it — no old password needed). Returns the fresh tokens into
+      the auth blob so the session continues uninterrupted. */
+  async changePassword(newPassword) {
+    const t = await auth.token();
+    if (!t) throw new Error('Sign in first.');
+    const res = await fetch(
+      'https://identitytoolkit.googleapis.com/v1/accounts:update?key=' + FB.apiKey,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: t, password: newPassword, returnSecureToken: true })
+      }
+    );
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* fall through */ }
+    if (!res.ok) {
+      const code = String((data && data.error && data.error.message) || '');
+      if (code.indexOf('CREDENTIAL_TOO_OLD') === 0 || code.indexOf('TOKEN_EXPIRED') === 0) {
+        throw new Error('For safety, sign out and sign back in, then change the password.');
+      }
+      if (code.indexOf('WEAK_PASSWORD') === 0) throw new Error('Password too short — use 6+ characters.');
+      throw new Error('Could not change the password. Check your connection and try again.');
+    }
+    setAuth({
+      idToken: data.idToken || t,
+      refreshToken: data.refreshToken || _auth.refreshToken,
+      expiresAt: Date.now() + (Number(data.expiresIn) || 3600) * 1000 - 60000,
+      uid: data.localId || _auth.uid,
+      email: _auth.email,
+      custId: _auth.custId || undefined
+    });
+    return true;
+  },
+
   user() {
     if (!_auth) return null;
     return {

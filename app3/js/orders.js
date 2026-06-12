@@ -1264,6 +1264,44 @@ function specialsSheet(body) {
 
 /* =========================================================== MORE view */
 
+/* Change-password sheet (v3.4): the live session authorises the change —
+   built so a forgotten staff password never locks the team out. */
+function changePwSheet(body) {
+  const u = auth.user();
+  body.innerHTML = `
+    <div class="hdv-sheettitle">Change password</div>
+    <div class="hdv-sheetsub">New password for <b>${esc(u ? u.name : '')}</b> (6+ characters).
+      Your phone stays signed in.</div>
+    <label class="hdv-lbl">New password</label>
+    <input class="hdv-in" id="pw1" type="password" autocomplete="new-password">
+    <label class="hdv-lbl">Type it again</label>
+    <input class="hdv-in" id="pw2" type="password" autocomplete="new-password">
+    <div class="hdv-err" id="pwerr"></div>
+    <div class="hdv-actions">
+      <button class="hdv-btnG" data-close="1">Cancel</button>
+      <button class="hdv-btnP" data-pw-save>Save</button>
+    </div>`;
+  body.onclick = async (e) => {
+    if (!e.target.closest('[data-pw-save]')) return;
+    const p1 = body.querySelector('#pw1').value;
+    const p2 = body.querySelector('#pw2').value;
+    const err = body.querySelector('#pwerr');
+    if (p1.length < 6) { err.textContent = 'Use at least 6 characters.'; return; }
+    if (p1 !== p2) { err.textContent = 'The two passwords don’t match.'; return; }
+    err.textContent = '';
+    const btn = e.target.closest('[data-pw-save]');
+    btn.disabled = true;
+    try {
+      await auth.changePassword(p1);
+      closeSheet();
+      toast('Password changed');
+    } catch (ex) {
+      err.textContent = ex.message || 'Could not change the password.';
+      btn.disabled = false;
+    }
+  };
+}
+
 export function renderMore(root) {
   ensureCss();
   setActive(() => renderMore(root));
@@ -1282,6 +1320,16 @@ export function renderMore(root) {
     </div>
     <button class="hdv-btnG slim" data-act="${who ? 'logout' : 'login'}">
       ${who ? 'Log out' : 'Sign in'}</button>
+  </div>`;
+
+  // change password (staff only): the signed-in session authorises it, so a
+  // forgotten password is recoverable from any staff phone (v3.4).
+  if (who && !customerId()) h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">Change password</div>
+      <div class="hdv-count">Set a new password for ${esc(uname)} — no old password needed</div>
+    </div>
+    <button class="hdv-btnG slim" data-act="chpw">Change</button>
   </div>`;
 
   // sync (v3.3: the outbox makes the offline reality visible reassurance)
@@ -1378,6 +1426,7 @@ export function renderMore(root) {
     const act = t.dataset.act;
     if (act === 'login') openSheet(loginSheet, { static: true });
     else if (act === 'logout') { auth.logout(); toast('Logged out'); rerenderNow(); }
+    else if (act === 'chpw') openSheet(changePwSheet, { static: true });
     else if (act === 'sync') doSync(t);
     else if (act === 'runs') openSheet(runsAdminSheet);
     else if (act === 'groups') openSheet(groupsSheet);
