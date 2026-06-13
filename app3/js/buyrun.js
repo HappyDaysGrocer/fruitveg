@@ -12,7 +12,8 @@
 
 import {
   catalog, orderedCats, searchCatalog,
-  buyRunList, buyManualQty, setBuyManual
+  buyRunList, buyManualQty, setBuyManual,
+  stallOverride, setStallOverride
 } from './store.js';
 
 import {
@@ -24,12 +25,52 @@ import { boxMath, boxLine } from './boxes.js';
 import { stallFor, searchSuppliers } from './suppliers.js';
 
 /* "Stall 35 · Louis  📞 …  ✉️ SMS" — the market stall + tap-to-call/SMS for a
-   product, or '' if we can't confidently resolve the stall. */
-function stallLine(name) {
-  const st = stallFor(name);
-  if (!st) return '';
-  const label = 'Stall ' + (st.stall || '?') + ' · ' + esc(st.supplier);
+   product (owner override wins), or '' if we can't resolve the stall. */
+function stallLine(it) {
+  const st = resolveStall(it);
+  if (!st || (!st.stall && !st.supplier)) return '';
+  const label = [st.stall ? 'Stall ' + esc(st.stall) : '', esc(st.supplier)].filter(Boolean).join(' · ');
   return `<div class="hdv-stall"><span class="lbl">${label}</span>${st.phone ? phoneLinkHTML(st.phone) : ''}</div>`;
+}
+
+/* Sheet: pin/correct an item's market stall (owner override, synced to all
+   phones). Prefilled from the current guess; Clear reverts to auto-matching. */
+function stallEditSheet(it) {
+  return (body) => {
+    const cur = resolveStall(it) || {};
+    const hasOverride = !!stallOverride(it.key);
+    body.innerHTML = `
+      <div class="hdv-sheettitle">Set stall</div>
+      <div class="hdv-sheetsub">${esc(it.name || nameFor(it.key))}</div>
+      <label class="hdv-lbl">Stall number</label>
+      <input id="stl-no" class="hdv-in" inputmode="numeric" placeholder="e.g. 85" value="${esc(cur.stall || '')}">
+      <label class="hdv-lbl">Business / supplier name</label>
+      <input id="stl-sup" class="hdv-in" placeholder="e.g. Independent Produce" value="${esc(cur.supplier || '')}">
+      <label class="hdv-lbl">Phone (optional)</label>
+      <input id="stl-ph" class="hdv-in" inputmode="tel" placeholder="04…" value="${esc(cur.phone || '')}">
+      <div class="hdv-actions">
+        ${hasOverride ? '<button class="hdv-btnG slim" data-act="clear">Clear</button>' : ''}
+        <button class="hdv-btnG slim" data-act="cancel">Cancel</button>
+        <button class="hdv-btnP" data-act="save">Save</button>
+      </div>`;
+    body.onclick = (e) => {
+      const t = e.target.closest('[data-act]');
+      if (!t) return;
+      if (t.dataset.act === 'cancel') { closeSheet(); return; }
+      if (t.dataset.act === 'clear') {
+        setStallOverride(it.key, it.name, { stall: '', supplier: '', phone: '' });
+        toast('Back to auto'); closeSheet(); return;
+      }
+      if (t.dataset.act === 'save') {
+        setStallOverride(it.key, it.name, {
+          stall: body.querySelector('#stl-no').value,
+          supplier: body.querySelector('#stl-sup').value,
+          phone: body.querySelector('#stl-ph').value
+        });
+        toast('Stall saved'); closeSheet();
+      }
+    };
+  };
 }
 
 /* Who the order demand is for — restaurants/cafés first, e.g. "for Fat Chef 5 · Café X 3". */
@@ -49,19 +90,32 @@ function nameFor(key) {
   return p ? p.name : (String(key).split('||')[1] || key);
 }
 
+/* Resolve a buy item's stall: the owner's per-product override wins, then the
+   name-matched directory, else null ("Stall not set"). */
+function resolveStall(it) {
+  const ov = stallOverride(it.key);
+  if (ov) return { stall: ov.stall || '', supplier: ov.supplier || '', phone: ov.phone || '' };
+  return stallFor(it.name || nameFor(it.key));
+}
+
 /* Group the live buy list by market STALL, sorted the way you walk the Mandi:
    numbered stalls ascending, then named (no-number) suppliers, then anything
    we couldn't resolve a stall for. Each group: {supplier, stall, phone, items}. */
 function groupByStall(live) {
   const groups = new Map();
   for (const it of live) {
-    const st = stallFor(it.name || nameFor(it.key));
+    const st = resolveStall(it);
+    // group by supplier name, or by the bare stall number if that's all we have
     const supplier = st ? st.supplier : '';
-    const key = supplier || '__none__';
+    const stallNo = st ? st.stall : '';
+    const key = supplier || (stallNo ? 'stall ' + stallNo : '__none__');
     if (!groups.has(key)) {
-      groups.set(key, { supplier, stall: st ? st.stall : '', phone: st ? st.phone : '', items: [] });
+      groups.set(key, { supplier, stall: stallNo, phone: st ? st.phone : '', items: [] });
     }
-    groups.get(key).items.push(it);
+    const g = groups.get(key);
+    if (!g.stall && stallNo) g.stall = stallNo;
+    if (!g.phone && st && st.phone) g.phone = st.phone;
+    g.items.push(it);
   }
   return Array.from(groups.values()).sort((a, b) => {
     const au = !a.supplier, bu = !b.supplier;
@@ -123,8 +177,9 @@ function buyRow(it, opts) {
       <div class="hdv-name">${esc(name)}${it.forRestaurant ? ' <span class="hdv-resto">🍽</span>' : ''}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
       ${whoLine(it)}
-      ${o.hideStall ? '' : stallLine(name)}
+      ${o.hideStall ? '' : stallLine(it)}
     </div>
+    <button class="hdv-pin" data-act="setstall" data-key="${esc(it.key)}" aria-label="set stall">📍</button>
     ${buyStepper(it.key, it.total)}
   </div>`;
 }
@@ -314,6 +369,11 @@ export function renderBuy(root) {
       return;
     }
     if (act === 'view') { buyView = t.dataset.view; renderBuy(root); return; }
+    if (act === 'setstall') {
+      const it = liveByKey.get(key) || { key, name: nameFor(key) };
+      openSheet(stallEditSheet(it), { static: true });
+      return;
+    }
     if (act === 'chip') { buyCat = t.dataset.cat; renderBuy(root); }
     else if (act === 'inc') setBuyManual(key, nameFor(key), buyManualQty(key) + 1);
     else if (act === 'dec') { const m = buyManualQty(key); if (m > 0) setBuyManual(key, nameFor(key), m - 1); }

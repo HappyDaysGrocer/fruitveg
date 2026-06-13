@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.8';
+export const VERSION = 'v3.9';
 export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -493,8 +493,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes', boxsizes: 'boxsizes', tillqueue: 'tillqueue' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes', boxsizes: 'hd3.boxsizes', tillqueue: 'hd3.tillqueue' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes', boxsizes: 'boxsizes', tillqueue: 'tillqueue', stalls: 'stalls' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes', boxsizes: 'hd3.boxsizes', tillqueue: 'hd3.tillqueue', stalls: 'hd3.stalls' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -514,7 +514,8 @@ const mirror = {
   stock: LS.get(LSKEY.stock, {}) || {},
   barcodes: LS.get(LSKEY.barcodes, {}) || {},
   boxsizes: LS.get(LSKEY.boxsizes, {}) || {},
-  tillqueue: LS.get(LSKEY.tillqueue, {}) || {}
+  tillqueue: LS.get(LSKEY.tillqueue, {}) || {},
+  stalls: LS.get(LSKEY.stalls, {}) || {}
 };
 
 // Seeds are deliberately ALL shelf-price: the real per-group rules live in
@@ -717,11 +718,12 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st, av, br, stk, bc, bx, tq] = await Promise.all([
+    const [cust, ord, tr, rn, sp, st, av, br, stk, bc, bx, tq, stl] = await Promise.all([
       getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun),
       // newer nodes — never let them break the core sync
       getNode(REMOTE.stock).catch(() => null), getNode(REMOTE.barcodes).catch(() => null),
-      getNode(REMOTE.boxsizes).catch(() => null), getNode(REMOTE.tillqueue).catch(() => null)
+      getNode(REMOTE.boxsizes).catch(() => null), getNode(REMOTE.tillqueue).catch(() => null),
+      getNode(REMOTE.stalls).catch(() => null)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
@@ -731,6 +733,7 @@ export async function pull() {
     if (bc && typeof bc === 'object') mirror.barcodes = Object.assign({}, mirror.barcodes, bc);
     if (bx && typeof bx === 'object') mirror.boxsizes = Object.assign({}, mirror.boxsizes, bx);
     if (tq && typeof tq === 'object') mirror.tillqueue = Object.assign({}, mirror.tillqueue, tq);
+    if (stl && typeof stl === 'object') mirror.stalls = Object.assign({}, mirror.stalls, stl);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -763,6 +766,7 @@ export async function pull() {
     LS.set(LSKEY.barcodes, mirror.barcodes);
     LS.set(LSKEY.boxsizes, mirror.boxsizes);
     LS.set(LSKEY.tillqueue, mirror.tillqueue);
+    LS.set(LSKEY.stalls, mirror.stalls);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -858,6 +862,28 @@ export function setBuyManual(key, name, qty) {
 export function buyManualQty(key) {
   const rec = Object.values(mirror.buyrun).find((b) => b && b.key === key);
   return rec ? (Number(rec.qty) || 0) : 0;
+}
+
+/* ---- per-product STALL overrides (owner-set, synced via /stalls) ----------
+   The buy run resolves each item's stall from this override first, then falls
+   back to the name-matched directory. Lets the owner pin "Stall not set" items
+   and fix any wrong guess; shared to every phone. Record: {id, key, stall,
+   supplier, phone}. */
+export function stallOverride(key) {
+  const r = Object.values(mirror.stalls).find((s) => s && s.key === key);
+  return (r && (r.stall || r.supplier)) ? r : null;
+}
+export function setStallOverride(key, name, info) {
+  info = info || {};
+  let rec = Object.values(mirror.stalls).find((s) => s && s.key === key);
+  if (!rec) rec = { id: genId('stl'), key };
+  rec.name = name || rec.name || key;
+  rec.stall = String(info.stall == null ? (rec.stall || '') : info.stall).trim();
+  rec.supplier = (info.supplier == null ? (rec.supplier || '') : info.supplier).trim();
+  rec.phone = (info.phone == null ? (rec.phone || '') : info.phone).trim();
+  patch('stalls', rec.id, rec);
+  BUS.emit('change');
+  return rec;
 }
 
 /** The live buy list: orders-needed + manual, per product, with a per-customer
