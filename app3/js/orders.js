@@ -237,24 +237,8 @@ function renderCustomers(root) {
 const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
   'punnet', 'punnets', 'tray', 'trays', 'each', 'ea', 'pack', 'packs'];
 
-// Pre-loaded with Brian Cafe's order (owner 2026-06-14) — clear it for the next order.
-const IMPORT_PREFILL = [
-  '1 box Carrots Premium Loose @ 26',
-  '2 box Salad Mix LOOSE @ 15',
-  '2 bunch Onion Spring Bunch @ 2',
-  '1 Celery Size 10 each @ 3',
-  '5 kg Capsicum Green Large /kg @ 4.99',
-  '5 kg Capsicum Red /kg @ 4.99',
-  '6 punnet Tomato Cherry Punnets @ 2.50',
-  '6 Avocado Hass Each @ 2',
-  '2 bag Cucumbers Continental XXL @ 18',
-  '1 Pumpkin grey @ 8',
-  '3 Cabbage @ 4',
-  '1 bunch Parsley @ 2.99',
-  '6 Iceberg Lettuce each @ 2.49',
-  '4 Cos Lettuce each @ 2.99',
-  '4 kg Tomatoes Round Hydro /kg @ 5.99'
-].join('\n');
+// Blank by default — paste each order in. Format per line: qty unit name @ price.
+const IMPORT_PREFILL = '';
 
 function parseQtyTok(s) {
   s = String(s).trim();
@@ -324,7 +308,7 @@ function importSheet(body) {
       <label class="hdv-lbl">Customer</label>
       <select id="imp-cust" class="hdv-in">${opts}</select>
       <label class="hdv-lbl">Order — one per line: qty unit name @ price</label>
-      <textarea id="imp-text" class="hdv-in" rows="9" style="font-family:inherit;line-height:1.5">${esc(text)}</textarea>
+      <textarea id="imp-text" class="hdv-in" rows="9" style="font-family:inherit;line-height:1.5" placeholder="one item per line — e.g.&#10;2 box Carrots Premium Loose @ 26&#10;6 Avocado Hass Each @ 2&#10;5 kg Capsicum Red /kg @ 4.99">${esc(text)}</textarea>
       <label class="hdv-lbl" style="display:flex;align-items:center;gap:8px;font-weight:600;margin-top:8px">
         <input type="checkbox" id="imp-replace"${replace ? ' checked' : ''}> Replace this customer's order (remove anything not listed)
       </label>
