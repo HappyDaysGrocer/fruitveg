@@ -30,7 +30,7 @@ import { shareInvoice } from './pdfinvoice.js';
 /* Business + payment details — one source for the text invoice and the PDF.
    (Trading name only; the legal entity is intentionally not shown.) */
 const BIZ = {
-  name: 'Happy Days Fruit, Veg & Grocery',
+  name: 'Happy Days Fruit Veg & Grocer',
   abn: '95 688 893 156',
   addr: 'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
   phone: '0430 033 127',
@@ -946,6 +946,12 @@ function invoiceTerms(cust) {
     : cust.terms ? 'Payment terms: ' + cust.terms.replace('days', ' days') : '';
 }
 
+/* Delivery line for the docket: date + the customer's delivery time. */
+function deliveryText(cust, o) {
+  return [o && o.deliveryDate ? niceDate(o.deliveryDate) : '', (cust && cust.deliveryTime) || '']
+    .filter(Boolean).join(' · ');
+}
+
 /* Data object shared with the PDF generator (pdfinvoice.js). */
 function invoiceData(invNo, cust, o) {
   return {
@@ -953,7 +959,7 @@ function invoiceData(invNo, cust, o) {
     invNo,
     date: niceDate(o.completed || o.deliveryDate || todayStr()),
     customer: cust.name || '',
-    deliver: o.deliveryDate ? niceDate(o.deliveryDate) : '',
+    deliver: deliveryText(cust, o),
     orderRef: o.orderNo || o.id,
     lines: (o.lines || []).map(l => ({
       name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, unit: l.unit || ''
@@ -978,7 +984,7 @@ function invoiceText(invNo, cust, o) {
     'Ph ' + BIZ.phone + ' · ' + BIZ.email,
     '',
     'Bill to: ' + (cust.name || ''),
-    o.deliveryDate ? 'Delivery date: ' + niceDate(o.deliveryDate) : '',
+    deliveryText(cust, o) ? 'Delivery: ' + deliveryText(cust, o) : '',
     'Order: ' + (o.orderNo || o.id),
     '',
     lines.join('\n'),
@@ -1223,7 +1229,7 @@ function orderText(cust, o) {
     (del ? `\nFor delivery: ${niceDate(del)}` : '') + '\n' +
     rows.join('\n') +
     `\nTotal: ${money(orderTotal(o.lines))}` +
-    '\n\nHappy Days Fruit, Veg & Grocery · 0430 033 127';
+    '\n\nHappy Days Fruit Veg & Grocer · 0430 033 127';
 }
 
 /* ---- customer add / edit form --------------------------------------- */
@@ -1269,6 +1275,8 @@ function customerSheet(body, existing) {
       <div style="${half}"><label class="hdv-lbl" for="cf-run">Delivery run</label>
         <select class="hdv-in" id="cf-run">${runOpts}</select></div>
     </div>
+    <label class="hdv-lbl" for="cf-delivtime">Delivery time <span class="hdv-mut">(prints on the docket)</span></label>
+    <input class="hdv-in" id="cf-delivtime" placeholder="e.g. by 6:00am" value="${val(c.deliveryTime)}">
     <div style="${row}">
       <div style="${half}"><label class="hdv-lbl" for="cf-min">Min order $</label>
         <input class="hdv-in" id="cf-min" type="number" inputmode="decimal" min="0" placeholder="0" value="${c.minOrder != null ? esc(c.minOrder) : ''}"></div>
@@ -1323,6 +1331,7 @@ function customerSheet(body, existing) {
       address: g('#cf-addr'),
       suburb: g('#cf-sub'),
       runId: g('#cf-run'),
+      deliveryTime: g('#cf-delivtime'),
       minOrder: minRaw === '' ? null : (parseFloat(minRaw) || 0),
       terms: g('#cf-terms'),
       notes: g('#cf-notes'),
@@ -1779,7 +1788,7 @@ export function renderMore(root) {
 
   // shop details
   h += `<div class="hdv-card" style="display:block">
-    <div class="hdv-name">Happy Days Fruit, Veg &amp; Grocery</div>
+    <div class="hdv-name">Happy Days Fruit Veg &amp; Grocer</div>
     <div class="hdv-count" style="margin:4px 0 10px">
       Unit 4, 684–700 Frankston-Dandenong Rd, Carrum Downs VIC 3201</div>
     <div class="hdv-kv"><span class="hdv-mut">Ravi</span>
