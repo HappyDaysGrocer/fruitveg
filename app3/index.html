@@ -117,5 +117,13 @@
   </script>
 
   <script type="module" src="js/app.js"></script>
+  <script>
+    /* Use the root network-first service worker (scope /fruitveg/) so app3's
+       code/data files are ALWAYS pulled fresh when online — no more stale,
+       cached old copy on the phone. Falls back to cache only when offline. */
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('../sw.js', { updateViaCache: 'none' });
+    }
+  </script>
 </body>
 </html>
