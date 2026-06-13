@@ -26,6 +26,7 @@ import {
 } from './catalog.js';
 
 import { shareInvoice } from './pdfinvoice.js';
+import { openOrderForm } from './orderform.js';
 
 /* Business + payment details — one source for the text invoice and the PDF.
    (Trading name only; the legal entity is intentionally not shown.) */
@@ -766,7 +767,8 @@ function reviewSheet(body, custId) {
 
     h += `<div class="hdv-actions">
       <button class="hdv-btnG slim" data-act="share">Text</button>
-      <button class="hdv-btnG slim" data-act="invpdf">PDF</button>
+      <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
+      <button class="hdv-btnG slim" data-act="orderform">Order form</button>
       ${isRestoOrCafe ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
       <button class="hdv-btnP" data-act="complete">Place order</button>
     </div>`;
@@ -792,6 +794,7 @@ function reviewSheet(body, custId) {
     }
     else if (act === 'complete') completeOrder(custId);
     else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
+    else if (act === 'orderform') { if (!openOrderForm(openOrderOf(custId), c)) toast('Allow pop-ups to open the order form'); }
     else if (act === 'reviewprices') openSheet(priceReviewSheet(custId), { static: true });
   };
 }
@@ -923,6 +926,7 @@ function invoiceSheet(body, custId, orderId) {
   if (cust.terms) h += `<div class="hdv-sub" style="padding:2px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
   h += `<div class="hdv-actions">
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
+    <button class="hdv-btnG slim" data-act="oform">Order form</button>
     <button class="hdv-btnG slim" data-act="idone">Done</button>
     <button class="hdv-btnP" data-act="ipdf">Share PDF</button>
   </div>`;
@@ -932,6 +936,7 @@ function invoiceSheet(body, custId, orderId) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
+    else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
     else if (t.dataset.act === 'ipdf') {
       shareInvoice(invoiceData(invNo, cust, o)).then(s => {
         if (s === 'downloaded') toast('Invoice PDF saved');
