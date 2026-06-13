@@ -12,7 +12,9 @@ import {
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   customerId, createCustomerLogin,
   isOut, outList, setOut,
-  auth, pull, VERSION, PRICES_CHECKED, outboxCount, flushOutbox
+  auth, pull, VERSION, PRICES_CHECKED, outboxCount, flushOutbox,
+  queueForTill, tillQueueStatus,
+  secureLoaded, costOf
 } from './store.js';
 
 import {
@@ -160,7 +162,7 @@ function renderCustomers(root) {
       : 'No customers yet — add your first one');
   }
 
-  for (const c of list) {
+  const custCard = c => {
     const t = tm[c.tierId];
     const open = openOrderOf(c.id);
     const n = open && Array.isArray(open.lines) ? open.lines.length : 0;
@@ -169,16 +171,28 @@ function renderCustomers(root) {
       n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order',
       c.phone ? esc(c.phone) : ''
     ].filter(Boolean).join(' · ');
-    h += `<div class="hdv-card" data-act="cust" data-id="${esc(c.id)}">
-      <div class="hdv-info">
-        <div class="hdv-name">${esc(c.name || '(unnamed)')}</div>
-        <div class="hdv-count">${meta}</div>
+    return `<div class=”hdv-card” data-act=”cust” data-id=”${esc(c.id)}”>
+      <div class=”hdv-info”>
+        <div class=”hdv-name”>${esc(c.name || '(unnamed)')}</div>
+        <div class=”hdv-count”>${meta}</div>
       </div>
-      <button class="hdv-btnG slim" data-act="edit" data-id="${esc(c.id)}">Edit</button>
-      <span class="hdv-tchip">${esc(t ? t.name : (c.tierId || 'retail'))}</span>
+      <button class=”hdv-btnG slim” data-act=”edit” data-id=”${esc(c.id)}”>Edit</button>
+      <span class=”hdv-tchip”>${esc(t ? t.name : (c.tierId || 'retail'))}</span>
     </div>`;
+  };
+
+  const restoOrCafe = list.filter(c => ['restaurant', 'cafe'].includes(c.tierId));
+  const others = list.filter(c => !['restaurant', 'cafe'].includes(c.tierId));
+
+  if (restoOrCafe.length) {
+    h += `<div class=”hdv-sec”>Restaurants & Café</div>`;
+    h += restoOrCafe.map(custCard).join('');
   }
-  h += '<div class="hdv-pad"></div>';
+  if (others.length) {
+    if (restoOrCafe.length) h += `<div class=”hdv-sec”>Other customers</div>`;
+    h += others.map(custCard).join('');
+  }
+  h += '<div class=”hdv-pad”></div>';
 
   root.innerHTML = h;
   root.onclick = e => {
@@ -298,6 +312,7 @@ function renderTake(root, cust) {
     else if (act === 'inc') changeLine(cust, key, 1);
     else if (act === 'dec') changeLine(cust, key, -1);
     else if (act === 'price') editPriceInline(t2, cust, key);
+    else if (act === 'addkg' || act === 'editkg') editWeightInline(t2, cust, key);
     else if (act === 'editcust') openSheet(b => customerSheet(b, cust), { static: true });
     else if (act === 'prices') openSheet(b => pricesSheet(b, cust.id), { static: true });
     else if (act === 'history') openSheet(b => historySheet(b, cust.id));
@@ -310,6 +325,7 @@ function renderTake(root, cust) {
    price (tap to edit once a line exists) + stepper bound to order lines. */
 function takeRow(p, line, cust) {
   const qty = line ? (Number(line.qty) || 0) : 0;
+  const isKg = p.name.includes('/kg');
   let priceHtml;
   if (line) {
     priceHtml = (line.price === '' || line.price == null)
@@ -328,9 +344,26 @@ function takeRow(p, line, cust) {
   let badge = onSpecial
     ? ' <span class="hdv-tchip" style="background:#fdebd0;color:#b45309">SPECIAL</span>' : '';
   if (out) badge += ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>';
-  // Out + nothing on the order: no stepper (can't add). Out + qty>0: keep
-  // the stepper so the line can still be reduced/removed.
-  const stepper = (out && qty === 0) ? '' : stepperHTML(p.key, qty);
+  let stepper;
+  if (isKg) {
+    if (out && qty === 0) {
+      stepper = '';
+    } else if (qty > 0) {
+      stepper = `<div class="hdv-step">
+        <button class="hdv-sbtn" data-act="dec" data-key="${esc(p.key)}" aria-label="remove">&minus;</button>
+        <span class="hdv-qty" data-act="editkg" data-key="${esc(p.key)}" style="cursor:pointer;text-decoration:underline dotted">${qty}kg</span>
+        <button class="hdv-sbtn plus" data-act="addkg" data-key="${esc(p.key)}" aria-label="edit weight">kg</button>
+      </div>`;
+    } else {
+      stepper = `<div class="hdv-step">
+        <button class="hdv-sbtn plus" data-act="addkg" data-key="${esc(p.key)}" aria-label="add kg">+kg</button>
+      </div>`;
+    }
+  } else {
+    // Out + nothing on the order: no stepper (can't add). Out + qty>0: keep
+    // the stepper so the line can still be reduced/removed.
+    stepper = (out && qty === 0) ? '' : stepperHTML(p.key, qty);
+  }
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
       <div class="hdv-name">${esc(p.name)}${badge}</div>
@@ -412,6 +445,52 @@ function editPriceInline(elm, cust, key) {
   inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
 }
 
+function editWeightInline(elm, cust, key) {
+  const p = catalog().find(x => x.key === key);
+  let o = openOrderOf(cust.id);
+  let line = o && Array.isArray(o.lines) && o.lines.find(l => l.key === key);
+  if (!line) {
+    // First add: create the line
+    if (isOut(key)) { toast('Out of stock today'); return; }
+    o = ensureOpenOrder(cust.id);
+    if (!o) return;
+    if (!Array.isArray(o.lines)) o.lines = [];
+    const tp = tierPrice(cust.id, key);
+    line = { key, name: p ? p.name : key, sup: p ? p.cat : '', unit: 'kg', qty: 0,
+      price: typeof tp === 'number' ? tp : '', src: 'tier' };
+    o.lines.push(line);
+  }
+
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = '0.01'; inp.min = '0'; inp.inputMode = 'decimal';
+  inp.className = 'hdv-pin';
+  inp.value = Number(line.qty) || '';
+  inp.placeholder = 'kg';
+  elm.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = parseFloat(inp.value);
+    if (isFinite(v) && v > 0) {
+      line.qty = Math.round(v * 1000) / 1000;
+      line.unit = 'kg';
+      saveOrder(o);
+    } else if (!(isFinite(v) && v > 0) && line.qty <= 0) {
+      // No weight entered and line was new — remove it
+      o.lines = o.lines.filter(l => l.key !== key);
+      saveOrder(o);
+    } else {
+      rerenderNow();
+    }
+  };
+  inp.addEventListener('change', commit);
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
+}
+
 /* ---- review sheet (lines, qty/price edit, Share, Complete) ------------ */
 
 function reviewSheet(body, custId) {
@@ -427,31 +506,66 @@ function reviewSheet(body, custId) {
   let h = `<div class="hdv-sheettitle">${esc(cust.name)}</div>
     <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}</div>`;
 
+  const isRestoOrCafe = ['restaurant', 'cafe'].includes(cust.tierId);
+  const tqStatus = o ? tillQueueStatus(o.id) : null;
+  const hasCosts = secureLoaded();
+
   if (!lines.length) {
     h += emptyHTML('No lines on this order yet');
   } else {
+    let totalCost = 0, totalSell = 0;
     h += lines.map(l => {
       const lq = Number(l.qty) || 0;
+      const lSell = lq * (Number(l.price) || 0);
       const priceHtml = (l.price === '' || l.price == null)
         ? `<span class="hdv-red" data-act="price" data-key="${esc(l.key)}">SET&nbsp;PRICE</span>`
         : `<span class="hdv-price" data-act="price" data-key="${esc(l.key)}">${money(Number(l.price))}</span>`;
+      let marginHtml = '';
+      if (hasCosts) {
+        const cost = costOf(l.key);
+        if (cost != null && cost > 0 && l.price != null && l.price !== '') {
+          const lCost = lq * cost;
+          const margin = lSell - lCost;
+          const pct = Math.round((margin / lSell) * 100);
+          totalCost += lCost;
+          totalSell += lSell;
+          marginHtml = `<div class="hdv-margin ${pct < 20 ? 'hdv-margin-low' : ''}">${pct}% · ${money(margin)}</div>`;
+        } else {
+          totalSell += lSell;
+        }
+      }
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(l.name)}</div>
           <div class="hdv-sub">${l.src === 'manual' ? 'manual price' : 'tier price'}
-            · line ${money(lq * (Number(l.price) || 0))}</div>
+            · line ${money(lSell)}</div>
+          ${marginHtml}
         </div>
         ${priceHtml}
         ${stepperHTML(l.key, lq)}
       </div>`;
     }).join('');
     h += `<div class="hdv-total"><span>Total</span><span>${money(total)}</span></div>`;
+    if (hasCosts && totalCost > 0 && totalSell > 0) {
+      const totalMargin = totalSell - totalCost;
+      const totalPct = Math.round((totalMargin / totalSell) * 100);
+      h += `<div class="hdv-total hdv-total-margin"><span>Margin</span><span>${totalPct}% · ${money(totalMargin)}</span></div>`;
+    }
     if (cust.minOrder && total < Number(cust.minOrder)) {
       h += `<div class="hdv-err">Below minimum order ${money(Number(cust.minOrder))} — short ${money(Number(cust.minOrder) - total)}</div>`;
     }
     if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
+
+    // Till queue status badge
+    if (tqStatus) {
+      const statusLabel = { queued: 'Queued for till', sent: 'Sent to till', error: 'Till error' }[tqStatus.status] || tqStatus.status;
+      const statusCls = tqStatus.status === 'error' ? 'hdv-tq-error' : tqStatus.status === 'sent' ? 'hdv-tq-sent' : 'hdv-tq-queued';
+      h += `<div class="hdv-tq-status ${statusCls}">${statusLabel}${tqStatus.error ? ' — ' + esc(tqStatus.error) : ''}</div>`;
+    }
+
     h += `<div class="hdv-actions">
       <button class="hdv-btnG" data-act="share">Share</button>
+      ${isRestoOrCafe ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
       <button class="hdv-btnP" data-act="complete">Place order</button>
     </div>`;
   }
@@ -467,7 +581,15 @@ function reviewSheet(body, custId) {
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
     else if (act === 'complete') completeOrder(custId);
+    else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
   };
+}
+
+function sendToTill(cust, order) {
+  if (!order || !(order.lines || []).length) { toast('No lines to send'); return; }
+  const rec = queueForTill(order, cust.name, cust.eposId || null);
+  toast('Queued for till · ' + money(rec.total));
+  refreshSheet();
 }
 
 function completeOrder(custId) {

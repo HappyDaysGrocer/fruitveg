@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.4';
+export const VERSION = 'v3.5';
 export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -493,8 +493,8 @@ export async function createCustomerLogin(custId, username, password) {
    ========================================================================= */
 
 /* local concept name -> remote node name */
-const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes', boxsizes: 'boxsizes' };
-const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes', boxsizes: 'hd3.boxsizes' };
+const REMOTE = { customers: 'customers', orders: 'custorders', tiers: 'pricetiers', runs: 'runs', specials: 'specials', standing: 'standingorders', avail: 'availability', buyrun: 'buyrun', stock: 'stock', barcodes: 'barcodes', boxsizes: 'boxsizes', tillqueue: 'tillqueue' };
+const LSKEY = { customers: 'hd2.customers', orders: 'hd2.orders', tiers: 'hd2.tiers', runs: 'hd2.runs', specials: 'hd2.specials', standing: 'hd2.standing', avail: 'hd2.avail', buyrun: 'hd3.buyrun', stock: 'hd3.stock', barcodes: 'hd3.barcodes', boxsizes: 'hd3.boxsizes', tillqueue: 'hd3.tillqueue' };
 
 function localNameFor(node) {
   if (node === 'custorders' || node === 'orders') return 'orders';
@@ -513,7 +513,8 @@ const mirror = {
   buyrun: LS.get(LSKEY.buyrun, {}) || {},
   stock: LS.get(LSKEY.stock, {}) || {},
   barcodes: LS.get(LSKEY.barcodes, {}) || {},
-  boxsizes: LS.get(LSKEY.boxsizes, {}) || {}
+  boxsizes: LS.get(LSKEY.boxsizes, {}) || {},
+  tillqueue: LS.get(LSKEY.tillqueue, {}) || {}
 };
 
 // Seeds are deliberately ALL shelf-price: the real per-group rules live in
@@ -716,11 +717,11 @@ export async function pull() {
   };
 
   try {
-    const [cust, ord, tr, rn, sp, st, av, br, stk, bc, bx] = await Promise.all([
+    const [cust, ord, tr, rn, sp, st, av, br, stk, bc, bx, tq] = await Promise.all([
       getNode(REMOTE.customers), getNode(REMOTE.orders), getNode(REMOTE.tiers), getNode(REMOTE.runs), getNode(REMOTE.specials), getNode(REMOTE.standing), getNode(REMOTE.avail), getNode(REMOTE.buyrun),
       // newer nodes — never let them break the core sync
       getNode(REMOTE.stock).catch(() => null), getNode(REMOTE.barcodes).catch(() => null),
-      getNode(REMOTE.boxsizes).catch(() => null)
+      getNode(REMOTE.boxsizes).catch(() => null), getNode(REMOTE.tillqueue).catch(() => null)
     ]);
     if (sp && typeof sp === 'object') mirror.specials = Object.assign({}, mirror.specials, sp);
     if (st && typeof st === 'object') mirror.standing = Object.assign({}, mirror.standing, st);
@@ -729,6 +730,7 @@ export async function pull() {
     if (stk && typeof stk === 'object') mirror.stock = Object.assign({}, mirror.stock, stk);
     if (bc && typeof bc === 'object') mirror.barcodes = Object.assign({}, mirror.barcodes, bc);
     if (bx && typeof bx === 'object') mirror.boxsizes = Object.assign({}, mirror.boxsizes, bx);
+    if (tq && typeof tq === 'object') mirror.tillqueue = Object.assign({}, mirror.tillqueue, tq);
     if (cust && typeof cust === 'object') mirror.customers = Object.assign({}, mirror.customers, cust);
     if (ord && typeof ord === 'object') mirror.orders = Object.assign({}, mirror.orders, ord);
     if (tr && typeof tr === 'object' && Object.keys(tr).length) {
@@ -760,6 +762,7 @@ export async function pull() {
     LS.set(LSKEY.stock, mirror.stock);
     LS.set(LSKEY.barcodes, mirror.barcodes);
     LS.set(LSKEY.boxsizes, mirror.boxsizes);
+    LS.set(LSKEY.tillqueue, mirror.tillqueue);
   } catch (e) {
     /* offline or server error — keep stale mirrors, still resolve */
   }
@@ -1145,4 +1148,46 @@ export function tierPrice(custId, key) {
     default:
       return '';
   }
+}
+
+/* ---------- till queue ---------- */
+
+export function queueForTill(order, custName, eposCustId) {
+  const qid = genId('tq');
+  const lines = (order.lines || []).map((l) => ({
+    key: l.key, name: l.name, qty: l.qty, price: l.price, unit: l.unit || ''
+  }));
+  const total = Math.round(
+    lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) * 100
+  ) / 100;
+  const rec = {
+    id: qid,
+    orderId: order.id,
+    custId: order.custId,
+    custName: custName || '',
+    eposCustId: eposCustId || null,
+    status: 'queued',
+    lines,
+    total,
+    ref: order.orderNo || order.id,
+    queuedAt: new Date().toISOString(),
+    tillTxnId: null,
+    error: null,
+    by: (_auth && _auth.email) ? String(_auth.email).split('@')[0] : ''
+  };
+  patch('tillqueue', qid, rec);
+  BUS.emit('change');
+  return rec;
+}
+
+export function tillQueueStatus(orderId) {
+  for (const r of Object.values(mirror.tillqueue)) {
+    if (r && r.orderId === orderId) return r;
+  }
+  return null;
+}
+
+export function tillqueue() {
+  return Object.values(mirror.tillqueue).filter(Boolean)
+    .sort((a, b) => String(b.queuedAt || '').localeCompare(String(a.queuedAt || '')));
 }

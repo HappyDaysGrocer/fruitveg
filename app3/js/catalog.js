@@ -468,7 +468,7 @@ const CSS = `
 :root{
   --hdv-bg:#fff; --hdv-card:#fff; --hdv-text:#0d2818; --hdv-sub:#6b7a70;
   --hdv-line:rgba(13,40,24,.12); --hdv-green:#15662f; --hdv-lt:#eaf4ec;
-  --hdv-red:#b91c1c; --hdv-yellow:#f4d03f; --hdv-amber:#b45309;
+  --hdv-red:#b91c1c; --hdv-yellow:#f4d03f; --hdv-amber:#b45309; --hdv-blue:#1d4ed8;
   --hdv-shadow:0 4px 16px rgba(13,40,24,.14);
   /* motion tokens (DESIGN.md §5): transform+opacity only, asymmetric in/out */
   --dur-fast:120ms; --dur-base:200ms; --dur-screen:300ms;
@@ -536,6 +536,15 @@ const CSS = `
   border:1.5px solid var(--hdv-line);border-radius:12px;padding:13px;font-size:16px;font-weight:700}
 .hdv-btnG.danger{color:var(--hdv-red);border-color:rgba(185,28,28,.35)}
 .hdv-btnG.slim{flex:0 0 auto;min-height:0;padding:9px 14px;font-size:13.5px;border-radius:999px}
+.hdv-btnB{flex:1;min-height:48px;background:var(--hdv-blue,#1d4ed8);color:#fff;border:0;
+  border-radius:12px;padding:13px;font-size:16px;font-weight:700}
+.hdv-margin{font-size:12px;font-weight:600;color:var(--hdv-green);margin-top:2px}
+.hdv-margin.hdv-margin-low{color:var(--hdv-amber)}
+.hdv-total-margin{color:var(--hdv-green);font-size:14px}
+.hdv-tq-status{font-size:13px;font-weight:700;padding:8px 0;border-radius:8px;text-align:center}
+.hdv-tq-queued{color:var(--hdv-amber)}
+.hdv-tq-sent{color:var(--hdv-green)}
+.hdv-tq-error{color:var(--hdv-red)}
 .hdv-toast{position:fixed;left:50%;z-index:70;max-width:86vw;text-align:center;
   bottom:calc(78px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
   background:var(--hdv-text);color:var(--hdv-bg);padding:10px 18px;border-radius:999px;
