@@ -11,7 +11,7 @@ var SHOP_PRODUCTS = [
   ['A-B',null,null,'Apples Granny Smith /kg',null,null,2.5,3.99,false,'0605053615'],
   ['A-B',null,null,'Apples Jazz /kg',null,null,4.58,5.49,false,'7040521315'],
   ['A-B',null,null,'Apples Pink Lady /kg',null,null,1.67,4.99,false,'1176562342'],
-  ['A-B',null,null,'Apples Red Gala /kg',null,null,1.67,4.99,false,'6328408618'],
+  ['A-B',null,null,'Apples Red Gala /kg',null,null,4.58,4.99,false,'6328408618'],
   ['A-B',null,null,'Avocado Hass Each',null,null,1.39,1.99,false,'6260265878'],
   ['A-B',null,null,'Baby Spinach LOOSE',null,null,8.67,15,false,'4862877633'],
   ['A-B',null,null,'Baby Spinach Packet',null,null,1,2.25,false,'6052865602,9331191000465'],
