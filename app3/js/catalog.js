@@ -588,6 +588,7 @@ const CSS = `
   font-size:14.5px;color:var(--hdv-text)}
 .hdv-mut{color:var(--hdv-sub)}
 .hdv-ver{text-align:center;color:var(--hdv-sub);font-size:12px;padding:18px 0 4px}
+.hdv-ver-badge{font-size:11px;font-weight:700;color:var(--hdv-green);background:var(--hdv-lt);padding:3px 9px;border-radius:999px}
 /* ---- v3.2 spine (DESIGN.md §5): tokens applied app-wide ---- */
 .hdv-qty,.hdv-price,.hdv-total,.hdv-qtybtn,.hdv-delta{font-variant-numeric:tabular-nums}
 .hdv-qtybtn{min-width:36px;border:0;background:transparent;text-align:center;

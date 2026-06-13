@@ -1432,7 +1432,7 @@ export function renderMore(root) {
   const who = u ? String(u.email || u) : '';
   const uname = who ? who.split('@')[0] : '';
 
-  let h = `<div class="hdv-head"><div class="hdv-h1">More</div></div>`;
+  let h = `<div class="hdv-head"><div class="hdv-h1">More</div><span class="hdv-ver-badge">${VERSION}</span></div>`;
 
   // account
   h += `<div class="hdv-card">
