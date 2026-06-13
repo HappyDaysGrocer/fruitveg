@@ -527,26 +527,34 @@ function priceReviewSheet(custId) {
       </div>`).join('')}
       <div class="hdv-actions">
         <button class="hdv-btnG slim" data-act="cancel">Close</button>
-        <button class="hdv-btnP" data-act="saveall">Save prices</button>
+        <button class="hdv-btnG slim" data-act="saveall">Save</button>
+        <button class="hdv-btnP" data-act="savepdf">Save &amp; share PDF</button>
       </div>`;
+    const saveEntered = () => {
+      const o2 = openOrderOf(custId);
+      if (o2 && Array.isArray(o2.lines)) {
+        body.querySelectorAll('.hdv-pinp').forEach(inp => {
+          const v = parseFloat(inp.value);
+          if (!isNaN(v) && v >= 0) {
+            const line = o2.lines.find(x => x.key === inp.dataset.key);
+            if (line) { line.price = Math.round(v * 100) / 100; line.src = 'manual'; }
+          }
+        });
+        saveOrder(o2);
+      }
+      return o2;
+    };
     body.onclick = e => {
       const t = e.target.closest('[data-act]');
       if (!t) return;
       if (t.dataset.act === 'cancel') { closeSheet(); return; }
-      if (t.dataset.act === 'saveall') {
-        const o2 = openOrderOf(custId);
-        if (o2 && Array.isArray(o2.lines)) {
-          body.querySelectorAll('.hdv-pinp').forEach(inp => {
-            const v = parseFloat(inp.value);
-            if (!isNaN(v) && v >= 0) {
-              const line = o2.lines.find(x => x.key === inp.dataset.key);
-              if (line) { line.price = Math.round(v * 100) / 100; line.src = 'manual'; }
-            }
-          });
-          saveOrder(o2);
-        }
-        toast('Prices saved');
+      if (t.dataset.act === 'saveall') { saveEntered(); toast('Prices saved'); closeSheet(); return; }
+      if (t.dataset.act === 'savepdf') {
+        const o2 = saveEntered();
         closeSheet();
+        if (o2) shareInvoice(invoiceData(orderRef(o2), cust, o2))
+          .then(s => { if (s === 'downloaded') toast('Invoice PDF saved'); })
+          .catch(() => toast('Could not make the PDF'));
       }
     };
   };
