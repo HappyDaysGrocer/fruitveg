@@ -171,13 +171,13 @@ function renderCustomers(root) {
       n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order',
       c.phone ? esc(c.phone) : ''
     ].filter(Boolean).join(' · ');
-    return `<div class=”hdv-card” data-act=”cust” data-id=”${esc(c.id)}”>
-      <div class=”hdv-info”>
-        <div class=”hdv-name”>${esc(c.name || '(unnamed)')}</div>
-        <div class=”hdv-count”>${meta}</div>
+    return `<div class="hdv-card" data-act="cust" data-id="${esc(c.id)}">
+      <div class="hdv-info">
+        <div class="hdv-name">${esc(c.name || '(unnamed)')}</div>
+        <div class="hdv-count">${meta}</div>
       </div>
-      <button class=”hdv-btnG slim” data-act=”edit” data-id=”${esc(c.id)}”>Edit</button>
-      <span class=”hdv-tchip”>${esc(t ? t.name : (c.tierId || 'retail'))}</span>
+      <button class="hdv-btnG slim" data-act="edit" data-id="${esc(c.id)}">Edit</button>
+      <span class="hdv-tchip">${esc(t ? t.name : (c.tierId || 'retail'))}</span>
     </div>`;
   };
 
@@ -185,14 +185,14 @@ function renderCustomers(root) {
   const others = list.filter(c => !['restaurant', 'cafe'].includes(c.tierId));
 
   if (restoOrCafe.length) {
-    h += `<div class=”hdv-sec”>Restaurants & Café</div>`;
+    h += `<div class="hdv-sec">Restaurants & Café</div>`;
     h += restoOrCafe.map(custCard).join('');
   }
   if (others.length) {
-    if (restoOrCafe.length) h += `<div class=”hdv-sec”>Other customers</div>`;
+    if (restoOrCafe.length) h += `<div class="hdv-sec">Other customers</div>`;
     h += others.map(custCard).join('');
   }
-  h += '<div class=”hdv-pad”></div>';
+  h += '<div class="hdv-pad"></div>';
 
   root.innerHTML = h;
   root.onclick = e => {
