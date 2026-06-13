@@ -35,6 +35,8 @@ const BIZ = {
   addr: 'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
   phone: '0430 033 127',
   email: 'happydaysgrocer@gmail.com',
+  // ⚠ PAYMENT DETAILS — LOCKED. Owner directive 2026-06-14: these NEVER change.
+  // Do not edit bsb/acc without an explicit, unambiguous instruction from the owner.
   bsb: '063-118',
   acc: '10669177'
 };
@@ -186,9 +188,9 @@ function renderCustomers(root) {
       n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order',
       c.phone ? esc(c.phone) : ''
     ].filter(Boolean).join(' · ');
-    return `<div class="hdv-card" data-act="cust" data-id="${esc(c.id)}">
+    return `<div class="hdv-card${n ? ' has-order' : ''}" data-act="cust" data-id="${esc(c.id)}">
       <div class="hdv-info">
-        <div class="hdv-name">${esc(c.name || '(unnamed)')}</div>
+        <div class="hdv-name">${esc(c.name || '(unnamed)')}${n ? ` <span class="hdv-ordtag">● order in · ${n}</span>` : ''}</div>
         <div class="hdv-count">${meta}</div>
       </div>
       <button class="hdv-btnG slim" data-act="edit" data-id="${esc(c.id)}">Edit</button>

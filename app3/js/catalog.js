@@ -555,6 +555,10 @@ const CSS = `
   border:1px solid #f0c36d;background:rgba(180,83,9,.12);color:#b45309;
   font-size:14px;font-weight:800;text-align:center}
 .hdv-pricebanner:active{transform:scale(.99)}
+/* customer with an order waiting — notification style */
+.hdv-card.has-order{border-left:4px solid var(--hdv-green);background:var(--hdv-lt)}
+.hdv-ordtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;color:#fff;
+  background:var(--hdv-green);border-radius:9px;padding:2px 8px;vertical-align:middle;white-space:nowrap}
 .hdv-step{display:flex;align-items:center;gap:2px;flex:0 0 auto}
 .hdv-sbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--hdv-line);
   background:var(--hdv-card);color:var(--hdv-text);font-size:24px;line-height:1;font-weight:600}
