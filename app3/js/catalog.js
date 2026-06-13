@@ -551,6 +551,10 @@ const CSS = `
 .hdv-pin{flex:0 0 auto;width:38px;height:38px;border-radius:11px;border:1px solid var(--hdv-line);
   background:var(--hdv-card);font-size:16px;line-height:1;opacity:.7}
 .hdv-pin:active{transform:scale(.93)}
+.hdv-pricebanner{display:block;width:100%;margin:8px 0 2px;padding:12px;border-radius:12px;
+  border:1px solid #f0c36d;background:rgba(180,83,9,.12);color:#b45309;
+  font-size:14px;font-weight:800;text-align:center}
+.hdv-pricebanner:active{transform:scale(.99)}
 .hdv-step{display:flex;align-items:center;gap:2px;flex:0 0 auto}
 .hdv-sbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--hdv-line);
   background:var(--hdv-card);color:var(--hdv-text);font-size:24px;line-height:1;font-weight:600}

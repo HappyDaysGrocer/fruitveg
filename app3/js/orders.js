@@ -507,6 +507,51 @@ function editWeightInline(elm, cust, key) {
 
 /* ---- review sheet (lines, qty/price edit, Share, Complete) ------------ */
 
+/* Focused price review: lists ONLY the lines that still need a price (e.g. new
+   items, or a customer with no tier price for them) so the owner can set them
+   all in one place. Saves each as a per-line manual price. */
+function priceReviewSheet(custId) {
+  return (body) => {
+    const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+    const o = openOrderOf(custId);
+    const need = (o && Array.isArray(o.lines) ? o.lines : []).filter(l => l.price === '' || l.price == null);
+    if (!need.length) { closeSheet(); toast('All lines priced'); return; }
+    body.innerHTML = `
+      <div class="hdv-sheettitle">Set prices · ${esc(cust.name)}</div>
+      <div class="hdv-sheetsub">${need.length} item${need.length === 1 ? '' : 's'} need a price for ${esc(cust.tierId || 'this customer')}</div>
+      ${need.map(l => `<div class="hdv-row">
+        <div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>
+          <div class="hdv-sub">qty ${Number(l.qty) || 0}${l.unit ? ' ' + esc(l.unit) : ''}</div></div>
+        <input class="hdv-in hdv-pinp" style="max-width:108px;margin:0" inputmode="decimal"
+          placeholder="$ price" data-key="${esc(l.key)}">
+      </div>`).join('')}
+      <div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="cancel">Close</button>
+        <button class="hdv-btnP" data-act="saveall">Save prices</button>
+      </div>`;
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]');
+      if (!t) return;
+      if (t.dataset.act === 'cancel') { closeSheet(); return; }
+      if (t.dataset.act === 'saveall') {
+        const o2 = openOrderOf(custId);
+        if (o2 && Array.isArray(o2.lines)) {
+          body.querySelectorAll('.hdv-pinp').forEach(inp => {
+            const v = parseFloat(inp.value);
+            if (!isNaN(v) && v >= 0) {
+              const line = o2.lines.find(x => x.key === inp.dataset.key);
+              if (line) { line.price = Math.round(v * 100) / 100; line.src = 'manual'; }
+            }
+          });
+          saveOrder(o2);
+        }
+        toast('Prices saved');
+        closeSheet();
+      }
+    };
+  };
+}
+
 function reviewSheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const o = openOrderOf(custId);
@@ -568,7 +613,10 @@ function reviewSheet(body, custId) {
     if (cust.minOrder && total < Number(cust.minOrder)) {
       h += `<div class="hdv-err">Below minimum order ${money(Number(cust.minOrder))} — short ${money(Number(cust.minOrder) - total)}</div>`;
     }
-    if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
+    if (needPrice) {
+      const nNeed = lines.filter(l => l.price === '' || l.price == null).length;
+      h += `<button class="hdv-pricebanner" data-act="reviewprices">⚠ ${nNeed} item${nNeed === 1 ? '' : 's'} need a price — tap to set them</button>`;
+    }
 
     // Till queue status badge
     if (tqStatus) {
@@ -605,6 +653,7 @@ function reviewSheet(body, custId) {
     }
     else if (act === 'complete') completeOrder(custId);
     else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
+    else if (act === 'reviewprices') openSheet(priceReviewSheet(custId), { static: true });
   };
 }
 
