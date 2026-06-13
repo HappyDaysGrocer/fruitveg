@@ -17,10 +17,29 @@ import {
 
 import {
   setActive, esc, money, qText, chipsHTML, stepperHTML, emptyHTML, ensureCss,
-  shareText, openSheet, closeSheet, toast, todayStr, productSheet
+  shareText, openSheet, closeSheet, toast, todayStr, productSheet, phoneLinkHTML
 } from './catalog.js';
 
 import { boxMath, boxLine } from './boxes.js';
+import { stallFor, searchSuppliers } from './suppliers.js';
+
+/* "Stall 35 · Louis  📞 …  ✉️ SMS" — the market stall + tap-to-call/SMS for a
+   product, or '' if we can't confidently resolve the stall. */
+function stallLine(name) {
+  const st = stallFor(name);
+  if (!st) return '';
+  const label = 'Stall ' + (st.stall || '?') + ' · ' + esc(st.supplier);
+  return `<div class="hdv-stall"><span class="lbl">${label}</span>${st.phone ? phoneLinkHTML(st.phone) : ''}</div>`;
+}
+
+/* Who the order demand is for — restaurants/cafés first, e.g. "for Fat Chef 5 · Café X 3". */
+function whoLine(it) {
+  const parts = (it.parts || []).filter((p) => p.name && p.qty > 0)
+    .sort((a, b) => (b.forRest - a.forRest) || (b.qty - a.qty));
+  if (!parts.length) return '';
+  const txt = parts.map((p) => `${esc(p.name)} ${p.qty}`).join(' · ');
+  return `<div class="hdv-who">for ${txt}</div>`;
+}
 
 let buyCat = '';
 
@@ -62,18 +81,21 @@ function buyStepper(key, qty) {
    MANUAL part only (you can't drop below what orders need). */
 function buyRow(it) {
   const done = isRev(it.key);
+  const name = it.name || nameFor(it.key);
   const bits = [];
   if (it.fromOrders > 0) bits.push(it.fromOrders + ' from orders');
   if (it.manual > 0) bits.push('+' + it.manual + ' added');
-  const bx = boxLine(it.name || nameFor(it.key), it.total);   // "≈ 2 boxes of 12 kg"
+  const bx = boxLine(name, it.total);   // "≈ 2 boxes of 12 kg"
   if (bx) bits.push(bx);
   const sub = bits.join(' · ');
   return `<div class="hdv-row sel${done ? ' done' : ''}">
     <button class="hdv-tick${done ? ' on' : ''}" data-act="rev" data-key="${esc(it.key)}"
       aria-label="${done ? 'unmark' : 'mark'} bought">✓</button>
     <div class="hdv-info" data-act="detail" data-key="${esc(it.key)}">
-      <div class="hdv-name">${esc(it.name || nameFor(it.key))}</div>
+      <div class="hdv-name">${esc(name)}${it.forRestaurant ? ' <span class="hdv-resto">🍽</span>' : ''}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
+      ${whoLine(it)}
+      ${stallLine(name)}
     </div>
     ${buyStepper(it.key, it.total)}
   </div>`;
@@ -172,10 +194,34 @@ export function renderBuy(root) {
   <div class="hdv-sub" style="padding:0 12px 4px">${live.length} product${live.length === 1 ? '' : 's'} · ${units} to buy${boxes ? ' · ≈ ' + boxes + ' boxes' : ''} · always live from open orders</div>`;
 
   if (q) {
+    // 1) Stalls matching the query by number / name / contact — with call + SMS.
+    const stalls = searchSuppliers(q);
+    if (stalls.length) {
+      h += `<div class="hdv-sec">${stalls.length} stall${stalls.length === 1 ? '' : 's'} match</div>`;
+      h += stalls.map((s) => `<div class="hdv-row">
+        <div class="hdv-info">
+          <div class="hdv-name">${esc(s.supplier)}</div>
+          <div class="hdv-sub">Stall ${esc(s.stall || '—')}</div>
+          ${s.phone ? `<div class="hdv-stall">${phoneLinkHTML(s.phone)}</div>` : ''}
+        </div>
+      </div>`).join('');
+
+      // 2) What the run already needs FROM those stalls (filter the buy list).
+      const supNames = new Set(stalls.map((s) => s.supplier));
+      const fromStall = live.filter((it) => {
+        const st = stallFor(it.name || nameFor(it.key));
+        return st && supNames.has(st.supplier);
+      });
+      if (fromStall.length) {
+        h += `<div class="hdv-sec">To buy from ${stalls.length === 1 ? esc(stalls[0].supplier) : 'these stalls'}</div>`;
+        h += fromStall.map(buyRow).join('');
+      }
+    }
+    // 3) Catalogue products matching the query — tap + to add to the run.
     const results = searchCatalog(q);
     h += `<div class="hdv-sec">${results.length} result${results.length === 1 ? '' : 's'} — tap + to add to the run</div>`;
     h += results.length ? results.map((p) => searchRow(p, liveByKey)).join('')
-      : emptyHTML(`No products match “${esc(q)}”`);
+      : (stalls.length ? '' : emptyHTML(`No products match “${esc(q)}”`));
   } else if (!live.length) {
     h += emptyHTML('Nothing to buy yet — orders feed this automatically, or search to add an item');
   } else {
@@ -197,6 +243,7 @@ export function renderBuy(root) {
 
   root.innerHTML = h;
   root.onclick = (e) => {
+    if (e.target.closest('a.hdv-tel')) return;   // let tel:/sms: fire, skip row
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act, key = t.dataset.key;

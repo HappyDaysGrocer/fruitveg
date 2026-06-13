@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.5';
+export const VERSION = 'v3.6';
 export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -860,33 +860,64 @@ export function buyManualQty(key) {
   return rec ? (Number(rec.qty) || 0) : 0;
 }
 
-/** The live buy list: orders-needed + manual, per product, with breakdown. */
+/** The live buy list: orders-needed + manual, per product, with a per-customer
+   breakdown. DEMAND = every OPEN order PLUS every upcoming delivery that has
+   not yet passed — which is how standing (recurring restaurant/café) orders
+   feed the run: they are auto-placed as 'completed' for a future deliveryDate,
+   so we count them by date, not by status. Manual team adds stay SEPARATE
+   (fromOrders vs manual are never merged into one anonymous number). */
 export function buyRunList() {
-  const need = new Map();   // key -> {key, name, cat, fromOrders, manual}
-  const add = (key, name, cat, fromOrders, manual) => {
-    const cur = need.get(key) || { key, name, cat: cat || '', fromOrders: 0, manual: 0 };
+  const today = todayStr();
+  const custById = (id) => id ? (mirror.customers[id] ||
+    Object.values(mirror.customers).find((c) => c && c.id === id) || null) : null;
+
+  const need = new Map();   // key -> {key, name, cat, fromOrders, manual, parts[]}
+  const add = (key, name, cat, fromOrders, manual, part) => {
+    const cur = need.get(key) ||
+      { key, name, cat: cat || '', fromOrders: 0, manual: 0, parts: [] };
     cur.fromOrders += fromOrders; cur.manual += manual;
     if (name && !cur.name) cur.name = name;
     if (cat && !cur.cat) cur.cat = cat;
+    if (part && part.qty > 0) {
+      const ex = cur.parts.find((p) => p.custId === part.custId);
+      if (ex) ex.qty += part.qty; else cur.parts.push(Object.assign({}, part));
+    }
     need.set(key, cur);
   };
-  // open customer orders -> aggregated demand
+
+  // demand: open orders + upcoming (not-yet-past) deliveries, incl. standing
   for (const o of Object.values(mirror.orders)) {
-    if (!o || o.status !== 'open' || !Array.isArray(o.lines)) continue;
+    if (!o || !Array.isArray(o.lines)) continue;
+    const upcoming = o.status === 'open' ||
+      (o.deliveryDate && o.deliveryDate >= today && o.status !== 'cancelled');
+    if (!upcoming) continue;
+    const cust = custById(o.custId);
+    const custName = (cust && cust.name) || '';
+    const tier = (cust && cust.tierId) || '';
+    const forRest = tier === 'restaurant' || tier === 'cafe';
     for (const l of o.lines) {
       if (!l || !l.key) continue;
       const it = CATALOG_BY_KEY.get(l.key);
-      add(l.key, l.name || (it && it.name), (it && it.cat) || l.sup || '', Number(l.qty) || 0, 0);
+      const qty = Number(l.qty) || 0;
+      add(l.key, l.name || (it && it.name), (it && it.cat) || l.sup || '', qty, 0,
+        { custId: o.custId, name: custName, tier, forRest, qty, channel: o.channel || '' });
     }
   }
-  // manual additions
+
+  // manual additions (kept separate from order demand)
   for (const b of Object.values(mirror.buyrun)) {
     if (!b || !b.key || !(Number(b.qty) > 0)) continue;
     const it = CATALOG_BY_KEY.get(b.key);
-    add(b.key, b.name || (it && it.name), it && it.cat, 0, Number(b.qty) || 0);
+    add(b.key, b.name || (it && it.name), it && it.cat, 0, Number(b.qty) || 0, null);
   }
+
   return Array.from(need.values())
-    .map((x) => ({ ...x, total: x.fromOrders + x.manual }))
+    .map((x) => ({
+      ...x,
+      total: x.fromOrders + x.manual,
+      forRestaurant: x.parts.some((p) => p.forRest),
+      parts: x.parts.sort((a, b) => b.qty - a.qty)
+    }))
     .filter((x) => x.total > 0);
 }
 

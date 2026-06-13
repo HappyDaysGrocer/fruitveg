@@ -20,6 +20,26 @@ export const esc = s => String(s == null ? '' : s)
 export const money = n =>
   (typeof n === 'number' && isFinite(n)) ? '$' + n.toFixed(2) : '';
 
+/* The ONE phone standard (used by the buy-run stall directory and anywhere a
+   supplier/customer number is shown): pretty-print AU numbers, then tap to
+   call, tap ✉️ to SMS. The anchors carry class "hdv-tel" so row-level click
+   handlers can ignore them (let the tel:/sms: default fire). */
+export const fmtPhone = raw => {
+  if (!raw) return '';
+  let d = String(raw).replace(/\D/g, '');
+  if (d.length === 9) d = '0' + d;
+  if (d.length !== 10) return String(raw);
+  return (d.slice(0, 2) === '04' || d.slice(0, 2) === '05')
+    ? d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7)
+    : d.slice(0, 2) + ' ' + d.slice(2, 6) + ' ' + d.slice(6);
+};
+export function phoneLinkHTML(phone) {
+  if (!phone) return '';
+  const tel = String(phone).replace(/[^0-9+]/g, '');
+  return `<a class="hdv-tel" href="tel:${tel}">📞 ${esc(fmtPhone(phone))}</a>` +
+    `<a class="hdv-tel sms" href="sms:${tel}">✉️ SMS</a>`;
+}
+
 /* The ONE percent formatter (whole numbers read fastest on the floor). */
 export const percent = n =>
   (typeof n === 'number' && isFinite(n)) ? Math.round(n) + '%' : '';
@@ -498,6 +518,14 @@ const CSS = `
 .hdv-info{flex:1;min-width:0}
 .hdv-name{font-size:16px;font-weight:600;color:var(--hdv-text);overflow-wrap:anywhere}
 .hdv-sub{font-size:12.5px;color:var(--hdv-sub);margin-top:2px}
+.hdv-who{font-size:12.5px;color:var(--hdv-green);font-weight:600;margin-top:2px;overflow-wrap:anywhere}
+.hdv-stall{font-size:12.5px;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--hdv-sub)}
+.hdv-stall .lbl{font-weight:700;color:var(--hdv-text)}
+.hdv-resto{font-size:13px}
+.hdv-tel{display:inline-block;padding:3px 8px;border-radius:9px;background:var(--hdv-lt);
+  color:var(--hdv-green);font-weight:700;text-decoration:none;white-space:nowrap}
+.hdv-tel.sms{color:var(--hdv-text)}
+.hdv-tel:active{transform:scale(.96)}
 .hdv-step{display:flex;align-items:center;gap:2px;flex:0 0 auto}
 .hdv-sbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--hdv-line);
   background:var(--hdv-card);color:var(--hdv-text);font-size:24px;line-height:1;font-weight:600}
