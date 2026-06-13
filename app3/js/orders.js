@@ -295,10 +295,12 @@ function importSheet(body) {
   let selId = (custs.find(c => /brian/i.test(c.name || '')) || custs[0] || {}).id || '';
   let text = IMPORT_PREFILL;
   let checked = null;
+  let replace = false;
 
   const readInputs = () => {
     const ta = body.querySelector('#imp-text'); if (ta) text = ta.value;
     const sel = body.querySelector('#imp-cust'); if (sel) selId = sel.value;
+    const rc = body.querySelector('#imp-replace'); if (rc) replace = rc.checked;
   };
   const doMatch = () => text.split('\n').map(parseImportLine).filter(Boolean)
     .map(r => ({ ...r, item: matchProduct(r.name) }));
@@ -323,6 +325,9 @@ function importSheet(body) {
       <select id="imp-cust" class="hdv-in">${opts}</select>
       <label class="hdv-lbl">Order — one per line: qty unit name @ price</label>
       <textarea id="imp-text" class="hdv-in" rows="9" style="font-family:inherit;line-height:1.5">${esc(text)}</textarea>
+      <label class="hdv-lbl" style="display:flex;align-items:center;gap:8px;font-weight:600;margin-top:8px">
+        <input type="checkbox" id="imp-replace"${replace ? ' checked' : ''}> Replace this customer's order (remove anything not listed)
+      </label>
       ${preview}
       <div class="hdv-actions">
         <button class="hdv-btnG slim" data-act="cancel">Close</button>
@@ -344,17 +349,22 @@ function importSheet(body) {
       if (!selId) { toast('Pick a customer'); return; }
       if (!good.length) { toast('Nothing matched — tap Check first'); return; }
       const o = ensureOpenOrder(selId);
-      if (!Array.isArray(o.lines)) o.lines = [];
-      const byKey = {}; o.lines.forEach(l => { if (l) byKey[l.key] = l; });
-      for (const r of good) {
-        const ln = byKey[r.item.key];
-        if (ln) { ln.qty = r.qty; if (r.unit) ln.unit = r.unit; if (r.price != null) ln.price = r.price; }
-        else o.lines.push({ key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
-          price: (r.price == null ? '' : r.price), src: 'manual' });
+      const mk = (r) => ({ key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
+        price: (r.price == null ? '' : r.price), src: 'manual' });
+      if (replace) {
+        o.lines = good.map(mk);                 // exactly the pasted items, nothing else
+      } else {
+        if (!Array.isArray(o.lines)) o.lines = [];
+        const byKey = {}; o.lines.forEach(l => { if (l) byKey[l.key] = l; });
+        for (const r of good) {
+          const ln = byKey[r.item.key];
+          if (ln) { ln.qty = r.qty; if (r.unit) ln.unit = r.unit; if (r.price != null) ln.price = r.price; }
+          else o.lines.push(mk(r));
+        }
       }
       saveOrder(o);
       const bad = checked.length - good.length;
-      toast(`Added ${good.length} item${good.length === 1 ? '' : 's'}${bad ? ` · ${bad} skipped` : ''}`);
+      toast(`${replace ? 'Replaced with' : 'Added'} ${good.length} item${good.length === 1 ? '' : 's'}${bad ? ` · ${bad} skipped` : ''}`);
       closeSheet();
       curId = selId; mode = 'take'; clearSearch(); rerenderNow();
     }
