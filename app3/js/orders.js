@@ -25,6 +25,20 @@ import {
   chipsHTML, stepperHTML, emptyHTML, ensureCss
 } from './catalog.js';
 
+import { shareInvoice } from './pdfinvoice.js';
+
+/* Business + payment details — one source for the text invoice and the PDF.
+   (Trading name only; the legal entity is intentionally not shown.) */
+const BIZ = {
+  name: 'Happy Days Fruit, Veg & Grocery',
+  abn: '95 688 893 156',
+  addr: 'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
+  phone: '0430 033 127',
+  email: 'happydaysgrocer@gmail.com',
+  bsb: '063-118',
+  acc: '10669177'
+};
+
 /* ------------------------------------------------------- view state */
 
 let mode = 'list';   // 'list' (customer cards) | 'take' (take-order screen)
@@ -564,7 +578,8 @@ function reviewSheet(body, custId) {
     }
 
     h += `<div class="hdv-actions">
-      <button class="hdv-btnG" data-act="share">Share</button>
+      <button class="hdv-btnG slim" data-act="share">Text</button>
+      <button class="hdv-btnG slim" data-act="invpdf">PDF</button>
       ${isRestoOrCafe ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
       <button class="hdv-btnP" data-act="complete">Place order</button>
     </div>`;
@@ -580,6 +595,14 @@ function reviewSheet(body, custId) {
     else if (act === 'dec') changeLine(c, key, -1);
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
+    else if (act === 'invpdf') {
+      const o = openOrderOf(custId);
+      if (!o || !(o.lines || []).length) { toast('No lines yet'); return; }
+      const invNo = 'INV-' + (o.orderNo || String(o.id).slice(-8).toUpperCase());
+      shareInvoice(invoiceData(invNo, c, o)).then(s => {
+        if (s === 'downloaded') toast('Invoice PDF saved');
+      }).catch(() => toast('Could not make the PDF'));
+    }
     else if (act === 'complete') completeOrder(custId);
     else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
   };
@@ -696,10 +719,12 @@ function invoiceSheet(body, custId, orderId) {
     </div>`;
   }).join('');
   h += `<div class="hdv-total"><span>Total (GST-free)</span><span>${money(total)}</span></div>`;
-  if (cust.terms) h += `<div class="hdv-sub" style="padding:4px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
+  h += `<div class="hdv-sub" style="padding:6px 0 0">Payment: BSB ${BIZ.bsb} · Acc ${BIZ.acc} · Ref ${esc(invNo)}</div>`;
+  if (cust.terms) h += `<div class="hdv-sub" style="padding:2px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
   h += `<div class="hdv-actions">
-    <button class="hdv-btnG" data-act="ishare">Share invoice</button>
-    <button class="hdv-btnP" data-act="idone">Done</button>
+    <button class="hdv-btnG slim" data-act="ishare">Text</button>
+    <button class="hdv-btnG slim" data-act="idone">Done</button>
+    <button class="hdv-btnP" data-act="ipdf">Share PDF</button>
   </div>`;
 
   body.innerHTML = h;
@@ -707,7 +732,35 @@ function invoiceSheet(body, custId, orderId) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
+    else if (t.dataset.act === 'ipdf') {
+      shareInvoice(invoiceData(invNo, cust, o)).then(s => {
+        if (s === 'downloaded') toast('Invoice PDF saved');
+      }).catch(() => toast('Could not make the PDF'));
+    }
     else if (t.dataset.act === 'idone') closeSheet();
+  };
+}
+
+function invoiceTerms(cust) {
+  return cust.terms === 'COD' ? 'Pay on delivery'
+    : cust.terms ? 'Payment terms: ' + cust.terms.replace('days', ' days') : '';
+}
+
+/* Data object shared with the PDF generator (pdfinvoice.js). */
+function invoiceData(invNo, cust, o) {
+  return {
+    biz: BIZ,
+    invNo,
+    date: niceDate(o.completed || o.deliveryDate || todayStr()),
+    customer: cust.name || '',
+    deliver: o.deliveryDate ? niceDate(o.deliveryDate) : '',
+    orderRef: o.orderNo || o.id,
+    lines: (o.lines || []).map(l => ({
+      name: l.name, qty: Number(l.qty) || 0, price: Number(l.price) || 0, unit: l.unit || ''
+    })),
+    total: orderTotal(o.lines),
+    gstFree: true,
+    terms: invoiceTerms(cust)
   };
 }
 
@@ -717,14 +770,12 @@ function invoiceText(invNo, cust, o) {
     return `${lq} x ${l.name} @ ${money(lp)} = ${money(lq * lp)}`;
   });
   const total = orderTotal(o.lines);
-  const terms = cust.terms === 'COD' ? 'Pay on delivery'
-    : cust.terms ? 'Payment terms: ' + cust.terms.replace('days', ' days') : '';
   return [
     'TAX INVOICE ' + invNo,
-    'Happy Days Fruit, Veg & Grocery (Mango People Pty Ltd)',
-    'ABN 95 688 893 156',
-    'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
-    'Ph 0430 033 127 · happydaysgrocer@gmail.com',
+    BIZ.name,
+    'ABN ' + BIZ.abn,
+    BIZ.addr,
+    'Ph ' + BIZ.phone + ' · ' + BIZ.email,
     '',
     'Bill to: ' + (cust.name || ''),
     o.deliveryDate ? 'Delivery date: ' + niceDate(o.deliveryDate) : '',
@@ -733,7 +784,9 @@ function invoiceText(invNo, cust, o) {
     lines.join('\n'),
     '',
     'TOTAL: ' + money(total) + '  (all items GST-free)',
-    terms
+    '',
+    'Payment: BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc + '  Ref ' + invNo,
+    invoiceTerms(cust)
   ].filter(s => s !== '').join('\n');
 }
 
