@@ -165,6 +165,7 @@ function renderCustomers(root) {
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Customers</div>
     <div style="display:flex;gap:8px">
+      <button class="hdv-btnG slim" data-act="import">Import</button>
       <button class="hdv-btnG slim" data-act="picking">Picking</button>
       <button class="hdv-btnG slim" data-act="newcust">+ New</button>
     </div>
@@ -222,6 +223,140 @@ function renderCustomers(root) {
       openSheet(b => customerSheet(b, null), { static: true });
     } else if (t.dataset.act === 'picking') {
       openSheet(pickingSheet);
+    } else if (t.dataset.act === 'import') {
+      openSheet(importSheet, { static: true });
+    }
+  };
+}
+
+/* ---- import a typed order ------------------------------------------------
+   Paste a restaurant's order, pick the customer, Create — the order is written
+   using THIS device's app login (no separate password needed). One item per
+   line: "qty [unit] product name @ price"  (price optional; "1/2" allowed). */
+
+const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
+  'punnet', 'punnets', 'tray', 'trays', 'each', 'ea', 'pack', 'packs'];
+
+// Pre-loaded with Brian Cafe's order (owner 2026-06-14) — clear it for the next order.
+const IMPORT_PREFILL = [
+  '1 box Carrots Premium Loose @ 26',
+  '2 box Salad Mix LOOSE @ 15',
+  '2 bunch Onion Spring Bunch @ 2',
+  '1 Celery Size 10 each @ 3',
+  '5 kg Capsicum Green Large /kg @ 4.99',
+  '5 kg Capsicum Red /kg @ 4.99',
+  '6 punnet Tomato Cherry Punnets @ 2.50',
+  '6 Avocado Hass Each @ 2',
+  '2 bag Cucumbers Continental XXL @ 18',
+  '1 Pumpkin grey @ 8',
+  '3 Cabbage @ 4',
+  '1 bunch Parsley @ 2.99',
+  '6 Iceberg Lettuce each @ 2.49',
+  '4 Cos Lettuce each @ 2.99',
+  '4 kg Tomatoes Round Hydro /kg @ 5.99'
+].join('\n');
+
+function parseQtyTok(s) {
+  s = String(s).trim();
+  const frac = s.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function parseImportLine(line) {
+  let s = String(line).trim();
+  if (!s) return null;
+  let price = null;
+  const pm = s.match(/(?:@|\$)\s*([\d.]+)\s*$/);             // trailing @price / $price
+  if (pm) { price = parseFloat(pm[1]); s = s.slice(0, pm.index).trim(); }
+  let qty = 1, rest = s;
+  const qm = s.match(/^(\d+(?:\s*\/\s*\d+)?(?:\.\d+)?)\s+(.*)$/);  // leading qty / fraction
+  if (qm) { const q = parseQtyTok(qm[1]); if (q != null) { qty = q; rest = qm[2].trim(); } }
+  let unit = '';
+  const first = (rest.split(/\s+/)[0] || '').toLowerCase().replace(/[.,]/g, '');
+  if (IMPORT_UNITS.includes(first)) { unit = first; rest = rest.slice(rest.indexOf(' ') + 1).trim(); }
+  return { qty, unit, name: rest, price };
+}
+
+/* free-text product name -> catalogue item: exact name, else best search hit */
+function matchProduct(name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return null;
+  const exact = catalog().find(p => String(p.name).toLowerCase() === n);
+  if (exact) return exact;
+  const hits = searchCatalog(name);
+  return (hits && hits.length) ? hits[0] : null;
+}
+
+function importSheet(body) {
+  const custs = asList(customers()).filter(Boolean)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  let selId = (custs.find(c => /brian/i.test(c.name || '')) || custs[0] || {}).id || '';
+  let text = IMPORT_PREFILL;
+  let checked = null;
+
+  const readInputs = () => {
+    const ta = body.querySelector('#imp-text'); if (ta) text = ta.value;
+    const sel = body.querySelector('#imp-cust'); if (sel) selId = sel.value;
+  };
+  const doMatch = () => text.split('\n').map(parseImportLine).filter(Boolean)
+    .map(r => ({ ...r, item: matchProduct(r.name) }));
+
+  const render = () => {
+    const opts = custs.map(c => `<option value="${esc(c.id)}"${c.id === selId ? ' selected' : ''}>${esc(c.name || '(unnamed)')}${c.tierId ? ' · ' + esc(c.tierId) : ''}</option>`).join('');
+    let preview = '';
+    if (checked) {
+      const okN = checked.filter(r => r.item).length;
+      preview = `<div class="hdv-sec">${okN} matched${checked.length - okN ? ` · ${checked.length - okN} not found` : ''}</div>`;
+      preview += checked.map(r => r.item
+        ? `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(r.item.name)}</div>
+            <div class="hdv-sub">${r.qty}${r.unit ? ' ' + esc(r.unit) : ''}${r.price != null ? ' · ' + money(r.price) : ' · price to set'}</div></div></div>`
+        : `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name" style="color:var(--hdv-red)">✗ ${esc(r.name)}</div>
+            <div class="hdv-sub">no catalogue match — fix the wording</div></div></div>`).join('');
+    }
+    const canCreate = checked && checked.some(r => r.item);
+    body.innerHTML = `
+      <div class="hdv-sheettitle">Import order</div>
+      <div class="hdv-sheetsub">Paste an order, pick the customer, Create. Writes using this device's login — no password needed.</div>
+      <label class="hdv-lbl">Customer</label>
+      <select id="imp-cust" class="hdv-in">${opts}</select>
+      <label class="hdv-lbl">Order — one per line: qty unit name @ price</label>
+      <textarea id="imp-text" class="hdv-in" rows="9" style="font-family:inherit;line-height:1.5">${esc(text)}</textarea>
+      ${preview}
+      <div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="cancel">Close</button>
+        <button class="hdv-btnG slim" data-act="check">Check</button>
+        <button class="hdv-btnP" data-act="create"${canCreate ? '' : ' disabled'}>Create order</button>
+      </div>`;
+  };
+  render();
+
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'cancel') { closeSheet(); return; }
+    readInputs();
+    if (t.dataset.act === 'check') { checked = doMatch(); render(); return; }
+    if (t.dataset.act === 'create') {
+      if (!checked) checked = doMatch();
+      const good = checked.filter(r => r.item);
+      if (!selId) { toast('Pick a customer'); return; }
+      if (!good.length) { toast('Nothing matched — tap Check first'); return; }
+      const o = ensureOpenOrder(selId);
+      if (!Array.isArray(o.lines)) o.lines = [];
+      const byKey = {}; o.lines.forEach(l => { if (l) byKey[l.key] = l; });
+      for (const r of good) {
+        const ln = byKey[r.item.key];
+        if (ln) { ln.qty = r.qty; if (r.unit) ln.unit = r.unit; if (r.price != null) ln.price = r.price; }
+        else o.lines.push({ key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
+          price: (r.price == null ? '' : r.price), src: 'manual' });
+      }
+      saveOrder(o);
+      const bad = checked.length - good.length;
+      toast(`Added ${good.length} item${good.length === 1 ? '' : 's'}${bad ? ` · ${bad} skipped` : ''}`);
+      closeSheet();
+      curId = selId; mode = 'take'; clearSearch(); rerenderNow();
     }
   };
 }
