@@ -526,6 +526,28 @@ const CSS = `
   color:var(--hdv-green);font-weight:700;text-decoration:none;white-space:nowrap}
 .hdv-tel.sms{color:var(--hdv-text)}
 .hdv-tel:active{transform:scale(.96)}
+/* buy-run stall view: toggle, quick-jump strip, stall sections */
+.hdv-viewtog{display:flex;gap:6px;padding:6px 12px 2px}
+.hdv-vbtn{flex:1;padding:8px;border-radius:10px;border:1px solid var(--hdv-line);
+  background:var(--hdv-card);color:var(--hdv-text);font-size:13px;font-weight:700}
+.hdv-vbtn.on{background:var(--hdv-green);color:#fff;border-color:var(--hdv-green)}
+.hdv-stallstrip{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;
+  -webkit-overflow-scrolling:touch;border-bottom:1px solid var(--hdv-line);scrollbar-width:none}
+.hdv-stallstrip::-webkit-scrollbar{display:none}
+.hdv-pill{flex:0 0 auto;min-height:40px;padding:0 12px;border-radius:11px;
+  border:1px solid var(--hdv-line);background:var(--hdv-card);color:var(--hdv-text);
+  font-size:15px;font-weight:800;display:flex;align-items:center;gap:5px}
+.hdv-pill:active{transform:scale(.95)}
+.hdv-pill .n{font-size:11px;font-weight:700;color:#fff;background:var(--hdv-sub);
+  border-radius:8px;padding:1px 5px;min-width:16px;text-align:center}
+.hdv-stallsec{scroll-margin-top:64px;border-top:1px solid var(--hdv-line)}
+.hdv-stallhdr{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:11px 12px 5px;flex-wrap:wrap}
+.hdv-stalltitle{font-size:15px;font-weight:800;color:var(--hdv-text);
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.hdv-stallno{display:inline-block;min-width:26px;text-align:center;background:var(--hdv-green);
+  color:#fff;border-radius:7px;padding:2px 8px;font-size:15px}
+.hdv-stallcount{font-size:12px;font-weight:700;color:var(--hdv-sub)}
 .hdv-step{display:flex;align-items:center;gap:2px;flex:0 0 auto}
 .hdv-sbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--hdv-line);
   background:var(--hdv-card);color:var(--hdv-text);font-size:24px;line-height:1;font-weight:600}

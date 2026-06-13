@@ -42,10 +42,37 @@ function whoLine(it) {
 }
 
 let buyCat = '';
+let buyView = 'stall';   // 'stall' = market-walk order (default) | 'aisle' = by category
 
 function nameFor(key) {
   const p = catalog().find((x) => x.key === key);
   return p ? p.name : (String(key).split('||')[1] || key);
+}
+
+/* Group the live buy list by market STALL, sorted the way you walk the Mandi:
+   numbered stalls ascending, then named (no-number) suppliers, then anything
+   we couldn't resolve a stall for. Each group: {supplier, stall, phone, items}. */
+function groupByStall(live) {
+  const groups = new Map();
+  for (const it of live) {
+    const st = stallFor(it.name || nameFor(it.key));
+    const supplier = st ? st.supplier : '';
+    const key = supplier || '__none__';
+    if (!groups.has(key)) {
+      groups.set(key, { supplier, stall: st ? st.stall : '', phone: st ? st.phone : '', items: [] });
+    }
+    groups.get(key).items.push(it);
+  }
+  return Array.from(groups.values()).sort((a, b) => {
+    const au = !a.supplier, bu = !b.supplier;
+    if (au !== bu) return au ? 1 : -1;                 // unknown stall last
+    const na = parseInt(a.stall, 10), nb = parseInt(b.stall, 10);
+    const an = !isNaN(na), bn = !isNaN(nb);
+    if (an && bn) return na - nb;                       // numbered stalls ascending
+    if (an && !bn) return -1;
+    if (!an && bn) return 1;
+    return String(a.supplier).localeCompare(String(b.supplier));
+  });
 }
 
 /* ---- "reviewed" ticks: per-device, per-day (like availability's daily
@@ -79,7 +106,8 @@ function buyStepper(key, qty) {
 
 /* One buy row: tick → name/breakdown → stepper. The stepper adjusts the
    MANUAL part only (you can't drop below what orders need). */
-function buyRow(it) {
+function buyRow(it, opts) {
+  const o = opts || {};
   const done = isRev(it.key);
   const name = it.name || nameFor(it.key);
   const bits = [];
@@ -95,7 +123,7 @@ function buyRow(it) {
       <div class="hdv-name">${esc(name)}${it.forRestaurant ? ' <span class="hdv-resto">🍽</span>' : ''}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
       ${whoLine(it)}
-      ${stallLine(name)}
+      ${o.hideStall ? '' : stallLine(name)}
     </div>
     ${buyStepper(it.key, it.total)}
   </div>`;
@@ -225,18 +253,51 @@ export function renderBuy(root) {
   } else if (!live.length) {
     h += emptyHTML('Nothing to buy yet — orders feed this automatically, or search to add an item');
   } else {
-    const cats = Array.from(new Set(live.map((x) => x.cat)));
-    h += chipsHTML(cats.sort(), buyCat);
-    const shown = buyCat ? live.filter((x) => x.cat === buyCat) : live;
-    const byCat = new Map();
-    for (const it of shown) { if (!byCat.has(it.cat)) byCat.set(it.cat, []); byCat.get(it.cat).push(it); }
-    const order = orderedCats().filter((c) => byCat.has(c));
-    for (const c of Array.from(byCat.keys()).sort((a, b) => {
-      const ia = order.indexOf(a), ib = order.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || String(a).localeCompare(String(b));
-    })) {
-      const g = byCat.get(c).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      h += `<div class="hdv-sec">${esc(c || 'Other')}</div>` + g.map(buyRow).join('');
+    // view toggle: walk the market by stall (default), or browse by aisle
+    h += `<div class="hdv-viewtog">
+      <button class="hdv-vbtn${buyView === 'stall' ? ' on' : ''}" data-act="view" data-view="stall">🏷️ By stall</button>
+      <button class="hdv-vbtn${buyView === 'aisle' ? ' on' : ''}" data-act="view" data-view="aisle">🍎 By aisle</button>
+    </div>`;
+
+    if (buyView === 'stall') {
+      const groups = groupByStall(live);
+      // quick-jump strip — tap a stall number to scroll to that stall's list
+      h += `<div class="hdv-stallstrip">` + groups.map((g, i) => {
+        const numbered = g.stall && !isNaN(parseInt(g.stall, 10));
+        const label = numbered ? g.stall : (g.supplier ? g.supplier.split(' ')[0] : '?');
+        return `<button class="hdv-pill" data-act="jump" data-target="bs${i}" title="${esc(g.supplier || 'Stall not set')}">${esc(label)}<span class="n">${g.items.length}</span></button>`;
+      }).join('') + `</div>`;
+      // one section per stall, in walk order
+      groups.forEach((g, i) => {
+        const numbered = g.stall && !isNaN(parseInt(g.stall, 10));
+        const title = g.supplier
+          ? (numbered ? `<span class="hdv-stallno">${esc(g.stall)}</span>${esc(g.supplier)}`
+                      : `${esc(g.supplier)}${g.stall ? ' · ' + esc(g.stall) : ''}`)
+          : 'Stall not set';
+        const doneN = g.items.filter((x) => isRev(x.key)).length;
+        h += `<div class="hdv-stallsec" id="bs${i}">
+          <div class="hdv-stallhdr">
+            <div class="hdv-stalltitle">${title}<span class="hdv-stallcount">${doneN}/${g.items.length}</span></div>
+            ${g.phone ? `<div class="hdv-stall">${phoneLinkHTML(g.phone)}</div>` : ''}
+          </div>` +
+          g.items.sort((a, b) => String(a.name).localeCompare(String(b.name)))
+            .map((it) => buyRow(it, { hideStall: true })).join('') +
+          `</div>`;
+      });
+    } else {
+      const cats = Array.from(new Set(live.map((x) => x.cat)));
+      h += chipsHTML(cats.sort(), buyCat);
+      const shown = buyCat ? live.filter((x) => x.cat === buyCat) : live;
+      const byCat = new Map();
+      for (const it of shown) { if (!byCat.has(it.cat)) byCat.set(it.cat, []); byCat.get(it.cat).push(it); }
+      const order = orderedCats().filter((c) => byCat.has(c));
+      for (const c of Array.from(byCat.keys()).sort((a, b) => {
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || String(a).localeCompare(String(b));
+      })) {
+        const g = byCat.get(c).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        h += `<div class="hdv-sec">${esc(c || 'Other')}</div>` + g.map(buyRow).join('');
+      }
     }
   }
   h += '<div class="hdv-pad"></div>';
@@ -247,6 +308,12 @@ export function renderBuy(root) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act, key = t.dataset.key;
+    if (act === 'jump') {
+      const el = document.getElementById(t.dataset.target);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (act === 'view') { buyView = t.dataset.view; renderBuy(root); return; }
     if (act === 'chip') { buyCat = t.dataset.cat; renderBuy(root); }
     else if (act === 'inc') setBuyManual(key, nameFor(key), buyManualQty(key) + 1);
     else if (act === 'dec') { const m = buyManualQty(key); if (m > 0) setBuyManual(key, nameFor(key), m - 1); }
@@ -262,12 +329,18 @@ export function renderBuy(root) {
 }
 
 function buyText(live) {
-  const lines = live.slice()
-    .sort((a, b) => String(a.cat).localeCompare(String(b.cat)) || String(a.name).localeCompare(String(b.name)))
-    .map((x) => {
+  const out = ['Happy Days — buy run'];
+  for (const g of groupByStall(live)) {
+    const numbered = g.stall && !isNaN(parseInt(g.stall, 10));
+    const head = g.supplier
+      ? (numbered ? `Stall ${g.stall} · ${g.supplier}` : g.supplier + (g.stall ? ' · ' + g.stall : ''))
+      : 'Stall not set';
+    out.push('', head);
+    for (const x of g.items.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)))) {
       const name = x.name || nameFor(x.key);
       const bx = boxLine(name, x.total);
-      return `${x.total} x ${name}${bx ? '  (' + bx + ')' : ''}`;
-    });
-  return 'Happy Days — buy run\n' + lines.join('\n');
+      out.push(`  ${x.total} x ${name}${bx ? '  (' + bx + ')' : ''}`);
+    }
+  }
+  return out.join('\n');
 }
