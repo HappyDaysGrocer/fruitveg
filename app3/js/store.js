@@ -14,7 +14,7 @@ const FB = {
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
 export const VERSION = 'v3.4';
-export const PRICES_CHECKED = '12 Jun 2026';
+export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
 
