@@ -598,7 +598,7 @@ function reviewSheet(body, custId) {
     else if (act === 'invpdf') {
       const o = openOrderOf(custId);
       if (!o || !(o.lines || []).length) { toast('No lines yet'); return; }
-      const invNo = 'INV-' + (o.orderNo || String(o.id).slice(-8).toUpperCase());
+      const invNo = orderRef(o);
       shareInvoice(invoiceData(invNo, c, o)).then(s => {
         if (s === 'downloaded') toast('Invoice PDF saved');
       }).catch(() => toast('Could not make the PDF'));
@@ -637,9 +637,21 @@ function completeOrder(custId) {
 
 /* Sortable order number: <deliveryYYYYMMDD>-#### (#### = that day's sequence). */
 function makeOrderNo(delDate) {
-  const ymd = String(delDate || todayStr()).replace(/-/g, '');
-  const sameDay = asList(orders()).filter(o => o && o.deliveryDate === delDate && o.orderNo);
-  return ymd + '-' + String(sameDay.length + 1).padStart(4, '0');
+  // Simple continuous 4-digit reference, starting at 0100 (owner 2026-06-13).
+  // Ignores the old date-based refs (their digit run is far above 9999).
+  let max = 99;
+  for (const o of asList(orders())) {
+    if (!o || !o.orderNo) continue;
+    const n = parseInt(String(o.orderNo).replace(/\D/g, ''), 10);
+    if (!isNaN(n) && n >= 100 && n <= 9999) max = Math.max(max, n);
+  }
+  return String(max + 1).padStart(4, '0');
+}
+
+/* The reference shown for an order: its assigned number, or the next one as a
+   provisional preview while the order is still open. */
+function orderRef(o) {
+  return (o && o.orderNo) ? o.orderNo : makeOrderNo(o && o.deliveryDate);
 }
 
 /* ---- order history + reorder ---------------------------------------- */
@@ -706,7 +718,7 @@ function invoiceSheet(body, custId, orderId) {
   if (!o) { body.innerHTML = emptyHTML('Order not found'); return; }
   const lines = Array.isArray(o.lines) ? o.lines : [];
   const total = orderTotal(lines);
-  const invNo = 'INV-' + (o.orderNo || String(o.id).slice(-8).toUpperCase());
+  const invNo = orderRef(o);
 
   let h = `<div class="hdv-sheettitle">Invoice ${esc(invNo)}</div>
     <div class="hdv-sheetsub">${esc(cust.name)} · ${o.deliveryDate ? 'delivered ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')}</div>`;

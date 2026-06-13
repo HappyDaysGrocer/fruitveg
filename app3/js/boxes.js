@@ -24,6 +24,8 @@ const DEFS = [
   { re: /raspberr|berries\s*rasp|rasp\s*berr/i, per: 12, by: 'punnet' },
   { re: /blackberr|berries\s*black|black\s*berr/i, per: 12, by: 'punnet' },
   { re: /carrot.*dutch|dutch.*carrot/i, per: 10, by: 'bunch' },
+  { re: /carrot.*catering|catering.*carrot/i, per: 15, by: 'kg' },
+  { re: /carrot.*(premium|loose|jack|sumich)|(premium|jack|sumich).*carrot/i, per: 20, by: 'kg' },
   { re: /carrot.*large|large.*carrot/i, per: 20, by: 'kg' },
   { re: /iceberg/i, per: 10, by: 'each' },
   { re: /spinach\s*bunch/i, per: 10, by: 'bunch' },
