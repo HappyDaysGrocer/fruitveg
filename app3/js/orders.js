@@ -243,21 +243,21 @@ const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
 // Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
 // "Replace" ticked to overwrite his order to exactly these — clear after.
 const IMPORT_PREFILL = [
-  '1 box Carrots Premium Loose @ 26',
-  '2 box Salad Mix LOOSE @ 15',
-  '2 bunch Onion Spring Bunch @ 2',
-  '1 Celery Size 10 each @ 3',
-  '5 kg Capsicum Green Large /kg @ 4.99',
-  '5 kg Capsicum Red /kg @ 4.99',
-  '6 punnet Tomato Cherry Punnets @ 3',
-  '6 Avocado Hass Each @ 2',
-  '2 bag Cucumbers Continental XXL @ 30',
-  '1 Pumpkin grey @ 8',
-  '3 Cabbage @ 4',
-  '1 bunch Parsley @ 2.99',
-  '6 Iceberg Lettuce each @ 2.49',
-  '4 Cos Lettuce each @ 2.99',
-  '4 kg Tomatoes Round Hydro /kg @ 5.99'
+  '1 box Carrots Premium Loose @ 26 c 25',
+  '2 box Salad Mix LOOSE @ 15 c 5.33',
+  '2 bunch Onion Spring Bunch @ 2 c 1',
+  '1 Celery Size 10 each @ 3 c 1.6',
+  '5 kg Capsicum Green Large /kg @ 4.99 c 2.5',
+  '5 kg Capsicum Red /kg @ 4.99 c 2.5',
+  '6 punnet Tomato Cherry Punnets @ 3 c 2',
+  '6 Avocado Hass Each @ 2 c 1.39',
+  '2 bag Cucumbers Continental XXL @ 30 c 25',
+  '1 Pumpkin grey @ 8 c 4',
+  '3 Cabbage @ 4 c 1.5',
+  '1 bunch Parsley @ 2.99 c 1',
+  '6 Iceberg Lettuce each @ 2.49 c 1.25',
+  '4 Cos Lettuce each @ 2.99 c 1.1',
+  '4 kg Tomatoes Round Hydro /kg @ 5.99 c 4'
 ].join('\n');
 
 function parseQtyTok(s) {
@@ -271,16 +271,16 @@ function parseQtyTok(s) {
 function parseImportLine(line) {
   let s = String(line).trim();
   if (!s) return null;
-  let price = null;
-  const pm = s.match(/(?:@|\$)\s*([\d.]+)\s*$/);             // trailing @price / $price
-  if (pm) { price = parseFloat(pm[1]); s = s.slice(0, pm.index).trim(); }
+  let price = null, cost = null;
+  const pm = s.match(/(?:@|\$)\s*([\d.]+)(?:\s*[c\/]\s*([\d.]+))?\s*$/);   // trailing @sell [c cost]
+  if (pm) { price = parseFloat(pm[1]); if (pm[2] != null) cost = parseFloat(pm[2]); s = s.slice(0, pm.index).trim(); }
   let qty = 1, rest = s;
   const qm = s.match(/^(\d+(?:\s*\/\s*\d+)?(?:\.\d+)?)\s+(.*)$/);  // leading qty / fraction
   if (qm) { const q = parseQtyTok(qm[1]); if (q != null) { qty = q; rest = qm[2].trim(); } }
   let unit = '';
   const first = (rest.split(/\s+/)[0] || '').toLowerCase().replace(/[.,]/g, '');
   if (IMPORT_UNITS.includes(first)) { unit = first; rest = rest.slice(rest.indexOf(' ') + 1).trim(); }
-  return { qty, unit, name: rest, price };
+  return { qty, unit, name: rest, price, cost };
 }
 
 /* free-text product name -> catalogue item: exact name, else best search hit */
@@ -317,7 +317,7 @@ function importSheet(body) {
       preview = `<div class="hdv-sec">${okN} matched${checked.length - okN ? ` · ${checked.length - okN} not found` : ''}</div>`;
       preview += checked.map(r => r.item
         ? `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(r.item.name)}</div>
-            <div class="hdv-sub">${r.qty}${r.unit ? ' ' + esc(r.unit) : ''}${r.price != null ? ' · ' + money(r.price) : ' · price to set'}</div></div></div>`
+            <div class="hdv-sub">${r.qty}${r.unit ? ' ' + esc(r.unit) : ''}${r.price != null ? ' · sell ' + money(r.price) : ' · price to set'}${r.cost != null ? ' · cost ' + money(r.cost) : ''}</div></div></div>`
         : `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name" style="color:var(--hdv-red)">✗ ${esc(r.name)}</div>
             <div class="hdv-sub">no catalogue match — fix the wording</div></div></div>`).join('');
     }
@@ -327,7 +327,7 @@ function importSheet(body) {
       <div class="hdv-sheetsub">Paste an order, pick the customer, Create. Writes using this device's login — no password needed.</div>
       <label class="hdv-lbl">Customer</label>
       <select id="imp-cust" class="hdv-in">${opts}</select>
-      <label class="hdv-lbl">Order — one per line: qty unit name @ price</label>
+      <label class="hdv-lbl">Order — one per line: qty unit name @ sell &nbsp;(add &nbsp;<b>c cost</b>&nbsp; for P&amp;L, e.g. @ 30 c 25)</label>
       <textarea id="imp-text" class="hdv-in" rows="9" style="font-family:inherit;line-height:1.5" placeholder="one item per line — e.g.&#10;2 box Carrots Premium Loose @ 26&#10;6 Avocado Hass Each @ 2&#10;5 kg Capsicum Red /kg @ 4.99">${esc(text)}</textarea>
       <label class="hdv-lbl" style="display:flex;align-items:center;gap:8px;font-weight:600;margin-top:8px">
         <input type="checkbox" id="imp-replace"${replace ? ' checked' : ''}> Replace this customer's order (remove anything not listed)
@@ -354,7 +354,7 @@ function importSheet(body) {
       if (!good.length) { toast('Nothing matched — tap Check first'); return; }
       const o = ensureOpenOrder(selId);
       const mk = (r) => ({ key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
-        price: (r.price == null ? '' : r.price), src: 'manual' });
+        price: (r.price == null ? '' : r.price), cost: (r.cost == null ? '' : r.cost), src: 'manual' });
       if (replace) {
         o.lines = good.map(mk);                 // exactly the pasted items, nothing else
       } else {
@@ -362,7 +362,7 @@ function importSheet(body) {
         const byKey = {}; o.lines.forEach(l => { if (l) byKey[l.key] = l; });
         for (const r of good) {
           const ln = byKey[r.item.key];
-          if (ln) { ln.qty = r.qty; if (r.unit) ln.unit = r.unit; if (r.price != null) ln.price = r.price; }
+          if (ln) { ln.qty = r.qty; if (r.unit) ln.unit = r.unit; if (r.price != null) ln.price = r.price; if (r.cost != null) ln.cost = r.cost; }
           else o.lines.push(mk(r));
         }
       }
