@@ -682,6 +682,19 @@ const CSS = `
 .hdv-tick.on{background:var(--hdv-green);border-color:var(--hdv-green);color:#fff}
 .hdv-row.done{opacity:.45}
 .hdv-row.done .hdv-name{text-decoration:line-through}
+/* Buy run — ALWAYS COMPACT (v3.29): denser rows so ~2x items fit per screen.
+   Scoped to .hdv-buy so Orders / P&L stay roomy. Names get more width (small
+   pin icon) so most fit on one line. */
+.hdv-buy .hdv-row{padding:5px 12px;gap:8px}
+.hdv-buy .hdv-name{font-size:14px;line-height:1.2}
+.hdv-buy .hdv-sub,.hdv-buy .hdv-who,.hdv-buy .hdv-stall{font-size:11.5px;margin-top:1px}
+.hdv-buy .hdv-pin{width:34px;min-width:34px;height:34px;padding:0;border:1px solid var(--hdv-line);
+  border-radius:9px;font-size:16px;text-align:center;color:var(--hdv-text)}
+.hdv-buy .hdv-tick{width:34px;height:34px}
+.hdv-buy .hdv-step{gap:1px}
+.hdv-buy .hdv-sbtn{width:38px;height:38px}
+.hdv-buy .hdv-qtybtn{min-width:30px}
+.hdv-buy .hdv-sec{padding-top:9px;padding-bottom:3px}
 .hdv-prog{flex:0 0 auto;font-size:12px;font-weight:800;padding:5px 11px;
   border-radius:999px;background:var(--hdv-lt);color:var(--hdv-green);white-space:nowrap}
 .hdv-delta{display:inline-block;font-size:11.5px;font-weight:800;padding:2px 7px;

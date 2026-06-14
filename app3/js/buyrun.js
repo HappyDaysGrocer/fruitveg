@@ -357,7 +357,7 @@ export function renderBuy(root) {
   }
   h += '<div class="hdv-pad"></div>';
 
-  root.innerHTML = h;
+  root.innerHTML = '<div class="hdv-buy">' + h + '</div>';   // .hdv-buy = compact-density scope
   root.onclick = (e) => {
     if (e.target.closest('a.hdv-tel')) return;   // let tel:/sms: fire, skip row
     const t = e.target.closest('[data-act]');
