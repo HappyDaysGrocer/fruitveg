@@ -111,7 +111,7 @@ window.HD_CATALOG = [
   {"c":"C-G","n":"Capsicum Yellow kg","s":5.99,"b":""},
   {"c":"C-G","n":"Capsicum Yellow Each","s":1.66,"b":""},
   {"c":"C-G","n":"Carrot 1kg Bags","s":1.99,"b":"9341626000021"},
-  {"c":"C-G","n":"Carrots Premium Loose","s":2.49,"b":"6253528458"},
+  {"c":"C-G","n":"Jack carrot box - 20kg","s":32,"b":"6253528458"},
   {"c":"C-G","n":"Cauliflower Fresh /kg","s":3.49,"b":"0255401587"},
   {"c":"C-G","n":"Cauliflower Whole","s":3.74,"b":""},
   {"c":"C-G","n":"Celery Size 10 each","s":3.49,"b":"287944643"},
@@ -527,8 +527,7 @@ window.HD_CATALOG = [
   {"c":"S-Z","n":"Tomato Cherry Punnets","s":3,"b":"1586106588,9369900039772,9324933000267"},
   {"c":"S-Z","n":"Tomatoes Pomodoro /kg","s":6.79,"b":"8863578738"},
   {"c":"S-Z","n":"Tomatoes Pomodoro Each","s":0.6,"b":""},
-  {"c":"S-Z","n":"Tomatoes Round Hydro /kg","s":5.99,"b":"0547631420"},
-  {"c":"S-Z","n":"Tomatoes Round Hydro Each","s":0.79,"b":""},
+  {"c":"S-Z","n":"Tomato Roma /kg","s":5.99,"b":"0547631420"},
   {"c":"S-Z","n":"Tomatoes Truss /kg","s":4.49,"b":"6627321207"},
   {"c":"S-Z","n":"Tomatoes Truss Each","s":0.69,"b":""},
   {"c":"S-Z","n":"Turmeric Fresh /kg","s":44.99,"b":"648301487"},
@@ -601,5 +600,6 @@ window.HD_CATALOG = [
   {"c":"P-R","n":"Papaya Red /kg","s":3.99,"b":""},
   {"c":"P-R","n":"Persimmon Each","s":1.99,"b":""},
   {"c":"S-Z","n":"Turmeric /kg","s":null,"b":""},
-  {"c":"S-Z","n":"Tomatoes Roma Each","s":0.71,"b":""}
+  {"c":"S-Z","n":"Tomatoes Roma Each","s":0.71,"b":""},
+  {"c":"","n":"Tomatoes Round Hydro Each","s":0.79,"b":""}
 ];

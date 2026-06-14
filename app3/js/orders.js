@@ -243,7 +243,7 @@ const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
 // Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
 // "Replace" ticked to overwrite his order to exactly these — clear after.
 const IMPORT_PREFILL = [
-  '1 box Carrots Premium Loose @ 26 c 25',
+  '1 box Jack carrot box - 20kg @ 32 c 25',
   '2 box Salad Mix LOOSE @ 15 c 5.33',
   '2 bunch Onion Spring Bunch @ 2 c 1',
   '1 Celery Size 10 each @ 3 c 1.6',
@@ -257,7 +257,7 @@ const IMPORT_PREFILL = [
   '1 bunch Parsley @ 2.99 c 1',
   '6 Iceberg Lettuce each @ 2.49 c 1.25',
   '4 Cos Lettuce each @ 2.99 c 1.1',
-  '4 kg Tomatoes Round Hydro /kg @ 5.99 c 4'
+  '4 kg Tomato Roma /kg @ 5.99 c 4'
 ].join('\n');
 
 function parseQtyTok(s) {
