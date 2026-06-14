@@ -240,8 +240,25 @@ function renderCustomers(root) {
 const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
   'punnet', 'punnets', 'tray', 'trays', 'each', 'ea', 'pack', 'packs'];
 
-// Blank by default — paste each order in. Format per line: qty unit name @ price.
-const IMPORT_PREFILL = '';
+// Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
+// "Replace" ticked to overwrite his order to exactly these — clear after.
+const IMPORT_PREFILL = [
+  '1 box Carrots Premium Loose @ 26',
+  '2 box Salad Mix LOOSE @ 15',
+  '2 bunch Onion Spring Bunch @ 2',
+  '1 Celery Size 10 each @ 3',
+  '5 kg Capsicum Green Large /kg @ 4.99',
+  '5 kg Capsicum Red /kg @ 4.99',
+  '6 punnet Tomato Cherry Punnets @ 2.50',
+  '6 Avocado Hass Each @ 2',
+  '2 bag Cucumbers Continental XXL @ 26',
+  '1 Pumpkin grey @ 8',
+  '3 Cabbage @ 4',
+  '1 bunch Parsley @ 2.99',
+  '6 Iceberg Lettuce each @ 2.49',
+  '4 Cos Lettuce each @ 2.99',
+  '4 kg Tomatoes Round Hydro /kg @ 5.99'
+].join('\n');
 
 function parseQtyTok(s) {
   s = String(s).trim();
