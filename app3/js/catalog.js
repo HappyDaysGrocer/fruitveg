@@ -558,6 +558,20 @@ const CSS = `
 /* P&L view: editable per-line cost input */
 .hdv-clab{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:12.5px;color:var(--hdv-sub)}
 .hdv-cinp{width:74px;max-width:74px;margin:0;padding:9px;text-align:right}
+/* Packing checklist: tap a row to tick it off */
+.hdv-packprog{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px;margin:6px 0 6px}
+.hdv-packdone-lbl{color:var(--hdv-green)}
+.hdv-packbar{height:9px;border-radius:5px;background:var(--hdv-line);overflow:hidden;margin-bottom:12px}
+.hdv-packbar-fill{height:100%;background:var(--hdv-green);transition:width .2s ease}
+.hdv-pack-row{display:flex;align-items:center;gap:12px;padding:15px 6px;border-bottom:1px solid var(--hdv-line);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.hdv-pack-row:active{background:rgba(0,0,0,.05)}
+.hdv-pack-tick{flex:0 0 32px;width:32px;height:32px;border:2px solid var(--hdv-green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:800;color:var(--hdv-green)}
+.hdv-pack-qty{flex:0 0 auto;min-width:46px;font-weight:800;font-size:18px;text-align:right}
+.hdv-pack-unit{font-weight:600;font-size:13px;color:var(--hdv-sub)}
+.hdv-pack-name{flex:1;font-size:16px;line-height:1.25}
+.hdv-pack-done{opacity:.5}
+.hdv-pack-done .hdv-pack-tick{background:var(--hdv-green);color:#fff}
+.hdv-pack-done .hdv-pack-name{text-decoration:line-through}
 /* customer with an order waiting — notification style */
 .hdv-card.has-order{border-left:4px solid var(--hdv-green);background:var(--hdv-lt)}
 .hdv-ordtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;color:#fff;

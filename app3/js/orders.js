@@ -781,6 +781,70 @@ function plSheet(custId) {
   };
 }
 
+/* Packing checklist: tap each line to tick it off as it goes in the box.
+   Packed state is saved on the line (l.packed) so it survives reopening, and
+   resets when a fresh order is created. */
+function packSheet(custId) {
+  return (body) => {
+    const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+    const lineData = () => { const o = openOrderOf(custId); return (o && Array.isArray(o.lines)) ? o.lines : []; };
+
+    const updateProg = () => {
+      const lines = lineData(), all = lines.length, done = lines.filter(l => l && l.packed).length;
+      const cnt = body.querySelector('#pack-count'); if (cnt) cnt.textContent = `${done} / ${all} packed`;
+      const bar = body.querySelector('#pack-bar'); if (bar) bar.style.width = (all ? Math.round(done / all * 100) : 0) + '%';
+      const lbl = body.querySelector('#pack-alllbl'); if (lbl) lbl.style.display = (all && done === all) ? '' : 'none';
+    };
+
+    const render = () => {
+      const lines = lineData(), all = lines.length;
+      let h = `<div class="hdv-sheettitle">Packing · ${esc(cust.name)}</div>
+        <div class="hdv-sheetsub">Tap a row to tick it off as you pack it</div>
+        <div class="hdv-packprog"><span id="pack-count"></span><span id="pack-alllbl" class="hdv-packdone-lbl">✓ all packed</span></div>
+        <div class="hdv-packbar"><div id="pack-bar" class="hdv-packbar-fill" style="width:0%"></div></div>`;
+      if (!all) {
+        h += emptyHTML('No lines on this order yet');
+      } else {
+        h += lines.map(l => {
+          const qty = Number(l.qty) || 0;
+          return `<div class="hdv-pack-row${l.packed ? ' hdv-pack-done' : ''}" data-key="${esc(l.key)}">
+            <div class="hdv-pack-tick">${l.packed ? '✓' : ''}</div>
+            <div class="hdv-pack-qty">${qty}${l.unit ? '<span class="hdv-pack-unit"> ' + esc(l.unit) + '</span>' : ''}</div>
+            <div class="hdv-pack-name">${esc(l.name)}</div>
+          </div>`;
+        }).join('');
+      }
+      h += `<div class="hdv-actions">
+        ${all ? `<button class="hdv-btnG slim" data-act="reset">Untick all</button>` : ''}
+        <button class="hdv-btnP" data-act="done">Done</button>
+      </div>`;
+      body.innerHTML = h;
+      updateProg();
+    };
+    render();
+
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]');
+      if (t) {
+        if (t.dataset.act === 'done') { closeSheet(); return; }
+        if (t.dataset.act === 'reset') {
+          const o = openOrderOf(custId); (o.lines || []).forEach(l => { if (l) l.packed = false; });
+          saveOrder(o); render(); return;
+        }
+        return;
+      }
+      const row = e.target.closest('.hdv-pack-row'); if (!row) return;
+      const o = openOrderOf(custId);
+      const l = (o.lines || []).find(x => x.key === row.dataset.key);
+      if (!l) return;
+      l.packed = !l.packed; saveOrder(o);
+      row.classList.toggle('hdv-pack-done', !!l.packed);
+      const tk = row.querySelector('.hdv-pack-tick'); if (tk) tk.textContent = l.packed ? '✓' : '';
+      updateProg();
+    };
+  };
+}
+
 function reviewSheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const o = openOrderOf(custId);
@@ -854,7 +918,9 @@ function reviewSheet(body, custId) {
       h += `<div class="hdv-tq-status ${statusCls}">${statusLabel}${tqStatus.error ? ' — ' + esc(tqStatus.error) : ''}</div>`;
     }
 
+    const packedN = lines.filter(l => l && l.packed).length;
     h += `<div class="hdv-actions">
+      <button class="hdv-btnB" data-act="pack">📦 Pack${packedN ? ` · ${packedN}/${lines.length}` : ''}</button>
       <button class="hdv-btnG slim" data-act="share">Text</button>
       <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
       <button class="hdv-btnG slim" data-act="orderform">Order form</button>
@@ -886,6 +952,7 @@ function reviewSheet(body, custId) {
     else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
     else if (act === 'orderform') { if (!openOrderForm(openOrderOf(custId), c)) toast('Allow pop-ups to open the order form'); }
     else if (act === 'pl') openSheet(plSheet(custId), { static: true });
+    else if (act === 'pack') openSheet(packSheet(custId), { static: true });
     else if (act === 'reviewprices') openSheet(priceReviewSheet(custId), { static: true });
   };
 }
