@@ -555,6 +555,9 @@ const CSS = `
   border:1px solid #f0c36d;background:rgba(180,83,9,.12);color:#b45309;
   font-size:14px;font-weight:800;text-align:center}
 .hdv-pricebanner:active{transform:scale(.99)}
+/* P&L view: editable per-line cost input */
+.hdv-clab{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:12.5px;color:var(--hdv-sub)}
+.hdv-cinp{width:74px;max-width:74px;margin:0;padding:9px;text-align:right}
 /* customer with an order waiting — notification style */
 .hdv-card.has-order{border-left:4px solid var(--hdv-green);background:var(--hdv-lt)}
 .hdv-ordtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;color:#fff;

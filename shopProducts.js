@@ -161,7 +161,7 @@ var SHOP_PRODUCTS = [
   ['C-G',null,null,'Coriander Bunches',null,null,1,2.99,false,'2046741708'],
   ['C-G',null,null,'Corn Cob Each',null,null,0.67,1.29,false,'754671082'],
   ['C-G',null,null,'Cucumbers bag small',null,null,3,1.99,false,null],
-  ['C-G',null,null,'Cucumbers Continental XXL',null,null,25,30,false,'2854002274'],
+  ['C-G',null,null,'Cucumbers Continental XXL',null,null,25,26,false,'2854002274'],
   ['C-G',null,null,'Cucumbers Lebanese Small /kg',null,null,3,4.49,false,'0445275204'],
   ['C-G',null,null,'Curry leaf patha',null,null,15,25,false,null],
   ['C-G',null,null,'Daikon Leaves',null,null,2,2.99,false,'8357366285'],

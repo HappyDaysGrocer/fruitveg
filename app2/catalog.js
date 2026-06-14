@@ -123,7 +123,7 @@ window.HD_CATALOG = [
   {"c":"C-G","n":"Coriander Bunches","s":2.99,"b":"2046741708"},
   {"c":"C-G","n":"Corn Cob Each","s":1.29,"b":"754671082"},
   {"c":"C-G","n":"Cucumbers bag small","s":1.99,"b":""},
-  {"c":"C-G","n":"Cucumbers Continental XXL","s":30,"b":"2854002274"},
+  {"c":"C-G","n":"Cucumbers Continental XXL","s":26,"b":"2854002274"},
   {"c":"C-G","n":"Cucumbers Lebanese Small /kg","s":4.49,"b":"0445275204"},
   {"c":"C-G","n":"Cucumbers Lebanese Each","s":1.3,"b":""},
   {"c":"C-G","n":"Curry leaf patha","s":25,"b":""},

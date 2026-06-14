@@ -692,6 +692,78 @@ function priceReviewSheet(custId) {
   };
 }
 
+/* Live Profit/Loss view for the order being built: editable cost per line,
+   with total cost, total sell and profit tallied at the bottom (updates as you
+   type). Edited costs are saved on the order line (l.cost), default to the
+   catalogue cost. */
+function plSheet(custId) {
+  return (body) => {
+    const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+    const lineData = () => {
+      const o = openOrderOf(custId);
+      return (o && Array.isArray(o.lines)) ? o.lines : [];
+    };
+    const unitCost = (l) => {
+      if (l.cost != null && l.cost !== '') return Number(l.cost) || 0;
+      const c = costOf(l.key);
+      return (typeof c === 'number' && isFinite(c)) ? c : 0;
+    };
+
+    const recalc = () => {
+      const byKey = {}; lineData().forEach(l => { if (l) byKey[l.key] = l; });
+      let tc = 0, ts = 0;
+      body.querySelectorAll('.hdv-cinp').forEach(inp => {
+        const l = byKey[inp.dataset.key]; if (!l) return;
+        const qty = Number(l.qty) || 0;
+        tc += qty * (inp.value === '' ? 0 : (parseFloat(inp.value) || 0));
+        ts += qty * (Number(l.price) || 0);
+      });
+      const prof = ts - tc, pct = ts > 0 ? Math.round(prof / ts * 100) : 0;
+      const set = (id, v) => { const el = body.querySelector('#' + id); if (el) el.textContent = v; };
+      set('pl-cost', money(tc)); set('pl-sell', money(ts));
+      const pe = body.querySelector('#pl-profit');
+      if (pe) { pe.textContent = `${money(prof)} · ${pct}%`; pe.style.color = prof < 0 ? 'var(--hdv-red)' : 'var(--hdv-green)'; }
+    };
+
+    const render = () => {
+      const lines = lineData();
+      let h = `<div class="hdv-sheettitle">Profit / Loss · ${esc(cust.name)}</div>
+        <div class="hdv-sheetsub">Type each item's cost — totals tally live at the bottom</div>`;
+      if (!lines.length) {
+        h += emptyHTML('No lines on this order yet');
+      } else {
+        h += lines.map(l => {
+          const qty = Number(l.qty) || 0, sell = Number(l.price) || 0, uc = unitCost(l);
+          return `<div class="hdv-row">
+            <div class="hdv-info">
+              <div class="hdv-name">${esc(l.name)}</div>
+              <div class="hdv-sub">${qty} × sell ${money(sell)} = ${money(qty * sell)}</div>
+            </div>
+            <label class="hdv-clab">cost $<input class="hdv-in hdv-cinp" inputmode="decimal"
+              value="${uc ? uc : ''}" placeholder="?" data-key="${esc(l.key)}"></label>
+          </div>`;
+        }).join('');
+        h += `<div class="hdv-total"><span>Total cost</span><span id="pl-cost">—</span></div>
+          <div class="hdv-total"><span>Total sell</span><span id="pl-sell">—</span></div>
+          <div class="hdv-total hdv-total-margin"><span>Profit</span><span id="pl-profit">—</span></div>`;
+      }
+      h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="done">Done</button></div>`;
+      body.innerHTML = h;
+      recalc();
+    };
+
+    render();
+    body.oninput = e => { if (e.target.closest('.hdv-cinp')) recalc(); };
+    body.onchange = e => {
+      const inp = e.target.closest('.hdv-cinp'); if (!inp) return;
+      const o = openOrderOf(custId);
+      const l = (o.lines || []).find(x => x.key === inp.dataset.key);
+      if (l) { l.cost = inp.value === '' ? '' : Math.round((parseFloat(inp.value) || 0) * 100) / 100; saveOrder(o); }
+    };
+    body.onclick = e => { const t = e.target.closest('[data-act]'); if (t && t.dataset.act === 'done') closeSheet(); };
+  };
+}
+
 function reviewSheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const o = openOrderOf(custId);
@@ -769,6 +841,7 @@ function reviewSheet(body, custId) {
       <button class="hdv-btnG slim" data-act="share">Text</button>
       <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
       <button class="hdv-btnG slim" data-act="orderform">Order form</button>
+      <button class="hdv-btnG slim" data-act="pl">P&amp;L</button>
       ${isRestoOrCafe ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
       <button class="hdv-btnP" data-act="complete">Place order</button>
     </div>`;
@@ -795,6 +868,7 @@ function reviewSheet(body, custId) {
     else if (act === 'complete') completeOrder(custId);
     else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
     else if (act === 'orderform') { if (!openOrderForm(openOrderOf(custId), c)) toast('Allow pop-ups to open the order form'); }
+    else if (act === 'pl') openSheet(plSheet(custId), { static: true });
     else if (act === 'reviewprices') openSheet(priceReviewSheet(custId), { static: true });
   };
 }
