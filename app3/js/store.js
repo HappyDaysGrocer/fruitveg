@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.29';
+export const VERSION = 'v3.30';
 export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -137,6 +137,7 @@ export async function initCatalog() {
     }
     LS.del('hd2.catalogCache');                  // purge old cost-bearing cache
     _applySecureCache();                          // v3: overlay any cached costs (offline)
+    const _ch = LS.get('hd3.hist', null); if (_ch) _hist = _ch;   // offline history
     BUS.emit('change');
     return CATALOG;
   })();
@@ -228,6 +229,39 @@ export async function loadSecureCatalog() {
     } catch (e) { /* fall through to the public-cost fallback */ }
   }
   return await loadPublicCosts();                      // vault empty/blocked
+}
+
+/* ===========================================================================
+   HISTORY (operational): purchase catalogue, 90-day sales, wastage. Loaded from
+   the v1 root files that the build scripts keep current. The SENSITIVE finance
+   ledger (bank, supplier-invoice $ totals, capital, contributions) is
+   DELIBERATELY excluded — by owner instruction it stays only on the PC, never
+   on the app or web.
+   =========================================================================== */
+let _hist = { store: null, sales: null, waste: null };
+export function histData() { return _hist; }
+
+async function _fetchGlobal(path, globalName) {
+  try {
+    const r = await fetch(path + '?cb=' + VERSION);
+    if (!r.ok) return null;
+    const src = await r.text();
+    return new Function(src + '\nreturn (typeof ' + globalName + ' !== "undefined") ? ' + globalName + ' : null;')();
+  } catch (e) { return null; }
+}
+
+export async function loadHistory() {
+  const [store, sales, waste] = await Promise.all([
+    _fetchGlobal('../storeCatalog.js', 'STORE_CATALOG'),
+    _fetchGlobal('../epos90.js', 'EPOS90'),
+    _fetchGlobal('../wastage.js', 'FV_WASTAGE')
+  ]);
+  let any = false;
+  if (store) { _hist.store = store; any = true; }
+  if (sales) { _hist.sales = sales; any = true; }
+  if (waste) { _hist.waste = waste; any = true; }
+  if (any) { LS.set('hd3.hist', _hist); BUS.emit('change'); }
+  return _hist;
 }
 
 export function costOf(key) {
@@ -801,6 +835,7 @@ export async function pull() {
   }
   try { generateStandingOrders(); } catch (e) { /* never break a pull */ }
   loadSecureCatalog();   // v3: overlay costs/sales from the locked /catalog node
+  loadHistory();         // v3: purchase / sales / wastage history (operational only)
   flushOutbox();         // v3.3: every pull is also a chance to drain queued writes
   BUS.emit('change');
 }
