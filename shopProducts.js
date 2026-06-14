@@ -349,7 +349,7 @@ var SHOP_PRODUCTS = [
   ['H-O',null,null,'Kiwifruit NZ Green /kg',null,null,6.67,8.99,false,'6062003344'],
   ['H-O',null,null,'Lemons each',null,null,0.42,0.79,false,'7676224052'],
   ['H-O',null,null,'Lettuce Baby Cos Twin Pack',null,null,2.2,3.5,false,'2525618508,9331191000007'],
-  ['H-O',null,null,'Cos Lettuce each',null,null,null,2.99,false,null],
+  ['H-O',null,null,'Cos Lettuce each',null,null,1.1,2.99,false,null],
   ['H-O',null,null,'Long Melon Ghia /kg',null,null,2.67,4.99,false,'7322861565'],
   ['H-O',null,null,'Mandarins Imperial /kg',null,null,1.92,3.5,false,'7652140600'],
   ['H-O',null,null,'Melon Rock /kg',null,null,2.75,4.99,false,'2731432130'],

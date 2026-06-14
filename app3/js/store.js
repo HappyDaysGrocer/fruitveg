@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.26';
+export const VERSION = 'v3.27';
 export const PRICES_CHECKED = '13 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -179,26 +179,55 @@ function _applySecureCache() {
   (cached.epos || []).forEach((x) => { if (x && x.name) _epos[String(x.name).toLowerCase()] = x; });
 }
 
-/** Pull {SHOP_PRODUCTS, EPOS90} from the locked /catalog node and overlay. */
+/* Fallback cost source (v3.27). The locked /catalog vault needs an owner upload
+   that is currently blocked (the Firebase password can't be recovered). The same
+   wholesale COSTS already ship in the PUBLIC shopProducts.js — the exact file the
+   build reads and that is already downloadable from the site — so when the vault
+   is empty we overlay costs straight from it. This is a DIRECTORS-ONLY app and
+   adds no exposure beyond what shopProducts.js already is. Once the vault is
+   restored, loadSecureCatalog uses it first and this never runs. */
+async function loadPublicCosts() {
+  try {
+    const r = await fetch('../shopProducts.js?cb=' + VERSION);
+    if (!r.ok) return false;
+    const src = await r.text();
+    const sp = new Function(src + '\nreturn (typeof SHOP_PRODUCTS !== "undefined") ? SHOP_PRODUCTS : [];')();
+    if (!Array.isArray(sp) || !sp.length) return false;
+    const n = _overlayProducts(sp);
+    if (n) {
+      _secureLoaded = true;
+      LS.set('hd3.secure', { products: sp, epos: [], at: Date.now() });
+      BUS.emit('change');
+    }
+    return !!n;
+  } catch (e) { return false; }
+}
+
+/** Pull {SHOP_PRODUCTS, EPOS90} from the locked /catalog node and overlay; if
+    that vault is empty/unreachable, fall back to the public cost file. */
 export async function loadSecureCatalog() {
   let t = null;
-  try { t = await auth.token(); } catch (e) { return false; }
-  if (!t) return false;
-  try {
-    const r = await fetch(FB.databaseURL + '/catalog.json?auth=' + encodeURIComponent(t));
-    if (!r.ok) return false;
-    const blob = await r.json();
-    if (!blob || !blob.json) return false;          // node empty: owner upload pending
-    const data = JSON.parse(blob.json);
-    const n = _overlayProducts(data.SHOP_PRODUCTS);
-    const items = (data.EPOS90 && Array.isArray(data.EPOS90.items)) ? data.EPOS90.items : [];
-    _epos = {};
-    items.forEach((x) => { if (x && x.name) _epos[String(x.name).toLowerCase()] = x; });
-    _secureLoaded = !!(n || items.length);
-    LS.set('hd3.secure', { products: data.SHOP_PRODUCTS || [], epos: items, at: Date.now() });
-    BUS.emit('change');
-    return _secureLoaded;
-  } catch (e) { return false; }
+  try { t = await auth.token(); } catch (e) { t = null; }
+  if (t) {
+    try {
+      const r = await fetch(FB.databaseURL + '/catalog.json?auth=' + encodeURIComponent(t));
+      if (r.ok) {
+        const blob = await r.json();
+        if (blob && blob.json) {                      // node populated
+          const data = JSON.parse(blob.json);
+          const n = _overlayProducts(data.SHOP_PRODUCTS);
+          const items = (data.EPOS90 && Array.isArray(data.EPOS90.items)) ? data.EPOS90.items : [];
+          _epos = {};
+          items.forEach((x) => { if (x && x.name) _epos[String(x.name).toLowerCase()] = x; });
+          _secureLoaded = !!(n || items.length);
+          LS.set('hd3.secure', { products: data.SHOP_PRODUCTS || [], epos: items, at: Date.now() });
+          BUS.emit('change');
+          if (_secureLoaded) return true;
+        }
+      }
+    } catch (e) { /* fall through to the public-cost fallback */ }
+  }
+  return await loadPublicCosts();                      // vault empty/blocked
 }
 
 export function costOf(key) {
