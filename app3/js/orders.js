@@ -814,8 +814,16 @@ function packSheet(custId) {
           </div>`;
         }).join('');
       }
+      const o0 = openOrderOf(custId);
+      const tq = o0 ? tillQueueStatus(o0.id) : null;
+      if (tq) {
+        const lbl = { queued: 'Queued for till', sent: 'Sent to till ✓', error: 'Till error' }[tq.status] || tq.status;
+        const cls = tq.status === 'error' ? 'hdv-tq-error' : tq.status === 'sent' ? 'hdv-tq-sent' : 'hdv-tq-queued';
+        h += `<div class="hdv-tq-status ${cls}">${lbl}${tq.error ? ' — ' + esc(tq.error) : ''}</div>`;
+      }
       h += `<div class="hdv-actions">
         ${all ? `<button class="hdv-btnG slim" data-act="reset">Untick all</button>` : ''}
+        ${all ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
         <button class="hdv-btnP" data-act="done">Done</button>
       </div>`;
       body.innerHTML = h;
@@ -830,6 +838,15 @@ function packSheet(custId) {
         if (t.dataset.act === 'reset') {
           const o = openOrderOf(custId); (o.lines || []).forEach(l => { if (l) l.packed = false; });
           saveOrder(o); render(); return;
+        }
+        if (t.dataset.act === 'sendtill') {
+          const o = openOrderOf(custId);
+          if (!o || !(o.lines || []).length) { toast('No lines to send'); return; }
+          if ((o.lines || []).some(l => l.price === '' || l.price == null)) { toast('Some items have no price — set them first'); return; }
+          const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '' };
+          sendToTill(cust, o);
+          render();
+          return;
         }
         return;
       }
