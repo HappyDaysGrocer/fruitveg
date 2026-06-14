@@ -131,8 +131,12 @@ export function invoicePdfBytes(d) {
   T(LEFT, y, 'Thank you for your business.', 9); y -= 12;
 
   pages.push(ops);
+  return buildPdf(pages);
+}
 
-  /* ---- serialise to a valid PDF ---- */
+/* Serialise an array of content-op pages (Helvetica F1 / Helvetica-Bold F2)
+   into a valid single-file PDF. Shared by every document type. */
+function buildPdf(pages) {
   const objs = [];                                   // objs[n-1] = body string of object n
   const NUM_FONTS = 2, FIRST_PAGE_OBJ = 3 + NUM_FONTS; // 1 cat, 2 pages, 3-4 fonts, then pages+contents
   const kids = [];
@@ -167,18 +171,90 @@ export function invoicePdfBytes(d) {
   return bytes;
 }
 
+/* ---- P&L sheet (INTERNAL — carries cost + profit; for staff, not customers) ---- */
+const PL_QTY = 300, PL_COST = 385, PL_SELL = 465, PL_PROFIT = RIGHT;   // right edges
+
+export function plPdfBytes(d) {
+  const biz = d.biz || {};
+  const pages = [];
+  let ops = null, y = 0;
+  const T = (x, yy, str, size, bold) =>
+    ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(1)} ${yy.toFixed(1)} Td (${pesc(str)}) Tj ET`);
+  const TR = (xr, yy, str, size, bold) => T(xr - widthOf(str, size, bold), yy, str, size, bold);
+  const RULE = (yy, x1 = LEFT, x2 = RIGHT, w = 0.6) =>
+    ops.push(`${w} w ${x1} ${yy.toFixed(1)} m ${x2} ${yy.toFixed(1)} l S`);
+
+  const tableHead = () => {
+    T(LEFT, y, 'Item', 9, true);
+    TR(PL_QTY, y, 'Qty', 9, true);
+    TR(PL_COST, y, 'Cost', 9, true);
+    TR(PL_SELL, y, 'Sell', 9, true);
+    TR(PL_PROFIT, y, 'Profit', 9, true);
+    y -= 6; RULE(y); y -= 14;
+  };
+
+  const newPage = (first) => {
+    if (ops) pages.push(ops);
+    ops = []; y = TOP;
+    const titleW = widthOf('PROFIT / LOSS', 16, true);
+    T(LEFT, y, fit(biz.name || 'Happy Days', (RIGHT - titleW - 20) - LEFT, 14, true), 14, true); y -= 15;
+    if (biz.addr) { T(LEFT, y, biz.addr, 9); y -= 12; }
+    TR(RIGHT, TOP, 'PROFIT / LOSS', 16, true);
+    TR(RIGHT, TOP - 18, 'INTERNAL - staff only', 9, true);
+    if (d.date) TR(RIGHT, TOP - 31, d.date, 10);
+    y -= 6; RULE(y, LEFT, RIGHT, 1.2); y -= 20;
+    if (first) {
+      T(LEFT, y, 'Customer', 9, true); y -= 13;
+      T(LEFT, y, d.customer || '', 12, true); y -= 14;
+      if (d.orderRef) { T(LEFT, y, 'Order: ' + d.orderRef, 9); y -= 12; }
+      y -= 8;
+    } else { y -= 4; }
+    tableHead();
+  };
+  newPage(true);
+
+  for (const l of (d.lines || [])) {
+    if (y < BOTTOM + 50) newPage(false);
+    const qty = Number(l.qty) || 0, uc = Number(l.cost) || 0, us = Number(l.sell) || 0;
+    const lc = qty * uc, ls = qty * us;
+    T(LEFT, y, fit(l.name || '', PL_QTY - LEFT - 52, 10), 10);
+    TR(PL_QTY, y, String(qty) + (l.unit ? ' ' + ascii(l.unit) : ''), 10);
+    TR(PL_COST, y, dollars(lc), 10);
+    TR(PL_SELL, y, dollars(ls), 10);
+    TR(PL_PROFIT, y, dollars(ls - lc), 10);
+    y -= 15;
+  }
+
+  const t = d.totals || {};
+  y -= 2; RULE(y); y -= 18;
+  T(LEFT, y, 'TOTALS', 11, true);
+  TR(PL_COST, y, dollars(t.cost), 11, true);
+  TR(PL_SELL, y, dollars(t.sell), 11, true);
+  TR(PL_PROFIT, y, dollars(t.profit), 11, true);
+  y -= 19;
+  TR(PL_PROFIT, y, 'Margin ' + (t.pct != null ? t.pct + '%' : ''), 10, true);
+  y -= 24;
+  T(LEFT, y, 'Internal costing - do not share with customers.', 9);
+
+  pages.push(ops);
+  return buildPdf(pages);
+}
+
 /* Filename like "Happy Days INV-20260613-FATCHEF.pdf" (safe chars only). */
 function fileName(d) {
   const who = ascii(d.customer || 'customer').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return `Happy Days ${ascii(d.invNo || 'invoice')} ${who}`.replace(/\s+/g, ' ').trim() + '.pdf';
 }
 
-/* Share the invoice PDF from the phone: native share-sheet with the file when
+function plFileName(d) {
+  const who = ascii(d.customer || 'order').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `Happy Days P-and-L ${who}`.replace(/\s+/g, ' ').trim() + '.pdf';
+}
+
+/* Share PDF bytes from the phone: native share-sheet with the file when
    available (WhatsApp / email / Messages), else download it. Returns a short
    status string for a toast. */
-export async function shareInvoice(d) {
-  const bytes = invoicePdfBytes(d);
-  const name = fileName(d);
+async function sharePdfBytes(bytes, name) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
   try {
     const file = new File([blob], name, { type: 'application/pdf' });
@@ -197,3 +273,6 @@ export async function shareInvoice(d) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   return 'downloaded';
 }
+
+export async function shareInvoice(d) { return sharePdfBytes(invoicePdfBytes(d), fileName(d)); }
+export async function sharePL(d) { return sharePdfBytes(plPdfBytes(d), plFileName(d)); }

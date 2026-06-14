@@ -25,7 +25,7 @@ import {
   chipsHTML, stepperHTML, emptyHTML, ensureCss
 } from './catalog.js';
 
-import { shareInvoice } from './pdfinvoice.js';
+import { shareInvoice, sharePL } from './pdfinvoice.js';
 import { openOrderForm } from './orderform.js';
 
 /* Business + payment details — one source for the text invoice and the PDF.
@@ -726,6 +726,33 @@ function plSheet(custId) {
       return (typeof c === 'number' && isFinite(c)) ? c : 0;
     };
 
+    /* Snapshot the P&L for the shareable PDF — reads the on-screen cost inputs
+       (incl. unsaved edits) so the PDF matches exactly what's displayed. */
+    const plData = () => {
+      const o = openOrderOf(custId);
+      const lines = (o && Array.isArray(o.lines)) ? o.lines : [];
+      const domv = {};
+      body.querySelectorAll('.hdv-cinp').forEach(inp => { domv[inp.dataset.key] = inp.value; });
+      let tc = 0, ts = 0;
+      const plLines = lines.map(l => {
+        const qty = Number(l.qty) || 0, us = Number(l.price) || 0;
+        const v = domv[l.key];
+        const uc = (v !== undefined && v !== '') ? (parseFloat(v) || 0) : unitCost(l);
+        tc += qty * uc; ts += qty * us;
+        return { name: l.name, qty, unit: l.unit || '', cost: uc, sell: us };
+      });
+      const profit = ts - tc, pct = ts > 0 ? Math.round(profit / ts * 100) : 0;
+      const r2 = (x) => Math.round(x * 100) / 100;
+      return {
+        biz: BIZ,
+        customer: cust.name || '',
+        date: niceDate((o && (o.deliveryDate || o.completed || o.date)) || todayStr()),
+        orderRef: o ? orderRef(o) : '',
+        lines: plLines,
+        totals: { cost: r2(tc), sell: r2(ts), profit: r2(profit), pct }
+      };
+    };
+
     const recalc = () => {
       const byKey = {}; lineData().forEach(l => { if (l) byKey[l.key] = l; });
       let tc = 0, ts = 0;
@@ -764,7 +791,10 @@ function plSheet(custId) {
           <div class="hdv-total"><span>Total sell</span><span id="pl-sell">—</span></div>
           <div class="hdv-total hdv-total-margin"><span>Profit</span><span id="pl-profit">—</span></div>`;
       }
-      h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="done">Done</button></div>`;
+      h += `<div class="hdv-actions">
+        ${lines.length ? `<button class="hdv-btnG slim" data-act="sharepl">Share PDF</button>` : ''}
+        <button class="hdv-btnP" data-act="done">Done</button>
+      </div>`;
       body.innerHTML = h;
       recalc();
     };
@@ -777,7 +807,16 @@ function plSheet(custId) {
       const l = (o.lines || []).find(x => x.key === inp.dataset.key);
       if (l) { l.cost = inp.value === '' ? '' : Math.round((parseFloat(inp.value) || 0) * 100) / 100; saveOrder(o); }
     };
-    body.onclick = e => { const t = e.target.closest('[data-act]'); if (t && t.dataset.act === 'done') closeSheet(); };
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]'); if (!t) return;
+      if (t.dataset.act === 'done') { closeSheet(); return; }
+      if (t.dataset.act === 'sharepl') {
+        const d = plData();
+        if (!d.lines.length) { toast('No lines to share'); return; }
+        sharePL(d).then(s => { if (s === 'downloaded') toast('P&L PDF saved'); })
+          .catch(() => toast('Could not make the PDF'));
+      }
+    };
   };
 }
 
