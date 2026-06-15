@@ -242,22 +242,29 @@ const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
 
 // Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
 // "Replace" ticked to overwrite his order to exactly these — clear after.
+// Shanikas — order sheet (page 1). No prices given -> the Import resolves her
+// locked Price-Level (tier) price per line automatically.
 const IMPORT_PREFILL = [
-  '1 box Jack carrot box - 20kg @ 32 c 25',
-  '2 box Salad Mix LOOSE @ 15 c 5.33',
-  '2 bunch Onion Spring Bunch @ 2 c 1',
-  '1 Celery Size 10 each @ 3 c 1.6',
-  '5 kg Capsicum Green Large /kg @ 4.99 c 2.5',
-  '5 kg Capsicum Red /kg @ 4.99 c 2.5',
-  '6 punnet Tomato Cherry Punnets @ 3 c 2',
-  '6 Avocado Hass Each @ 2 c 1.39',
-  '2 bag Cucumbers Continental XXL @ 30 c 25',
-  '1 Pumpkin grey @ 8 c 4',
-  '3 Cabbage @ 4 c 1.5',
-  '1 bunch Parsley @ 2.99 c 1',
-  '6 Iceberg Lettuce each @ 2.49 c 1.25',
-  '4 Cos Lettuce each @ 2.99 c 1.1',
-  '4 kg Tomato Roma /kg @ 5.99 c 4'
+  '3 bunch Basil Bunch',
+  '2 kg Apples Granny Smith /kg',
+  '1 tray Avocado Hass Each',
+  '1 kg Beetroot /kg',
+  '1 kg Brocili',
+  '4 bunch Broccolini Bunch',
+  '1 Carrot 1kg Bags',
+  '2 punnet Tomato Cherry Punnets',
+  '0.1 kg Chilli Green',
+  '2 pack Lettuce Baby Cos Twin Pack',
+  '2 each Cucumbers Continental XXL',
+  '1 Lemons each',
+  '1 bag Onion Brown 10kg Bag',
+  '5 bunch Parsley',
+  '1 bag Potato Peeled 10kg Bag',
+  '1 box Rocket Leaves Box 1.5kg',
+  '2 bunch Onion Spring Bunch',
+  '1 punnet Strawberries 250g',
+  '4 kg Tomatoes Truss /kg',
+  '1 kg Zucchini /kg'
 ].join('\n');
 
 function parseQtyTok(s) {
@@ -296,7 +303,7 @@ function matchProduct(name) {
 function importSheet(body) {
   const custs = asList(customers()).filter(Boolean)
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  let selId = (custs.find(c => /brian/i.test(c.name || '')) || custs[0] || {}).id || '';
+  let selId = (custs.find(c => /shanik/i.test(c.name || '')) || custs[0] || {}).id || '';
   let text = IMPORT_PREFILL;
   let checked = null;
   let replace = false;
