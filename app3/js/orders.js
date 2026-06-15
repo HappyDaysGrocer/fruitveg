@@ -363,8 +363,8 @@ function importSheet(body) {
       const mk = (r) => {
         let price = (r.price == null ? '' : r.price);
         const src = (r.price == null ? 'tier' : 'manual');
-        if (price === '') {                       // no explicit price -> use the customer's tier/locked price
-          const tp = tierPrice(selId, r.item.key);
+        if (price === '') {                       // no explicit price -> last-order price, then tier, then shelf
+          const tp = defaultLinePrice(selId, r.item.key);
           if (typeof tp === 'number') price = tp;
         }
         return { key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
@@ -510,10 +510,8 @@ function takeRow(p, line, cust) {
       ? `<span class="hdv-red" data-act="price" data-key="${esc(p.key)}">SET&nbsp;PRICE</span>`
       : `<span class="hdv-price" data-act="price" data-key="${esc(p.key)}">${money(Number(line.price))}</span>`;
   } else {
-    const tp = tierPrice(cust.id, p.key);
-    priceHtml = tp === 'SETCOST'
-      ? '<span class="hdv-red">SET&nbsp;COST</span>'
-      : `<span class="hdv-price dim">${typeof tp === 'number' ? money(tp) : '—'}</span>`;
+    const tp = defaultLinePrice(cust.id, p.key);
+    priceHtml = `<span class="hdv-price dim">${typeof tp === 'number' ? money(tp) : '—'}</span>`;
   }
   const onSpecial = !!specialFor(p.key);
   const out = isOut(p.key);
@@ -559,6 +557,28 @@ function orderTotal(lines) {
     (s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
 }
 
+/* Price for a NEW line, in priority order:
+   1) the price this customer paid for this item on their LAST order,
+   2) their tier / locked (Price-Level) price,
+   3) the shelf price (= EPOS retail, synced into the catalogue).
+   Returns a number, or '' if none of the above is known. */
+function lastOrderPrice(custId, key) {
+  for (const o of completedOrdersOf(custId)) {            // most recent completed first
+    const l = (o.lines || []).find(x => x && x.key === key && x.price !== '' && x.price != null);
+    if (l) { const v = Number(l.price); if (isFinite(v)) return v; }
+  }
+  return null;
+}
+function defaultLinePrice(custId, key) {
+  const lp = lastOrderPrice(custId, key);
+  if (typeof lp === 'number') return lp;
+  const tp = tierPrice(custId, key);
+  if (typeof tp === 'number') return tp;
+  const p = catalog().find(x => x.key === key);
+  if (p && typeof p.sell === 'number' && p.sell > 0) return p.sell;
+  return '';
+}
+
 /* +/- on a take-order row. Only calls ensureOpenOrder when actually
    adding, so just LOOKING at a customer never creates an empty order. */
 function changeLine(cust, key, delta) {
@@ -578,12 +598,12 @@ function changeLine(cust, key, delta) {
   } else if (delta > 0) {
     const p = catalog().find(x => x.key === key);
     if (!p) return;
-    const tp = tierPrice(cust.id, key);
+    const tp = defaultLinePrice(cust.id, key);   // last-order price -> tier -> shelf
     o.lines.push({
       key, name: p.name, sup: p.cat, unit: '',
       qty: delta,
-      price: typeof tp === 'number' ? tp : '',   // '' until manually set
-      src: 'tier'
+      price: typeof tp === 'number' ? tp : '',   // '' until set
+      src: 'auto'
     });
   } else {
     return;
@@ -633,9 +653,9 @@ function editWeightInline(elm, cust, key) {
     o = ensureOpenOrder(cust.id);
     if (!o) return;
     if (!Array.isArray(o.lines)) o.lines = [];
-    const tp = tierPrice(cust.id, key);
+    const tp = defaultLinePrice(cust.id, key);
     line = { key, name: p ? p.name : key, sup: p ? p.cat : '', unit: 'kg', qty: 0,
-      price: typeof tp === 'number' ? tp : '', src: 'tier' };
+      price: typeof tp === 'number' ? tp : '', src: 'auto' };
     o.lines.push(line);
   }
 
@@ -861,10 +881,12 @@ function packSheet(custId) {
       } else {
         h += lines.map(l => {
           const qty = Number(l.qty) || 0;
+          const isKg = String(l.name || '').includes('/kg') || l.unit === 'kg';
           return `<div class="hdv-pack-row${l.packed ? ' hdv-pack-done' : ''}" data-key="${esc(l.key)}">
             <div class="hdv-pack-tick">${l.packed ? '✓' : ''}</div>
             <div class="hdv-pack-qty">${qty}${l.unit ? '<span class="hdv-pack-unit"> ' + esc(l.unit) + '</span>' : ''}</div>
             <div class="hdv-pack-name">${esc(l.name)}</div>
+            ${isKg ? `<button class="hdv-btnG slim" data-act="weigh" data-key="${esc(l.key)}" style="flex:0 0 auto;margin-left:6px;padding:6px 9px">⚖ kg</button>` : ''}
           </div>`;
         }).join('');
       }
@@ -900,6 +922,25 @@ function packSheet(custId) {
           const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '' };
           sendToTill(cust, o);
           render();
+          return;
+        }
+        if (t.dataset.act === 'weigh') {                 // enter the ACTUAL packed weight -> reprices in place
+          const o = openOrderOf(custId);
+          const l = (o.lines || []).find(x => x.key === t.dataset.key); if (!l) return;
+          const inp = document.createElement('input');
+          inp.type = 'number'; inp.step = '0.001'; inp.min = '0'; inp.inputMode = 'decimal';
+          inp.className = 'hdv-in'; inp.style.width = '84px'; inp.value = Number(l.qty) || ''; inp.placeholder = 'kg';
+          t.replaceWith(inp); inp.focus(); inp.select();
+          let dn = false;
+          const commit = () => {
+            if (dn) return; dn = true;
+            const v = parseFloat(inp.value);
+            if (isFinite(v) && v > 0) { l.qty = Math.round(v * 1000) / 1000; l.unit = 'kg'; l.packed = true; saveOrder(o); }
+            render();
+          };
+          inp.addEventListener('change', commit);
+          inp.addEventListener('blur', commit);
+          inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
           return;
         }
         return;
