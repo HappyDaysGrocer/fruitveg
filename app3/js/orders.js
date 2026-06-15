@@ -353,8 +353,16 @@ function importSheet(body) {
       if (!selId) { toast('Pick a customer'); return; }
       if (!good.length) { toast('Nothing matched — tap Check first'); return; }
       const o = ensureOpenOrder(selId);
-      const mk = (r) => ({ key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
-        price: (r.price == null ? '' : r.price), cost: (r.cost == null ? '' : r.cost), src: 'manual' });
+      const mk = (r) => {
+        let price = (r.price == null ? '' : r.price);
+        const src = (r.price == null ? 'tier' : 'manual');
+        if (price === '') {                       // no explicit price -> use the customer's tier/locked price
+          const tp = tierPrice(selId, r.item.key);
+          if (typeof tp === 'number') price = tp;
+        }
+        return { key: r.item.key, name: r.item.name, qty: r.qty, unit: r.unit || '',
+          price, cost: (r.cost == null ? '' : r.cost), src };
+      };
       if (replace) {
         o.lines = good.map(mk);                 // exactly the pasted items, nothing else
       } else {
