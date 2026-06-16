@@ -22,6 +22,18 @@
 </head>
 <body>
 
+  <!-- Install-as-app bar: shows until the app is installed, then hides. -->
+  <button id="installBar" class="installbar" type="button" hidden>
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3v11"></path><path d="m7 9 5 5 5-5"></path>
+      <rect x="4" y="18" width="16" height="3" rx="1"></rect>
+    </svg>
+    <span class="installbar-txt">Install Happy&nbsp;Days In-House as an app</span>
+    <span class="installbar-cta">Install</span>
+    <span class="installbar-x" id="installX" role="button" aria-label="Dismiss">&times;</span>
+  </button>
+
   <!-- Slim sticky header: brand row collapses on scroll, search stays -->
   <header class="hdr" id="hdr">
     <div class="brand">
@@ -124,6 +136,75 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('../sw.js', { updateViaCache: 'none' });
     }
+  </script>
+
+  <!-- Install as a desktop/home-screen app: capture the native prompt (Chrome/Edge/
+       Android) or show platform steps (iPhone). Hidden once installed. -->
+  <script>
+    (function () {
+      var bar = document.getElementById('installBar');
+      var xbtn = document.getElementById('installX');
+      if (!bar) return;
+      var deferred = null;
+      var standalone = window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true;
+      var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      if (standalone) return;                      // already installed -> never show
+      try { if (sessionStorage.getItem('hd3.installHide')) return; } catch (e) {}
+
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault(); deferred = e; bar.hidden = false;
+      });
+      if (isIOS) bar.hidden = false;
+      setTimeout(function () { if (!standalone && bar.hidden) bar.hidden = false; }, 2500);
+
+      window.addEventListener('appinstalled', function () { bar.hidden = true; hideHelp(); });
+
+      xbtn.addEventListener('click', function (ev) {
+        ev.stopPropagation(); bar.hidden = true;
+        try { sessionStorage.setItem('hd3.installHide', '1'); } catch (e) {}
+      });
+
+      bar.addEventListener('click', function () {
+        if (deferred) {
+          deferred.prompt();
+          deferred.userChoice.then(function (c) {
+            if (c && c.outcome === 'accepted') bar.hidden = true;
+            deferred = null;
+          });
+        } else {
+          showHelp(isIOS ? 'ios' : 'other');
+        }
+      });
+
+      var help = null;
+      function showHelp(kind) {
+        hideHelp();
+        var steps = kind === 'ios'
+          ? '<b>On iPhone &amp; iPad (Safari):</b><ol>' +
+            '<li>Tap the <b>Share</b> button (square with an up-arrow).</li>' +
+            '<li>Scroll down and tap <b>Add to Home Screen</b>.</li>' +
+            '<li>Tap <b>Add</b> — done!</li></ol>'
+          : '<b>To install on your desktop:</b><ol>' +
+            '<li>Open the browser menu (the <b>&#8942;</b> button, top-right).</li>' +
+            '<li>Tap <b>Install Happy Days In-House</b> / <b>Install app</b> (or the install icon in the address bar).</li></ol>';
+        help = document.createElement('div');
+        help.className = 'install-help';
+        help.innerHTML =
+          '<div class="install-help-dim"></div>' +
+          '<div class="install-help-card">' +
+            '<div class="install-help-title">Install Happy Days In-House</div>' +
+            '<div class="install-help-body">' + steps + '</div>' +
+            '<button type="button" class="install-help-ok">Got it</button>' +
+          '</div>';
+        document.body.appendChild(help);
+        help.addEventListener('click', function (e) {
+          if (e.target.classList.contains('install-help-dim') ||
+              e.target.classList.contains('install-help-ok')) hideHelp();
+        });
+      }
+      function hideHelp() { if (help) { help.remove(); help = null; } }
+    })();
   </script>
 </body>
 </html>
