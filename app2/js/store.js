@@ -6,8 +6,8 @@
 
 /* ---------- version (one source of truth, shown in the More tab) ----------
    Bump this on every change so the live app can be tracked. */
-export const VERSION = 'v2.1';
-export const UPDATED = '16 Jun 2026';
+export const VERSION = 'v2.2';
+export const UPDATED = '17 Jun 2026';
 
 const FB = {
   apiKey: 'AIzaSyBlnVVwGbNW6N3ErAZMpqNIROjGkv_D3nc',
@@ -151,7 +151,7 @@ export function categories() {
 /* Woolies-style aisle order: produce first (kept exactly as-is), then the
    grocery aisles. Unknown groups append alphabetically at the end. */
 const GROUP_ORDER = [
-  'A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs',
+  'Fruit', 'Vegetables', 'Herbs',
   'Dairy & Fridge', 'Pantry', 'Snacks & Confectionery',
   'Drinks', 'Freezer', 'Household & Personal Care'
 ];
