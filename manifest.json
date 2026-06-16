@@ -1,15 +1,16 @@
 {
-  "name": "Happy Days FruitVeg",
-  "short_name": "FruitVeg",
+  "name": "Happy Days Buy",
+  "short_name": "HD Buy",
   "description": "Happy Days Fruit Veg & Grocer — buying & pricing app",
-  "start_url": "./index.html",
-  "scope": "./",
+  "id": "/fruitveg/",
+  "start_url": "/fruitveg/index.html",
+  "scope": "/fruitveg/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#15662f",
   "theme_color": "#15662f",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-v1-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-v1-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

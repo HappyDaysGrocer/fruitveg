@@ -1,10 +1,10 @@
 {
-  "name": "Happy Days Fruit, Veg & Grocery",
-  "short_name": "Happy Days",
-  "description": "Market buy list and customer ordering for Happy Days Fruit, Veg & Grocery — Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201.",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "name": "Happy Days Shop",
+  "short_name": "HD Shop",
+  "description": "Customer ordering for Happy Days Fruit, Veg & Grocery — Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201.",
+  "id": "/fruitveg/app2/",
+  "start_url": "/fruitveg/app2/",
+  "scope": "/fruitveg/app2/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#eaf4ec",
@@ -12,16 +12,16 @@
   "categories": ["business", "food", "shopping"],
   "icons": [
     {
-      "src": "../icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "../icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }
