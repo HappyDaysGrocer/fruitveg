@@ -552,3 +552,40 @@ dialog.sheet::backdrop { background: rgba(13, 40, 24, .5); }
     transition-duration: .01ms !important;
   }
 }
+
+/* ===== Add-to-home-screen bar + help sheet ===== */
+.installbar {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; box-sizing: border-box; border: 0;
+  background: var(--brand, #15662f); color: #fff;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  padding: 10px 14px; text-align: left; cursor: pointer;
+}
+.installbar[hidden] { display: none; }
+.installbar svg { flex: 0 0 auto; }
+.installbar-txt { flex: 1; line-height: 1.25; }
+.installbar-cta {
+  flex: 0 0 auto; background: #fff; color: var(--brand, #15662f);
+  border-radius: 8px; padding: 5px 12px; font-weight: 800; font-size: 13px;
+}
+.installbar-x { flex: 0 0 auto; padding: 0 4px; font-size: 22px; line-height: 1; opacity: .85; }
+
+.install-help { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+.install-help-dim { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+.install-help-card {
+  position: relative; width: 100%; max-width: var(--maxw, 560px);
+  background: #fff; color: #0d2818; border-radius: 16px 16px 0 0;
+  padding: 18px 20px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 30px rgba(0,0,0,.25);
+}
+.install-help-title { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+.install-help-body { font-size: 14.5px; line-height: 1.5; }
+.install-help-body ol { margin: 8px 0 0; padding-left: 20px; }
+.install-help-body li { margin: 5px 0; }
+.install-help-ok {
+  margin-top: 16px; width: 100%; height: 46px; border: 0; border-radius: 12px;
+  background: var(--brand, #15662f); color: #fff; font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .install-help-card { background: #14241a; color: #e6f0e8; }
+}
