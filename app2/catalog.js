@@ -111,7 +111,7 @@ window.HD_CATALOG = [
   {"c":"C-G","n":"Capsicum Yellow kg","s":5.99,"b":""},
   {"c":"C-G","n":"Capsicum Yellow Each","s":1.66,"b":""},
   {"c":"C-G","n":"Carrot 1kg Bags","s":1.99,"b":"9341626000021"},
-  {"c":"C-G","n":"Jack carrot box - 20kg","s":32,"b":""},
+  {"c":"C-G","n":"Carrot Jack Box - 20kg","s":32,"b":""},
   {"c":"C-G","n":"Carrots Premium Loose /kg","s":2.49,"b":"6253528458"},
   {"c":"C-G","n":"Cauliflower Fresh /kg","s":3.49,"b":"0255401587"},
   {"c":"C-G","n":"Cauliflower Whole","s":3.74,"b":""},
