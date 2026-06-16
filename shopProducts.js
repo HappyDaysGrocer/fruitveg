@@ -362,7 +362,7 @@ var SHOP_PRODUCTS = [
   ['H-O',null,null,'Okra Bhindi /kg',null,null,6.67,9.99,false,'0448271876'],
   ['H-O',null,null,'Onion Brown 10kg Bag',null,null,8,10.99,false,'9322203002119,9322203002119'],
   ['H-O',null,null,'Onion Brown loose /kg',null,null,2,3.49,false,'5437720528'],
-  ['H-O',null,null,'Onion Red 10kg Bag',null,null,8,15.99,false,'1204583672'],
+  ['H-O',null,null,'Onion Red 10kg Bag',null,null,8,14.99,false,'1204583672'],
   ['H-O',null,null,'Onion Red loose /kg',null,null,3,3.99,false,'5140711763'],
   ['H-O',null,null,'Onion Spring Bunch',null,null,1,2.49,false,'3612825745'],
   ['H-O',null,null,'Orange Navel Bags 3kg',null,null,3.6,5.99,false,'3687734237,9323425000013'],
