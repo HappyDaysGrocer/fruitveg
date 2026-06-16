@@ -75,6 +75,18 @@ let CATALOG = [];
 const CATALOG_BY_KEY = new Map();
 let _catalogPromise = null;
 
+/* Classic alphabetical produce section for a name (owner pref: Fruit & Veg
+   are shown under A-B / C-G / H-O / P-R / S-Z, like the original app). */
+function alphaBucket(name) {
+  const m = String(name == null ? '' : name).toUpperCase().match(/[A-Z]/);
+  const c = m ? m[0] : 'Z';
+  if (c <= 'B') return 'A-B';
+  if (c <= 'G') return 'C-G';
+  if (c <= 'O') return 'H-O';
+  if (c <= 'R') return 'P-R';
+  return 'S-Z';
+}
+
 function buildCatalog(rows) {
   CATALOG = [];
   CATALOG_BY_KEY.clear();
@@ -83,17 +95,37 @@ function buildCatalog(rows) {
     const cat = String(r.c == null ? '' : r.c).trim();
     const name = String(r.n == null ? '' : r.n).trim();
     if (!name) return;
+    const group = String(r.g || cat).trim();   // order-form aisle (Fruit/Vegetables/Herbs/grocery)
     const item = {
-      key: cat + '||' + name,         // this exact key joins all stores
+      key: cat + '||' + name,         // identity — ORIGINAL category, never the display bucket below
       cat,
-      group: String(r.g || cat).trim(), // Woolies-style aisle (display only)
+      group,                          // Woolies-style aisle (display only)
       name,
       sell: num(r.s),                 // retail shelf price only — no cost
       barcode: r.b == null ? '' : String(r.b).trim()
     };
+    // DISPLAY ONLY (owner pref): show Fruit + Vegetables under the classic
+    // alphabetical produce sections A-B / C-G / H-O / P-R / S-Z, merged into one
+    // run. Herbs and every grocery aisle stay exactly where they are. We re-point
+    // the display section/aisle only — item.key keeps the original category so
+    // orders/specials/cart (keyed by item.key) are completely unaffected.
+    if (group === 'Fruit' || group === 'Vegetables') {
+      const bucket = alphaBucket(name);
+      item.cat = bucket;
+      item.group = bucket;
+    }
     CATALOG.push(item);
     CATALOG_BY_KEY.set(item.key, item);
   });
+  // Fruit & Veg buckets read as proper alphabetical A-B…S-Z lists: sort the
+  // produce items by name within their bucket (in place), leaving Herbs and
+  // every grocery aisle in their order-form / catalogue order.
+  const PB = new Set(['A-B', 'C-G', 'H-O', 'P-R', 'S-Z']);
+  const slots = [];
+  const produce = [];
+  CATALOG.forEach((it, i) => { if (PB.has(it.group)) { slots.push(i); produce.push(it); } });
+  produce.sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+  slots.forEach((idx, k) => { CATALOG[idx] = produce[k]; });
 }
 
 /* Inject <script src="catalog.js"> (it is NOT a module) and wait for
@@ -148,10 +180,11 @@ export function categories() {
   return Array.from(seen).sort((a, b) => a.localeCompare(b));
 }
 
-/* Woolies-style aisle order: produce first (kept exactly as-is), then the
-   grocery aisles. Unknown groups append alphabetically at the end. */
+/* Aisle order: Fruit & Vegetables show under the classic alphabetical produce
+   sections (A-B…S-Z, see buildCatalog), then Herbs, then the grocery aisles.
+   Unknown groups append alphabetically at the end. */
 const GROUP_ORDER = [
-  'Fruit', 'Vegetables', 'Herbs',
+  'A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs',
   'Dairy & Fridge', 'Pantry', 'Snacks & Confectionery',
   'Drinks', 'Freezer', 'Household & Personal Care'
 ];
