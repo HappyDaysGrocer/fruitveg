@@ -242,29 +242,30 @@ const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
 
 // Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
 // "Replace" ticked to overwrite his order to exactly these — clear after.
-// Shanikas — order sheet (page 1) priced at LIVE EPOS Now prices (per the order's
-// unit). Re-import (Replace) to update her invoice to these EPOS prices.
+// Shanikas — current order matching the till (weights + agreed prices: avocado
+// tray $38, peeled potato $22, lemons x8, cherry $3). Re-import (Replace) to set
+// her app order to this. Total ~$217.64.
 const IMPORT_PREFILL = [
   '3 bunch Basil Bunch @ 3.5',
-  '2 kg Apples Granny Smith /kg @ 3.99',
-  '1 tray Avocado Hass Each @ 1.99',
-  '1 kg Beetroot /kg @ 5.99',
-  '1 kg Brocili @ 3.49',
+  '2.162 kg Apples Granny Smith /kg @ 3.99',
+  '1 tray Avocado Hass Each @ 38',
+  '1.249 kg Beetroot /kg @ 5.99',
+  '1.04 kg Brocili @ 3.49',
   '4 bunch Broccolini Bunch @ 2.99',
-  '1 Carrot 1kg Bags @ 1.99',
-  '2 punnet Tomato Cherry Punnets @ 2.7',
-  '0.1 kg Chilli Green @ 16.99',
+  '1.223 kg Carrots Premium Loose /kg @ 2.49',
+  '2 punnet Tomato Cherry Punnets @ 3',
+  '0.112 kg Chilli Green @ 16.99',
   '2 pack Lettuce Baby Cos Twin Pack @ 3.5',
   '2 each Cucumbers Continental XXL @ 1.99',
-  '1 Lemons each @ 0.79',
+  '8 Lemons each @ 0.79',
   '1 bag Onion Brown 10kg Bag @ 10.99',
   '5 bunch Parsley @ 2.99',
-  '1 bag Potato Peeled 10kg Bag @ 25',
-  '1 box Rocket Leaves Box 1.5kg @ 23',
+  '1 bag Potato Peeled 10kg Bag @ 22',
+  '1 box Rocket Leaves Box 1.5kg @ 21',
   '2 bunch Onion Spring Bunch @ 2.49',
   '1 punnet Strawberries 250g @ 6.99',
-  '4 kg Tomatoes Truss /kg @ 4.99',
-  '1 kg Zucchini /kg @ 3.99'
+  '4.031 kg Tomato Roma /kg @ 5.99',
+  '1.034 kg Zucchini /kg @ 3.99'
 ].join('\n');
 
 function parseQtyTok(s) {
