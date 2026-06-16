@@ -40,16 +40,17 @@ const EXCLUDE_EXACT = new Set([
 // the fine category stays in `c` (the catalogue KEY — never changes).
 const GROUP_MAP = {
   'Alternative Milk': 'Dairy & Fridge',
+  'Milk': 'Dairy & Fridge',
   'Butter': 'Dairy & Fridge',
   'Cheese': 'Dairy & Fridge',
   'Vegan Cheese': 'Dairy & Fridge',
   'Yogurt': 'Dairy & Fridge',
   'Dips': 'Dairy & Fridge',
-  'Asain': 'Pantry',
+  'Asian': 'Pantry',
   'Biscuits': 'Pantry',
   'Canned Goods': 'Pantry',
   'Cereal': 'Pantry',
-  'Confectionary': 'Pantry',
+  'Confectionery': 'Pantry',
   'Dhal': 'Pantry',
   'Dry Nuts': 'Pantry',
   'Flour': 'Pantry',
@@ -58,7 +59,7 @@ const GROUP_MAP = {
   'Jam': 'Pantry',
   'Oil': 'Pantry',
   'Olives': 'Pantry',
-  'Pasata': 'Pantry',
+  'Passata': 'Pantry',
   'Pasta': 'Pantry',
   'Pasta Sauce': 'Pantry',
   'Rice': 'Pantry',
@@ -68,7 +69,6 @@ const GROUP_MAP = {
   'Sugar': 'Pantry',
   'Chips': 'Snacks & Confectionery',
   'Chocolate': 'Snacks & Confectionery',
-  'Chocolates': 'Snacks & Confectionery',
   'Coffee': 'Drinks',
   'Tea': 'Drinks',
   'Juice': 'Drinks',
@@ -78,7 +78,7 @@ const GROUP_MAP = {
   'Frozen': 'Freezer',
   'Ice Cream': 'Freezer',
   'Cleaning': 'Household & Personal Care',
-  'Toilet': 'Household & Personal Care',
+  'Personal Care': 'Household & Personal Care',
   'Party Goods': 'Household & Personal Care'
 };
 
