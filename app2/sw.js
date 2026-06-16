@@ -4,7 +4,7 @@
    Cross-origin requests (Firebase REST, identity toolkit) pass through
    untouched — store.js owns offline behaviour for data via local mirrors. */
 
-const CACHE = 'hd2-v2';   // bumped: purge any old cache that held costy shopProducts.js
+const CACHE = 'hd2-v3';   // bump on any shell change to force a clean refresh on every device
 
 /* App shell (scope-relative). catalog.js is the PUBLIC cost-free product
    list — the customer app never loads the root shopProducts.js (which
@@ -33,8 +33,13 @@ const PRECACHE_EXTRA = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE).then(async (cache) => {
-      await cache.addAll(PRECACHE);
-      await Promise.allSettled(PRECACHE_EXTRA.map((u) => cache.add(u)));
+      // 'reload' bypasses the HTTP cache so a new SW always precaches the
+      // freshly-deployed shell (never a stale copy held by the browser/CDN).
+      const fresh = (u) => fetch(new Request(u, { cache: 'reload' }))
+        .then((r) => { if (r && r.ok) return cache.put(u, r); })
+        .catch(() => {});
+      await Promise.all(PRECACHE.map(fresh));
+      await Promise.allSettled(PRECACHE_EXTRA.map(fresh));
       await self.skipWaiting();
     })
   );
@@ -67,7 +72,9 @@ self.addEventListener('fetch', (event) => {
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(req);
+    // 'no-cache' = always revalidate with the server, so a new deploy shows
+    // up on the next load instead of being masked by the browser HTTP cache.
+    const res = await fetch(req, { cache: 'no-cache' });
     if (res && res.ok) cache.put(req, res.clone());       // keep offline copy fresh
     return res;
   } catch (err) {
