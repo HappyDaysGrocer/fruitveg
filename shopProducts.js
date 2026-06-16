@@ -577,7 +577,7 @@ var SHOP_PRODUCTS = [
   ['S-Z',null,null,'Salad Mix LOOSE',null,null,5.33,15,false,'3344176553'],
   ['S-Z',null,null,'Spinach Bunch',null,null,1.5,3.49,false,'5373261535'],
   ['S-Z',null,null,'Strawberries 250g',null,null,6,6.99,false,'9342373001002'],
-  ['S-Z',null,null,'Tomato Cherry Punnets',null,null,2,3,false,'1586106588,9369900039772,9324933000267'],
+  ['S-Z',null,null,'Tomato Cherry Punnets',null,null,2,3.5,false,'1586106588,9369900039772,9324933000267'],
   ['S-Z',null,null,'Tomatoes Pomodoro /kg',null,null,6,6.79,false,'8863578738'],
   ['S-Z',null,null,'Tomato Roma /kg',null,null,4,5.99,false,'0547631420'],
   ['S-Z',null,null,'Tomatoes Truss /kg',null,null,3,4.49,false,'6627321207'],

@@ -525,7 +525,7 @@ window.HD_CATALOG = [
   {"c":"S-Z","n":"Salad Mix LOOSE","s":15,"b":"3344176553"},
   {"c":"S-Z","n":"Spinach Bunch","s":3.49,"b":"5373261535"},
   {"c":"S-Z","n":"Strawberries 250g","s":6.99,"b":"9342373001002"},
-  {"c":"S-Z","n":"Tomato Cherry Punnets","s":3,"b":"1586106588,9369900039772,9324933000267"},
+  {"c":"S-Z","n":"Tomato Cherry Punnets","s":3.5,"b":"1586106588,9369900039772,9324933000267"},
   {"c":"S-Z","n":"Tomatoes Pomodoro /kg","s":6.79,"b":"8863578738"},
   {"c":"S-Z","n":"Tomatoes Pomodoro Each","s":0.6,"b":""},
   {"c":"S-Z","n":"Tomato Roma /kg","s":5.99,"b":"0547631420"},
