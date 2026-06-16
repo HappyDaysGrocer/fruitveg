@@ -462,4 +462,5 @@ const CSS = `
   font-size:14.5px;color:var(--hdv-text)}
 .hdv-mut{color:var(--hdv-sub)}
 .hdv-ver{text-align:center;color:var(--hdv-sub);font-size:12px;padding:18px 0 4px}
+.hdv-ver-badge{font-size:12px;font-weight:700;color:var(--hdv-green);background:rgba(21,102,47,.12);border-radius:11px;padding:3px 11px}
 `;

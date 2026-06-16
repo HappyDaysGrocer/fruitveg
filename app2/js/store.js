@@ -4,6 +4,11 @@
    tier pricing, and the app-wide event bus. No frameworks, no SDKs.
    ========================================================================= */
 
+/* ---------- version (one source of truth, shown in the More tab) ----------
+   Bump this on every change so the live app can be tracked. */
+export const VERSION = 'v2.1';
+export const UPDATED = '16 Jun 2026';
+
 const FB = {
   apiKey: 'AIzaSyBlnVVwGbNW6N3ErAZMpqNIROjGkv_D3nc',
   databaseURL: 'https://happydaysgrocer-dc980-default-rtdb.asia-southeast1.firebasedatabase.app'

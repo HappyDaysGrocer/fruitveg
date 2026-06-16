@@ -12,7 +12,7 @@ import {
   saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
   customerId, createCustomerLogin,
   isOut, outList, setOut,
-  auth, pull
+  auth, pull, VERSION, UPDATED
 } from './store.js';
 
 import {
@@ -1272,7 +1272,7 @@ export function renderMore(root) {
   const who = u ? String(u.email || u) : '';
   const uname = who ? who.split('@')[0] : '';
 
-  let h = `<div class="hdv-head"><div class="hdv-h1">More</div></div>`;
+  let h = `<div class="hdv-head"><div class="hdv-h1">More</div><span class="hdv-ver-badge">${VERSION}</span></div>`;
 
   // account
   h += `<div class="hdv-card">
@@ -1367,7 +1367,7 @@ export function renderMore(root) {
       <a class="hdv-link" href="mailto:happydaysgrocer@gmail.com">happydaysgrocer@gmail.com</a></div>
   </div>`;
 
-  h += '<div class="hdv-ver">Happy Days v2.0.0</div><div class="hdv-pad"></div>';
+  h += `<div class="hdv-ver">Happy Days ${VERSION} · updated ${UPDATED}</div><div class="hdv-pad"></div>`;
 
   root.innerHTML = h;
   root.onclick = e => {
