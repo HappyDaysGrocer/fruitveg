@@ -303,7 +303,7 @@ window.HD_CATALOG = [
   {"c":"H-O","n":"Onion Brown 10kg Bag","s":10.99,"b":"9322203002119,9322203002119"},
   {"c":"H-O","n":"Onion Brown loose /kg","s":3.49,"b":"5437720528"},
   {"c":"H-O","n":"Onion Brown Each","s":0.59,"b":""},
-  {"c":"H-O","n":"Onion Red 10kg Bag","s":14.99,"b":"1204583672"},
+  {"c":"H-O","n":"Onion Red 10kg Bag","s":15.99,"b":"1204583672"},
   {"c":"H-O","n":"Onion Red loose /kg","s":3.99,"b":"5140711763"},
   {"c":"H-O","n":"Onion Red Each","s":0.75,"b":""},
   {"c":"H-O","n":"Onion Spring Bunch","s":2.49,"b":"3612825745"},
