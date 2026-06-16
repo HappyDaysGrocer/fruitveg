@@ -1870,7 +1870,7 @@ function fvStateForget(keys){
 /* ─── INIT ──────────────────────────────────────────────────────────────── */
 
 // Build stamp — bumped on every deploy so you can confirm your phone has the latest.
-var APP_BUILD = 'v179';
+var APP_BUILD = 'v180';
 // If Chrome restores this tab from its back-forward cache (a frozen old copy),
 // force a fresh reload so you always land on the latest version.
 window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
@@ -7229,7 +7229,7 @@ function fvBankByCat(monthFilter){
   return { byCat:byCat, periodStart:minD, periodEnd:maxD };
 }
 /* Real till sales per month (from the EPOS SalesBreakdown export, includes CASH). */
-var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":10103.03,"items":2349,"mp":0.2599,"bad":1}};
+var EPOS_MONTHLY = {"2026-02":{"sales":113,"items":20,"mp":0.745,"bad":0},"2026-03":{"sales":259.57,"items":50,"mp":0.293,"bad":0},"2026-04":{"sales":196.49,"items":48,"mp":0.359,"bad":0},"2026-05":{"sales":18466.24,"items":4709,"mp":0.628,"bad":6},"2026-06":{"sales":10103.03,"items":2349,"mp":0.518,"bad":1}};
 var FV_MONTHLY_RENT = 7262.75;   // $6,562.50 rent + $40 mgmt fee + GST per month (Cameron invoices 5212888/5275095; lease rent $78,750/yr ex-GST)
 /* VERIFIED against the SIGNED LEASE (dated 13/01/2026) and the Cameron rent invoices:
    - Lease TERM commenced 22 Jan 2026 (3-year term + two 3-year options).
