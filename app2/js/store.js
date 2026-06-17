@@ -6,7 +6,7 @@
 
 /* ---------- version (one source of truth, shown in the More tab) ----------
    Bump this on every change so the live app can be tracked. */
-export const VERSION = 'v2.2';
+export const VERSION = 'v2.3';
 export const UPDATED = '17 Jun 2026';
 
 const FB = {

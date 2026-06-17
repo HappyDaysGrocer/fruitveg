@@ -93,9 +93,11 @@ export function openSheet(build, opts) {
   sheetBody.innerHTML = '';
   // The body element is a singleton: clear handlers a previous sheet set
   // via property assignment so they can't leak into this one. (onclick is
-  // reassigned by every builder anyway; onkeydown only by some.)
+  // reassigned by every builder anyway; onkeydown/oninput/onchange only some.)
   sheetBody.onclick = null;
   sheetBody.onkeydown = null;
+  sheetBody.oninput = null;
+  sheetBody.onchange = null;
   build(sheetBody);
   sheetWrap.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -448,6 +450,12 @@ const CSS = `
   border-radius:10px;font-size:16px;font-family:inherit;background:transparent;
   color:var(--hdv-text);margin:6px 0}
 .hdv-lbl{display:block;font-size:12.5px;font-weight:700;color:var(--hdv-sub);margin-top:8px}
+.hdv-noterow{padding:0 0 8px;margin:-2px 0 0}
+.hdv-notein{width:100%;box-sizing:border-box;padding:8px 11px;border:1px dashed var(--hdv-line);
+  border-radius:9px;font-size:13.5px;font-family:inherit;background:transparent;color:var(--hdv-text)}
+.hdv-notein:focus{border-style:solid;border-color:var(--hdv-green);outline:none}
+.hdv-noteshow{font-size:12.5px;color:var(--hdv-green);font-weight:600;margin-top:2px}
+textarea.hdv-in{resize:vertical;min-height:46px;line-height:1.4}
 .hdv-err{color:var(--hdv-red);font-size:13.5px;font-weight:600;padding:6px 0;min-height:18px}
 .hdv-back{display:flex;align-items:center;gap:10px;padding:10px 12px;
   border-bottom:1px solid var(--hdv-line)}

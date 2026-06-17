@@ -335,6 +335,7 @@ function takeRow(p, line, cust) {
     <div class="hdv-info">
       <div class="hdv-name">${esc(p.name)}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
+      ${line && line.note ? `<div class="hdv-noteshow">📝 ${esc(line.note)}</div>` : ''}
     </div>
     ${priceHtml}
     ${stepper}
@@ -443,6 +444,10 @@ function reviewSheet(body, custId) {
         </div>
         ${priceHtml}
         ${stepperHTML(l.key, lq)}
+      </div>
+      <div class="hdv-noterow">
+        <input class="hdv-notein ord-note" data-key="${esc(l.key)}"
+          placeholder="Note for this item (optional)" value="${esc(l.note || '')}">
       </div>`;
     }).join('');
     h += `<div class="hdv-total"><span>Total</span><span>${money(total)}</span></div>`;
@@ -450,6 +455,9 @@ function reviewSheet(body, custId) {
       h += `<div class="hdv-err">Below minimum order ${money(Number(cust.minOrder))} — short ${money(Number(cust.minOrder) - total)}</div>`;
     }
     if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
+    h += `<label class="hdv-lbl" for="ord-comment">Note for Happy Days (optional)</label>
+      <textarea class="hdv-in" id="ord-comment" rows="2"
+        placeholder="e.g. ring on arrival · leave at back door · extra ripe bananas">${esc(o.comment || '')}</textarea>`;
     h += `<div class="hdv-actions">
       <button class="hdv-btnG" data-act="share">Share</button>
       <button class="hdv-btnP" data-act="complete">Place order</button>
@@ -467,6 +475,23 @@ function reviewSheet(body, custId) {
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
     else if (act === 'complete') completeOrder(custId);
+  };
+  // Customer comment + per-line notes. oninput keeps the typed value in memory
+  // (no re-render, so typing is never interrupted); onchange (blur) persists it
+  // onto the order, so it rides custorders straight to staff + the v3 Buy Run.
+  body.oninput = e => {
+    const el = e.target, oo = openOrderOf(custId);
+    if (!oo) return;
+    if (el.id === 'ord-comment') oo.comment = el.value;
+    else if (el.classList && el.classList.contains('ord-note')) {
+      const ln = (oo.lines || []).find(l => l.key === el.dataset.key);
+      if (ln) ln.note = el.value;
+    }
+  };
+  body.onchange = e => {
+    const el = e.target, oo = openOrderOf(custId);
+    if (!oo) return;
+    if (el.id === 'ord-comment' || (el.classList && el.classList.contains('ord-note'))) saveOrder(oo);
   };
 }
 
@@ -798,7 +823,8 @@ function pickingSheet(body) {
   } else {
     for (const o of dayOrders.slice().sort((a, b) => custName(a.custId).localeCompare(custName(b.custId)))) {
       h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''}</div>`;
-      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div></div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
+      if (o.comment) h += `<div style="padding:4px 12px 2px;color:var(--hdv-green);font-size:13px;font-weight:700">📝 ${esc(o.comment)}</div>`;
+      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>${l.note ? `<div class="hdv-noteshow">↳ ${esc(l.note)}</div>` : ''}</div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
     }
   }
 
@@ -828,7 +854,8 @@ function pickText(date, m) {
   } else {
     for (const o of day) {
       txt += `\n— ${custName(o.custId)}${o.orderNo ? ' (' + o.orderNo + ')' : ''} —\n` +
-        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}`).join('\n') + '\n';
+        (o.comment ? `Note: ${o.comment}\n` : '') +
+        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}` + (l.note ? ` (${l.note})` : '')).join('\n') + '\n';
     }
   }
   return txt;
@@ -841,13 +868,15 @@ function orderText(cust, o) {
   const del = o.deliveryDate || (di ? di.date : null);
   const rows = (o.lines || []).map(l => {
     const lp = Number(l.price) || 0, lq = Number(l.qty) || 0;
-    return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '');
+    return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '') +
+      (l.note ? `\n     ↳ ${l.note}` : '');
   });
   return `Happy Days — order for ${cust ? cust.name : ''}` +
     (o.orderNo ? ` (${o.orderNo})` : '') +
     (del ? `\nFor delivery: ${niceDate(del)}` : '') + '\n' +
     rows.join('\n') +
     `\nTotal: ${money(orderTotal(o.lines))}` +
+    (o.comment ? `\n\nNote: ${o.comment}` : '') +
     '\n\nHappy Days Fruit, Veg & Grocery · 0430 033 127';
 }
 
