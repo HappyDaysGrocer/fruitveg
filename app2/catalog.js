@@ -11,7 +11,7 @@ window.HD_CATALOG = [
   {"c": "Fruit", "n": "Apples, Royal Gala (ea)", "s": 1.11, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Apricots *", "s": null, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Avocado (each)", "s": 1.99, "b": "", "g": "Fruit"},
-  {"c": "Fruit", "n": "Bananas /kg", "s": 2.98, "b": "", "g": "Fruit"},
+  {"c": "Fruit", "n": "Bananas /kg", "s": 2.99, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Bananas (ea)", "s": 0.75, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Bananas (box)", "s": 55.0, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Berries, Black (pnt) *", "s": 7.5, "b": "", "g": "Fruit"},
