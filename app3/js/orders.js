@@ -340,9 +340,14 @@ function importSheet(body) {
       ${preview}
       <div class="hdv-actions">
         <button class="hdv-btnG slim" data-act="cancel">Close</button>
-        <button class="hdv-btnG slim" data-act="check">Check</button>
-        <button class="hdv-btnP" data-act="create"${canCreate ? '' : ' disabled'}>Create order</button>
+        ${checked
+          ? `<button class="hdv-btnP" data-act="create"${canCreate ? '' : ' disabled'}>Create order</button>`
+          : `<button class="hdv-btnP" data-act="check">Check</button>`}
       </div>`;
+    // Editing the order after a Check invalidates the preview -> drop back so a
+    // fresh Check is needed (and Create always re-matches the current text).
+    const ta = body.querySelector('#imp-text');
+    if (ta) ta.addEventListener('input', () => { checked = null; });
   };
   render();
 
