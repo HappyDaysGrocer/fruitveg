@@ -972,6 +972,7 @@ function packSheet(custId, orderId) {
         <div class="hdv-sheetsub">Tap a row to tick it off as you pack it</div>
         <div class="hdv-packprog"><span id="pack-count"></span><span id="pack-alllbl" class="hdv-packdone-lbl">✓ all packed</span></div>
         <div class="hdv-packbar"><div id="pack-bar" class="hdv-packbar-fill" style="width:0%"></div></div>`;
+      h += noteBanner((orderOf() || {}).comment);
       if (!all) {
         h += emptyHTML('No lines on this order yet');
       } else {
@@ -981,7 +982,7 @@ function packSheet(custId, orderId) {
           return `<div class="hdv-pack-row${l.packed ? ' hdv-pack-done' : ''}" data-key="${esc(l.key)}">
             <div class="hdv-pack-tick">${l.packed ? '✓' : ''}</div>
             <div class="hdv-pack-qty">${qty}${l.unit ? '<span class="hdv-pack-unit"> ' + esc(l.unit) + '</span>' : ''}</div>
-            <div class="hdv-pack-name">${esc(l.name)}</div>
+            <div class="hdv-pack-name">${esc(l.name)}${l.note ? `<div class="hdv-who" style="font-weight:600">📝 ${esc(l.note)}</div>` : ''}</div>
             ${isKg ? `<button class="hdv-btnG slim" data-act="weigh" data-key="${esc(l.key)}" style="flex:0 0 auto;margin-left:6px;padding:6px 9px">⚖ kg</button>` : ''}
           </div>`;
         }).join('');
@@ -1048,6 +1049,7 @@ function reviewSheet(body, custId) {
 
   let h = `<div class="hdv-sheettitle">${esc(cust.name)}</div>
     <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}</div>`;
+  if (o && o.comment) h += noteBanner(o.comment);
 
   const tqStatus = o ? tillQueueStatus(o.id) : null;
   const hasCosts = secureLoaded();
@@ -1083,6 +1085,7 @@ function reviewSheet(body, custId) {
           <div class="hdv-name">${esc(l.name)}</div>
           <div class="hdv-sub">${srcLabel(l.src) || 'price'} · line ${money(lSell)}</div>
           ${marginHtml}
+          ${lineNote(l)}
         </div>
         ${priceHtml}
         ${lineStepper(l, lq)}
@@ -1125,6 +1128,7 @@ function reviewSheet(body, custId) {
       <button class="hdv-btnG slim" data-act="share">Text</button>
       <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
       <button class="hdv-btnG slim" data-act="orderform">Order form</button>
+      <button class="hdv-btnG slim" data-act="note">📝 Note</button>
       <button class="hdv-btnG slim" data-act="pl">P&amp;L</button>
       ${cta}
     </div>`;
@@ -1142,6 +1146,7 @@ function reviewSheet(body, custId) {
     else if (act === 'addkg' || act === 'editkg') editWeightInline(t, c, key);
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
+    else if (act === 'note') editOrderNote(custId);
     else if (act === 'invpdf') {
       const o = openOrderOf(custId);
       if (!o || !(o.lines || []).length) { toast('No lines yet'); return; }
@@ -1360,11 +1365,12 @@ function invoiceSheet(body, custId, orderId) {
 
   let h = `<div class="hdv-sheettitle">Invoice ${esc(invNo)}</div>
     <div class="hdv-sheetsub">${esc(cust.name)} · ${o.deliveryDate ? 'delivered ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')}</div>`;
+  if (o.comment) h += noteBanner(o.comment);
   h += lines.map(l => {
     const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
     return `<div class="hdv-row">
       <div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>
-        <div class="hdv-sub">${lq} × ${money(lp)}</div></div>
+        <div class="hdv-sub">${lq} × ${money(lp)}</div>${lineNote(l)}</div>
       <span class="hdv-price">${money(lq * lp)}</span>
     </div>`;
   }).join('');
@@ -1648,6 +1654,28 @@ function packLabel(o) {
   return p === 0 ? 'unpacked' : (p === ls.length ? 'packed ✓' : p + '/' + ls.length + ' packed');
 }
 
+/* Customer order note banner (o.comment from the v2 customer app, e.g. "ring on
+   arrival") — surfaced so whoever picks/packs/delivers actually sees it. */
+function noteBanner(text) {
+  if (!text) return '';
+  return `<div style="background:var(--hdv-lt);border-left:3px solid var(--hdv-green);border-radius:8px;` +
+    `padding:8px 10px;margin:6px 0;font-size:13px;color:var(--hdv-text)"><b>📝 Note:</b> ${esc(text)}</div>`;
+}
+/* Per-line note (line.note, e.g. "extra ripe"). */
+function lineNote(l) {
+  return (l && l.note) ? `<div class="hdv-who">📝 ${esc(l.note)}</div>` : '';
+}
+/* Staff add/edit the order note (picker instructions, e.g. "ring on arrival"). */
+function editOrderNote(custId) {
+  const o = openOrderOf(custId);
+  if (!o) { toast('No open order'); return; }
+  const v = window.prompt('Order note (e.g. "ring on arrival", "leave at back door")', o.comment || '');
+  if (v === null) return;                         // cancelled
+  o.comment = v.trim(); saveOrder(o);
+  toast(o.comment ? 'Note saved' : 'Note cleared');
+  refreshSheet();
+}
+
 /* Sum every placed line for a delivery date by product -> what to buy. */
 function aggregateBuy(dayOrders) {
   const agg = new Map();
@@ -1704,7 +1732,8 @@ function pickingSheet(body) {
         <span>${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''} · ${esc(packLabel(o))}${tqTag}</span>
         <button class="hdv-btnG slim" data-act="ppack" data-id="${esc(o.id)}" data-cust="${esc(o.custId)}" style="padding:3px 10px;font-size:12px;flex:0 0 auto">Pack</button>
       </div>`;
-      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div></div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
+      h += noteBanner(o.comment);
+      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>${lineNote(l)}</div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
     }
   }
 
@@ -1735,7 +1764,8 @@ function pickText(date, m) {
   } else {
     for (const o of day) {
       txt += `\n— ${custName(o.custId)}${o.orderNo ? ' (' + o.orderNo + ')' : ''} —\n` +
-        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}`).join('\n') + '\n';
+        (o.comment ? `📝 ${o.comment}\n` : '') +
+        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}${l.note ? ' (' + l.note + ')' : ''}`).join('\n') + '\n';
     }
   }
   return txt;

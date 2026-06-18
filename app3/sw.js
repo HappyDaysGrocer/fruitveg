@@ -3,7 +3,7 @@
    are NEVER cached in a static file — they load over authenticated Firebase
    reads at runtime, so nothing sensitive lives in this cache. */
 
-const CACHE = 'hd3-v20';
+const CACHE = 'hd3-v21';
 
 /* App shell (scope-relative). catalog.js is the cost-free product list;
    the secure cost overlay loads from the locked /catalog node post-login. */
