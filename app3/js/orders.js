@@ -240,32 +240,20 @@ function renderCustomers(root) {
 const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
   'punnet', 'punnets', 'tray', 'trays', 'each', 'ea', 'pack', 'packs'];
 
-// Pre-loaded with Brian Cafe's order (15 items, agreed prices). Use Import with
-// "Replace" ticked to overwrite his order to exactly these — clear after.
-// Shanikas — current order matching the till (weights + agreed prices: avocado
-// tray $38, peeled potato $22, lemons x8, cherry $3). Re-import (Replace) to set
-// her app order to this. Total ~$217.64.
+// Pre-loaded for import (swapped per task). CURRENT: Carrum Downs ELC bulk order
+// (2026-06-18) — boxes + whole melons + per-piece veg at agreed prices. Open Import,
+// pick the "Carrum Downs ELC" customer, Create. Total $399.02.
 const IMPORT_PREFILL = [
-  '3 bunch Basil Bunch @ 3.5',
-  '2.162 kg Apples Granny Smith /kg @ 3.99',
-  '1 tray Avocado Hass Each @ 38',
-  '1.249 kg Beetroot /kg @ 5.99',
-  '1.04 kg Brocili @ 3.49',
-  '4 bunch Broccolini Bunch @ 2.99',
-  '1.223 kg Carrots Premium Loose /kg @ 2.49',
-  '2 punnet Tomato Cherry Punnets @ 3',
-  '0.112 kg Chilli Green @ 16.99',
-  '2 pack Lettuce Baby Cos Twin Pack @ 3.5',
-  '2 each Cucumbers Continental XXL @ 1.99',
-  '8 Lemons each @ 0.79',
-  '1 bag Onion Brown 10kg Bag @ 10.99',
-  '5 bunch Parsley @ 2.99',
-  '1 bag Potato Peeled 10kg Bag @ 22',
-  '1 box Rocket Leaves Box 1.5kg @ 21',
-  '2 bunch Onion Spring Bunch @ 2.49',
-  '1 punnet Strawberries 250g @ 6.99',
-  '4.031 kg Tomato Roma /kg @ 5.99',
-  '1.034 kg Zucchini /kg @ 3.99'
+  '1 box Apples, Pink Lady (box) @ 65',
+  '1 box Bananas (box) @ 55',
+  '1 box Oranges (box) @ 55',
+  '1 box Pears (box) @ 50',
+  '4 each Watermelon Seedless Whole @ 30',
+  '4 each Rockmelon Whole @ 6',
+  '6 each Tomatoes (ea) @ 0.79',
+  '6 each Cucumbers Continental XXL @ 2.50',
+  '2 bunch Celery Size 10 each @ 3.49',
+  '3 each Capsicum Red Each @ 1.10'
 ].join('\n');
 
 function parseQtyTok(s) {
@@ -304,7 +292,7 @@ function matchProduct(name) {
 function importSheet(body) {
   const custs = asList(customers()).filter(Boolean)
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  let selId = (custs.find(c => /shanik/i.test(c.name || '')) || custs[0] || {}).id || '';
+  let selId = (custs.find(c => /carrum|elc/i.test(c.name || '')) || custs[0] || {}).id || '';
   let text = IMPORT_PREFILL;
   let checked = null;
   let replace = false;
