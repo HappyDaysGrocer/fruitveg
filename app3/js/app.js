@@ -147,10 +147,24 @@ function wireChrome() {
 /* ---------- service worker ---------- */
 
 function registerSW() {
-  if ('serviceWorker' in navigator) {
-    // Relative to app2/index.html -> app2/sw.js, scoped to app2/.
-    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+  if (!('serviceWorker' in navigator)) return;
+  // SELF-HEAL after a deploy: when a freshly-activated service worker takes
+  // control, reload ONCE so the page runs the new code instead of the stale
+  // bundle it booted with (clients.claim swaps the controller but not the
+  // already-loaded JS). Guarded two ways so it can never loop:
+  //   • only armed when the page was ALREADY controlled at boot (so a brand-new
+  //     install's first claim never triggers a reload), and
+  //   • a one-shot flag so concurrent controllerchange events reload at most once.
+  let reloading = false;
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
   }
+  // Relative to app3/index.html -> app3/sw.js, scoped to app3/.
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
 }
 
 /* ---------- base styles for app.js-owned chrome (toast / sheet /
