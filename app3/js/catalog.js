@@ -318,8 +318,40 @@ function stockRow(p, withCat) {
       <div class="hdv-name">${esc(p.name)}${rev}${badge}</div>
       <div class="hdv-sub">${bits.join(' · ')}</div>
     </div>
-    ${stepperHTML(p.key, onHand == null ? 0 : onHand)}
+    ${stockStepper(p.key, onHand == null ? 0 : onHand)}
   </div>`;
+}
+
+/* Stepper for the Stock tab: the on-hand number is tap-to-type; +/- step by 1. */
+function stockStepper(key, qty) {
+  return `<div class="hdv-step">
+    <button class="hdv-sbtn" data-act="dec" data-key="${esc(key)}" aria-label="less">&minus;</button>
+    <span class="hdv-qty" data-act="editstock" data-key="${esc(key)}" title="tap to type"
+      style="cursor:pointer;text-decoration:underline dotted">${qty}</span>
+    <button class="hdv-sbtn plus" data-act="inc" data-key="${esc(key)}" aria-label="more">+</button>
+  </div>`;
+}
+
+/* Tap the on-hand number to TYPE it directly (any amount, decimals like 1.5 / 0.5). */
+function editStockInline(elm, key) {
+  const p = catalog().find(x => x.key === key);
+  const st = stockFor(key);
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = 'any'; inp.min = '0'; inp.inputMode = 'decimal';
+  inp.className = 'hdv-pin';
+  inp.value = st ? (Number(st.qty) || 0) : '';
+  elm.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = parseFloat(inp.value);
+    if (isFinite(v) && v >= 0) setStockCount(key, p ? p.name : key, Math.round(v * 1000) / 1000);  // 0 = counted zero
+    else rerenderNow();                                  // blank/invalid -> restore the number
+  };
+  inp.addEventListener('change', commit);
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
 }
 
 function onShopClick(e) {
@@ -329,6 +361,7 @@ function onShopClick(e) {
   if (act === 'chip') { shopCat = t.dataset.cat; rerenderNow(); return; }
   if (act === 'detail') { openSheet(productSheet(key)); return; }
   if (act === 'count') { import('./stock.js').then((m) => m.openCountSheet()); return; }
+  if (act === 'editstock') { editStockInline(t, key); return; }   // tap number -> type any amount
   if (act === 'inc' || act === 'dec') {                     // adjust the COUNTED on-hand qty
     const st = stockFor(key);
     const cur = st ? (Number(st.qty) || 0) : 0;
