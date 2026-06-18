@@ -1283,11 +1283,14 @@ function historySheet(body, custId) {
   } else {
     h += list.map(o => {
       const n = Array.isArray(o.lines) ? o.lines.length : 0;
+      const tq = tillQueueStatus(o.id);
+      const tqTxt = tq ? ' · ' + ({ queued: 'queued for till', sent: 'sent to till ✓', error: 'till error' }[tq.status] || tq.status) : '';
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
-          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}</div>
+          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}</div>
         </div>
+        ${(!tq || tq.status === 'error') ? `<button class="hdv-btnG slim" data-act="sendtill" data-id="${esc(o.id)}">→ Till</button>` : ''}
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
         <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Again</button>
       </div>`;
@@ -1301,6 +1304,7 @@ function historySheet(body, custId) {
     if (!src) return;
     if (t.dataset.act === 'again') reorder(custId, src);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
+    else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
   };
 }
 
@@ -1536,6 +1540,14 @@ function placedFor(date) {
     Array.isArray(o.lines) && o.lines.length);
 }
 
+/* Short pack-progress label for a placed order (used in the run view). */
+function packLabel(o) {
+  const ls = (o.lines || []).filter(Boolean);
+  if (!ls.length) return '';
+  const p = ls.filter(l => l.packed).length;
+  return p === 0 ? 'unpacked' : (p === ls.length ? 'packed ✓' : p + '/' + ls.length + ' packed');
+}
+
 /* Sum every placed line for a delivery date by product -> what to buy. */
 function aggregateBuy(dayOrders) {
   const agg = new Map();
@@ -1586,7 +1598,9 @@ function pickingSheet(body) {
     }
   } else {
     for (const o of dayOrders.slice().sort((a, b) => custName(a.custId).localeCompare(custName(b.custId)))) {
-      h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''}</div>`;
+      const tq = tillQueueStatus(o.id);
+      const tqTag = tq ? ' · ' + ({ queued: 'queued for till', sent: 'sent to till ✓', error: 'till error' }[tq.status] || tq.status) : '';
+      h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''} · ${esc(packLabel(o))}${tqTag}</div>`;
       h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div></div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
     }
   }
