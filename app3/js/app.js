@@ -10,11 +10,12 @@ import { renderShop, setActive, openSheet } from './catalog.js';
 import { renderOrders, renderMore, loginSheet } from './orders.js';
 import { renderMoney } from './money.js';
 import { renderBuy } from './buyrun.js';
+import { renderHome } from './home.js';
 import { openCommandBar } from './searchBar.js';
 
-const VIEWS = { buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
+const VIEWS = { home: renderHome, buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
 
-let current = 'buy';
+let current = 'home';
 
 /* The shell guarantees <main id="view">; create one defensively if missing
    so a markup typo degrades gracefully instead of hard-crashing the boot. */
@@ -29,11 +30,11 @@ if (!viewEl) {
 
 function hashView() {
   const h = (location.hash || '').replace('#', '');
-  return VIEWS[h] ? h : 'buy';
+  return VIEWS[h] ? h : 'home';
 }
 
 export function go(view) {
-  if (!VIEWS[view]) view = 'buy';
+  if (!VIEWS[view]) view = 'home';
   if (view !== current) history.pushState({ view }, '', '#' + view);
   current = view;
   render();
@@ -41,7 +42,7 @@ export function go(view) {
 
 window.addEventListener('popstate', (e) => {
   const v = (e.state && e.state.view) || hashView();
-  current = VIEWS[v] ? v : 'buy';
+  current = VIEWS[v] ? v : 'home';
   render();
 });
 
