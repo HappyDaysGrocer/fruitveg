@@ -3,7 +3,7 @@
    are NEVER cached in a static file — they load over authenticated Firebase
    reads at runtime, so nothing sensitive lives in this cache. */
 
-const CACHE = 'hd3-v13';
+const CACHE = 'hd3-v14';
 
 /* App shell (scope-relative). catalog.js is the cost-free product list;
    the secure cost overlay loads from the locked /catalog node post-login. */
@@ -71,7 +71,11 @@ self.addEventListener('fetch', (event) => {
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(req);
+    // cache:'no-store' bypasses the browser's HTTP cache so an online device
+    // ALWAYS gets the freshest file the instant it's deployed — no more stale
+    // app3 screens after an update (matches the root sw.js). The Cache API copy
+    // below is kept only as the OFFLINE fallback.
+    const res = await fetch(req, { cache: 'no-store' });
     if (res && res.ok) cache.put(req, res.clone());       // keep offline copy fresh
     return res;
   } catch (err) {
