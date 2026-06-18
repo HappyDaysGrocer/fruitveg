@@ -91,7 +91,8 @@ function buildCatalog(rows) {
       group: String(r.g || cat).trim(), // Woolies-style aisle (display only)
       name,
       sell: num(r.s),                 // retail shelf price only — no cost
-      barcode: r.b == null ? '' : String(r.b).trim()
+      barcode: r.b == null ? '' : String(r.b).trim(),
+      review: r.rv === 1 || r.rv === true  // newly inserted, awaiting owner review
     };
     CATALOG.push(item);
     CATALOG_BY_KEY.set(item.key, item);

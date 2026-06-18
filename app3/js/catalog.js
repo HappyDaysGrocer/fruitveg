@@ -315,9 +315,11 @@ function shopRow(p, withCat) {
   const sub = bits.join(' · ');
   const badge = out
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>' : '';
-  return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
+  const rev = p.review
+    ? ' <span class="hdv-newchip">NEW · review</span>' : '';
+  return `<div class="hdv-row${qty > 0 ? ' sel' : ''}${p.review ? ' review' : ''}">
     <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
-      <div class="hdv-name">${esc(p.name)}${badge}</div>
+      <div class="hdv-name">${esc(p.name)}${rev}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
     ${stepperHTML(p.key, qty)}
@@ -515,6 +517,10 @@ const CSS = `
 .hdv-row{display:flex;align-items:center;gap:10px;padding:8px 12px;
   border-bottom:1px solid var(--hdv-line)}
 .hdv-row.sel{background:var(--hdv-lt)}
+.hdv-row.review{background:rgba(29,78,216,.09);box-shadow:inset 4px 0 0 var(--hdv-blue)}
+.hdv-newchip{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.03em;
+  padding:2px 7px;border-radius:7px;background:rgba(29,78,216,.14);color:var(--hdv-blue);
+  vertical-align:middle;white-space:nowrap;margin-left:4px}
 .hdv-info{flex:1;min-width:0}
 .hdv-name{font-size:16px;font-weight:600;color:var(--hdv-text);overflow-wrap:anywhere}
 .hdv-sub{font-size:12.5px;color:var(--hdv-sub);margin-top:2px}
