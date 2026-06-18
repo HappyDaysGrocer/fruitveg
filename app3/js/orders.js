@@ -1600,7 +1600,10 @@ function pickingSheet(body) {
     for (const o of dayOrders.slice().sort((a, b) => custName(a.custId).localeCompare(custName(b.custId)))) {
       const tq = tillQueueStatus(o.id);
       const tqTag = tq ? ' · ' + ({ queued: 'queued for till', sent: 'sent to till ✓', error: 'till error' }[tq.status] || tq.status) : '';
-      h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''} · ${esc(packLabel(o))}${tqTag}</div>`;
+      h += `<div class="hdv-sec" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''} · ${esc(packLabel(o))}${tqTag}</span>
+        <button class="hdv-btnG slim" data-act="ppack" data-id="${esc(o.id)}" data-cust="${esc(o.custId)}" style="padding:3px 10px;font-size:12px;flex:0 0 auto">Pack</button>
+      </div>`;
       h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div></div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
     }
   }
@@ -1617,6 +1620,7 @@ function pickingSheet(body) {
     const act = t.dataset.act;
     if (act === 'pdate') { pickDate = t.dataset.d; pickingSheet(body); }
     else if (act === 'pmode') { pickMode = t.dataset.m; pickingSheet(body); }
+    else if (act === 'ppack') openSheet(packSheet(t.dataset.cust, t.dataset.id), { static: true });   // pack a placed order from the run
     else if (act === 'pshare') shareText(pickText(pickDate, pickMode));
     else if (act === 'pdone') closeSheet();
   };
