@@ -493,6 +493,7 @@ function renderTake(root, cust) {
     else if (act === 'chip') { takeCat = t2.dataset.cat; rerenderNow(); }
     else if (act === 'inc') changeLine(cust, key, 1);
     else if (act === 'dec') changeLine(cust, key, -1);
+    else if (act === 'editqty') editQtyInline(t2, cust, key);
     else if (act === 'price') editPriceInline(t2, cust, key);
     else if (act === 'addkg' || act === 'editkg') editWeightInline(t2, cust, key);
     else if (act === 'editcust') openSheet(b => customerSheet(b, cust), { static: true });
@@ -543,8 +544,8 @@ function takeRow(p, line, cust) {
     }
   } else {
     // Out + nothing on the order: no stepper (can't add). Out + qty>0: keep
-    // the stepper so the line can still be reduced/removed.
-    stepper = (out && qty === 0) ? '' : stepperHTML(p.key, qty);
+    // the stepper so the line can still be reduced/removed. Qty is tap-to-type.
+    stepper = (out && qty === 0) ? '' : qtyStepper(p.key, qty);
   }
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
@@ -703,6 +704,65 @@ function editWeightInline(elm, cust, key) {
   inp.addEventListener('change', commit);
   inp.addEventListener('blur', commit);
   inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
+}
+
+/* Tap a quantity number -> inline input so you can TYPE it directly (e.g. 100.5)
+   instead of only +/-. Mirrors editWeightInline but keeps the item's own unit. */
+function editQtyInline(elm, cust, key) {
+  const p = catalog().find(x => x.key === key);
+  let o = openOrderOf(cust.id);
+  let line = o && Array.isArray(o.lines) && o.lines.find(l => l.key === key);
+  if (!line) {
+    if (isOut(key)) { toast('Out of stock today'); return; }
+    o = ensureOpenOrder(cust.id);
+    if (!o) return;
+    if (!Array.isArray(o.lines)) o.lines = [];
+    const r = resolveLinePrice(cust.id, key);
+    line = { key, name: p ? p.name : key, sup: p ? p.cat : '', unit: '', qty: 0,
+      price: typeof r.price === 'number' ? r.price : '', src: r.src };
+    o.lines.push(line);
+  }
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = 'any'; inp.min = '0'; inp.inputMode = 'decimal';
+  inp.className = 'hdv-pin';
+  inp.value = Number(line.qty) || '';
+  elm.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const commit = () => {
+    if (done) return; done = true;
+    const v = parseFloat(inp.value);
+    if (isFinite(v) && v > 0) { line.qty = Math.round(v * 1000) / 1000; saveOrder(o); }
+    else if (v === 0 || (Number(line.qty) || 0) <= 0) {           // 0, or blank on a new line -> remove
+      o.lines = o.lines.filter(l => l.key !== key); saveOrder(o);
+    } else { rerenderNow(); refreshSheet(); }                     // blank on existing -> restore
+  };
+  inp.addEventListener('change', commit);
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
+}
+
+/* Stepper whose qty number is tappable to type directly (whole units or decimals). */
+function qtyStepper(key, qty) {
+  return `<div class="hdv-step">
+    <button class="hdv-sbtn" data-act="dec" data-key="${esc(key)}" aria-label="less">&minus;</button>
+    <span class="hdv-qty" data-act="editqty" data-key="${esc(key)}" title="tap to type"
+      style="cursor:pointer;text-decoration:underline dotted">${qty}</span>
+    <button class="hdv-sbtn plus" data-act="inc" data-key="${esc(key)}" aria-label="more">+</button>
+  </div>`;
+}
+
+/* The right stepper for an order line: tap-to-type weight for /kg items, else qty. */
+function lineStepper(l, qty) {
+  const isKg = String(l.name || '').includes('/kg') || l.unit === 'kg';
+  if (isKg) {
+    return `<div class="hdv-step">
+      <button class="hdv-sbtn" data-act="dec" data-key="${esc(l.key)}" aria-label="less">&minus;</button>
+      <span class="hdv-qty" data-act="editkg" data-key="${esc(l.key)}" title="tap to type kg"
+        style="cursor:pointer;text-decoration:underline dotted">${qty}kg</span>
+      <button class="hdv-sbtn plus" data-act="addkg" data-key="${esc(l.key)}" aria-label="weight">kg</button>
+    </div>`;
+  }
+  return qtyStepper(l.key, qty);
 }
 
 /* ---- review sheet (lines, qty/price edit, Share, Complete) ------------ */
@@ -1007,7 +1067,7 @@ function reviewSheet(body, custId) {
           ${marginHtml}
         </div>
         ${priceHtml}
-        ${stepperHTML(l.key, lq)}
+        ${lineStepper(l, lq)}
       </div>`;
     }).join('');
     h += `<div class="hdv-total"><span>Total</span><span>${money(total)}</span></div>`;
@@ -1055,6 +1115,8 @@ function reviewSheet(body, custId) {
     const c = asList(customers()).find(x => x && x.id === custId) || { id: custId, name: '' };
     if (act === 'inc') changeLine(c, key, 1);
     else if (act === 'dec') changeLine(c, key, -1);
+    else if (act === 'editqty') editQtyInline(t, c, key);
+    else if (act === 'addkg' || act === 'editkg') editWeightInline(t, c, key);
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
     else if (act === 'invpdf') {
