@@ -1288,7 +1288,7 @@ function historySheet(body, custId) {
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
-          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}</div>
+          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${o.paid ? ' · <b style="color:var(--hdv-green)">PAID</b>' : ' · <b style="color:var(--hdv-red)">unpaid</b>'}</div>
         </div>
         ${(!tq || tq.status === 'error') ? `<button class="hdv-btnG slim" data-act="sendtill" data-id="${esc(o.id)}">→ Till</button>` : ''}
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
@@ -1331,9 +1331,11 @@ function invoiceSheet(body, custId, orderId) {
   h += `<div class="hdv-total"><span>Total (GST-free)</span><span>${money(total)}</span></div>`;
   h += `<div class="hdv-sub" style="padding:6px 0 0">Payment: BSB ${BIZ.bsb} · Acc ${BIZ.acc} · Ref ${esc(invNo)}</div>`;
   if (cust.terms) h += `<div class="hdv-sub" style="padding:2px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
+  h += `<div class="hdv-sub" style="padding:6px 0;font-weight:800;color:${o.paid ? 'var(--hdv-green)' : 'var(--hdv-red)'}">${o.paid ? '● PAID ' + esc(niceDate(o.paid)) : '○ UNPAID'}</div>`;
   h += `<div class="hdv-actions">
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
     <button class="hdv-btnG slim" data-act="oform">Order form</button>
+    <button class="hdv-btnG slim" data-act="paid">${o.paid ? 'Mark unpaid' : 'Mark paid'}</button>
     <button class="hdv-btnG slim" data-act="idone">Done</button>
     <button class="hdv-btnP" data-act="ipdf">Share PDF</button>
   </div>`;
@@ -1343,6 +1345,7 @@ function invoiceSheet(body, custId, orderId) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
+    else if (t.dataset.act === 'paid') { o.paid = o.paid ? '' : todayStr(); saveOrder(o); toast(o.paid ? 'Marked paid' : 'Marked unpaid'); }
     else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
     else if (t.dataset.act === 'ipdf') {
       shareInvoice(invoiceData(invNo, cust, o)).then(s => {
