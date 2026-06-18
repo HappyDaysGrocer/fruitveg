@@ -1052,7 +1052,7 @@ function reviewSheet(body, custId) {
   if (!lines.length) {
     h += emptyHTML('No lines on this order yet');
   } else {
-    let totalCost = 0, totalSell = 0;
+    let totalCost = 0, totalSell = 0, belowCost = 0, lossSum = 0;
     h += lines.map(l => {
       const lq = Number(l.qty) || 0;
       const lSell = lq * (Number(l.price) || 0);
@@ -1065,10 +1065,12 @@ function reviewSheet(body, custId) {
         if (cost != null && cost > 0 && l.price != null && l.price !== '') {
           const lCost = lq * cost;
           const margin = lSell - lCost;
-          const pct = Math.round((margin / lSell) * 100);
+          const pct = lSell > 0 ? Math.round((margin / lSell) * 100) : 0;
           totalCost += lCost;
           totalSell += lSell;
-          marginHtml = `<div class="hdv-margin ${pct < 20 ? 'hdv-margin-low' : ''}">${pct}% · ${money(margin)}</div>`;
+          const loss = margin < 0;                              // margin gate: priced BELOW cost
+          if (loss) { belowCost++; lossSum += -margin; }
+          marginHtml = `<div class="hdv-margin ${loss ? 'hdv-margin-loss' : (pct < 20 ? 'hdv-margin-low' : '')}">${loss ? '⚠ BELOW COST · ' : ''}${pct}% · ${money(margin)}</div>`;
         } else {
           totalSell += lSell;
         }
@@ -1096,6 +1098,9 @@ function reviewSheet(body, custId) {
       const nNeed = lines.filter(l => l.price === '' || l.price == null).length;
       h += `<button class="hdv-pricebanner" data-act="reviewprices">⚠ ${nNeed} item${nNeed === 1 ? '' : 's'} need a price — tap to set them</button>`;
     }
+    if (hasCosts && belowCost > 0) {   // margin gate — never sell at a loss unawares
+      h += `<div class="hdv-err" style="background:rgba(185,28,28,.12);border-radius:10px;padding:10px 12px;font-weight:800">⚠ ${belowCost} item${belowCost === 1 ? '' : 's'} priced BELOW COST — you'd lose ${money(lossSum)}. Tap a price to fix.</div>`;
+    }
 
     // Till queue status badge
     if (tqStatus) {
@@ -1109,7 +1114,9 @@ function reviewSheet(body, custId) {
     // Price-gate: can't place (or send to till) with a $0/blank line — set them first.
     const cta = nNeed
       ? `<button class="hdv-btnP" data-act="reviewprices">Set ${nNeed} price${nNeed === 1 ? '' : 's'} first</button>`
-      : `<button class="hdv-btnP" data-act="complete">Done — place order</button>`;
+      : (hasCosts && belowCost > 0)
+        ? `<button class="hdv-btnP" data-act="complete" style="background:var(--hdv-amber)">Place anyway · ${belowCost} below cost</button>`
+        : `<button class="hdv-btnP" data-act="complete">Done — place order</button>`;
     h += `<div class="hdv-actions">
       <button class="hdv-btnB" data-act="pack">📦 Pack${packedN ? ` · ${packedN}/${lines.length}` : ''}</button>
       <button class="hdv-btnG slim" data-act="share">Text</button>

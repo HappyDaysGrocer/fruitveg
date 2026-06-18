@@ -599,6 +599,7 @@ const CSS = `
   border-radius:12px;padding:13px;font-size:16px;font-weight:700}
 .hdv-margin{font-size:12px;font-weight:600;color:var(--hdv-green);margin-top:2px}
 .hdv-margin.hdv-margin-low{color:var(--hdv-amber)}
+.hdv-margin.hdv-margin-loss{color:var(--hdv-red);font-weight:800}
 .hdv-total-margin{color:var(--hdv-green);font-size:14px}
 .hdv-tq-status{font-size:13px;font-weight:700;padding:8px 0;border-radius:8px;text-align:center}
 .hdv-tq-queued{color:var(--hdv-amber)}
