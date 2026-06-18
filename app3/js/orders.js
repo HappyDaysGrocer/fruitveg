@@ -241,20 +241,28 @@ function renderCustomers(root) {
 const IMPORT_UNITS = ['box', 'boxes', 'bag', 'bags', 'bunch', 'bunches', 'kg',
   'punnet', 'punnets', 'tray', 'trays', 'each', 'ea', 'pack', 'packs'];
 
-// Pre-loaded for import (swapped per task). CURRENT: Carrum Downs ELC bulk order
-// (2026-06-18) — boxes + whole melons + per-piece veg at agreed prices. Open Import,
-// pick the "Carrum Downs ELC" customer, Create. Total $399.02.
+// Pre-loaded for import (swapped per task). CURRENT: order sheet (2026-06-18),
+// priced from the app catalogue. Open Import, PICK THE CUSTOMER, Check, Create.
+// Avocado tray + Lemon-by-kg were left off pending the owner's price.
 const IMPORT_PREFILL = [
-  '1 box Apples, Pink Lady (box) @ 65',
-  '1 box Bananas (box) @ 55',
-  '1 box Oranges (box) @ 55',
-  '1 box Pears (box) @ 50',
-  '4 each Watermelon Seedless Whole @ 30',
-  '4 each Rockmelon Whole @ 6',
-  '6 each Tomatoes (ea) @ 0.79',
-  '6 each Cucumbers Continental XXL @ 2.50',
-  '2 bunch Celery Size 10 each @ 3.49',
-  '3 each Capsicum Red Each @ 1.10'
+  '3 bunch Basil Bunch @ 4.50',
+  '2 kg Apples Granny Smith /kg @ 4.99',
+  '1 kg Beetroot /kg @ 5.99',
+  '1 kg Brocili @ 3.91',
+  '4 bunch Broccolini Bunch @ 2.99',
+  '1 kg Carrots Premium Loose /kg @ 2.49',
+  '2 punnet Tomato Cherry Punnets @ 3.50',
+  '0.1 kg Chillies, Long Green /kg @ 16.99',
+  '2 pack Lettuce Baby Cos Twin Pack @ 3.50',
+  '2 each Cucumbers Continental XXL @ 2.50',
+  '1 bag Onion Brown 10kg Bag @ 10.99',
+  '5 bunch Parsley @ 2.99',
+  '1 bag Potato Peeled 10kg Bag @ 25.00',
+  '1 box Rocket Leaves Box 1.5kg @ 22.00',
+  '2 bunch Onion Spring Bunch @ 2.49',
+  '1 punnet Strawberries 250g @ 7.50',
+  '4 kg Tomatoes Truss /kg @ 5.99',
+  '1 kg Zucchini /kg @ 3.99'
 ].join('\n');
 
 function parseQtyTok(s) {
@@ -293,7 +301,7 @@ function matchProduct(name) {
 function importSheet(body) {
   const custs = asList(customers()).filter(Boolean)
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  let selId = (custs.find(c => /carrum|elc/i.test(c.name || '')) || custs[0] || {}).id || '';
+  let selId = (custs[0] || {}).id || '';   // no preselect — owner picks the customer for this import
   let text = IMPORT_PREFILL;
   let checked = null;
   let replace = false;
