@@ -1372,10 +1372,13 @@ function invoiceSheet(body, custId, orderId) {
   h += `<div class="hdv-sub" style="padding:6px 0 0">Payment: BSB ${BIZ.bsb} · Acc ${BIZ.acc} · Ref ${esc(invNo)}</div>`;
   if (cust.terms) h += `<div class="hdv-sub" style="padding:2px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
   h += `<div class="hdv-sub" style="padding:6px 0;font-weight:800;color:${o.paid ? 'var(--hdv-green)' : 'var(--hdv-red)'}">${o.paid ? '● PAID ' + esc(niceDate(o.paid)) : '○ UNPAID'}</div>`;
+  if (o.remittance) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">📎 Remittance attached${o.remittanceAt ? ' · ' + esc(niceDate(o.remittanceAt)) : ''}</div>`;
+  else if (o.paid) h += `<div class="hdv-sub" style="color:var(--hdv-amber);font-weight:700">⚠ no remittance/receipt attached yet</div>`;
   h += `<div class="hdv-actions">
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
     <button class="hdv-btnG slim" data-act="oform">Order form</button>
     <button class="hdv-btnG slim" data-act="paid">${o.paid ? 'Mark unpaid' : 'Mark paid'}</button>
+    <button class="hdv-btnG slim" data-act="remit">${o.remittance ? '📎 View proof' : '📎 Attach proof'}</button>
     <button class="hdv-btnG slim" data-act="idone">Done</button>
     <button class="hdv-btnP" data-act="ipdf">Share PDF</button>
   </div>`;
@@ -1387,12 +1390,66 @@ function invoiceSheet(body, custId, orderId) {
     if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
     else if (t.dataset.act === 'paid') { o.paid = o.paid ? '' : todayStr(); saveOrder(o); toast(o.paid ? 'Marked paid' : 'Marked unpaid'); }
     else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
+    else if (t.dataset.act === 'remit') { if (o.remittance) openSheet(remittanceViewer(o)); else attachRemittance(o); }
     else if (t.dataset.act === 'ipdf') {
       shareInvoice(invoiceData(invNo, cust, o)).then(s => {
         if (s === 'downloaded') toast('Invoice PDF saved');
       }).catch(() => toast('Could not make the PDF'));
     }
     else if (t.dataset.act === 'idone') closeSheet();
+  };
+}
+
+/* Attach a payment proof (remittance / bank-statement screenshot) to an invoice.
+   Compressed client-side (max 1100px, JPEG) so it stays small; stored on the
+   order and persisted by saveOrder. Attaching also marks the invoice paid. */
+function attachRemittance(o) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height; const max = 1100;
+        if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        try { o.remittance = cv.toDataURL('image/jpeg', 0.6); }
+        catch (e) { toast('Could not read that image'); return; }
+        o.remittanceAt = todayStr();
+        if (!o.paid) o.paid = todayStr();          // proof attached -> mark paid
+        saveOrder(o);
+        toast('Payment proof attached');
+        refreshSheet();
+      };
+      img.onerror = () => toast('Could not read that image');
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  };
+  inp.click();
+}
+
+function remittanceViewer(o) {
+  return (body) => {
+    body.innerHTML = `<div class="hdv-sheettitle">Payment proof</div>
+      <div class="hdv-sheetsub">${o.remittanceAt ? 'attached ' + esc(niceDate(o.remittanceAt)) : ''}</div>
+      <img src="${o.remittance}" alt="remittance" style="width:100%;border-radius:10px;border:1px solid var(--hdv-line)">
+      <div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="reremit">Replace</button>
+        <button class="hdv-btnG slim danger" data-act="delremit">Remove</button>
+        <button class="hdv-btnP" data-act="vclose">Close</button>
+      </div>`;
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]');
+      if (!t) return;
+      if (t.dataset.act === 'vclose') closeSheet();
+      else if (t.dataset.act === 'reremit') attachRemittance(o);
+      else if (t.dataset.act === 'delremit') { delete o.remittance; delete o.remittanceAt; saveOrder(o); toast('Proof removed'); closeSheet(); }
+    };
   };
 }
 
