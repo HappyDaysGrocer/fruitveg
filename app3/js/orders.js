@@ -1303,17 +1303,51 @@ function historySheet(body, custId) {
         <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Again</button>
       </div>`;
     }).join('');
+    let billed = 0, paid = 0;
+    for (const o of list) { const t = orderTotal(o.lines); billed += t; if (o.paid) paid += t; }
+    const owing = billed - paid;
+    h += `<div class="hdv-total"><span>Billed</span><span>${money(billed)}</span></div>`;
+    h += `<div class="hdv-total"><span>Paid</span><span style="color:var(--hdv-green)">${money(paid)}</span></div>`;
+    h += `<div class="hdv-total" style="font-weight:900"><span>Owing</span><span style="color:${owing > 0 ? 'var(--hdv-red)' : 'var(--hdv-green)'}">${money(owing)}</span></div>`;
+    h += `<div class="hdv-actions">
+      <button class="hdv-btnG slim" data-act="ststext">Text statement</button>
+      <button class="hdv-btnP" data-act="hclose">Close</button>
+    </div>`;
   }
   body.innerHTML = h;
   body.onclick = e => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
+    if (t.dataset.act === 'hclose') { closeSheet(); return; }
+    if (t.dataset.act === 'ststext') { shareText(statementText(cust, list)); return; }
     const src = asList(orders()).find(o => o && o.id === t.dataset.id);
     if (!src) return;
     if (t.dataset.act === 'again') reorder(custId, src);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
   };
+}
+
+/* Plain-text account statement for a customer — every completed invoice with
+   paid/owing status + the running balance, ready to text/email a restaurant. */
+function statementText(cust, list) {
+  let billed = 0, paid = 0;
+  const rows = list.map(o => {
+    const t = orderTotal(o.lines); billed += t; if (o.paid) paid += t;
+    const d = o.deliveryDate ? niceDate(o.deliveryDate) : (o.completed || '');
+    return `${(o.orderNo || 'Order')}  ${d}  ${money(t)}  ${o.paid ? 'PAID' : 'OWING'}`;
+  });
+  const owing = billed - paid;
+  return [
+    'STATEMENT — ' + (cust.name || ''),
+    BIZ.name, 'ABN ' + BIZ.abn, '',
+    rows.join('\n'), '',
+    'Billed: ' + money(billed),
+    'Paid:   ' + money(paid),
+    'OWING:  ' + money(owing), '',
+    'Pay: BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc,
+    BIZ.name + ' · ' + BIZ.phone
+  ].filter(s => s !== '').join('\n');
 }
 
 /* ---- Outstanding (AR): every placed-but-unpaid invoice + total owed ---- */
@@ -1491,7 +1525,7 @@ function invoiceData(invNo, cust, o) {
 function invoiceText(invNo, cust, o) {
   const lines = (o.lines || []).map(l => {
     const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
-    return `${lq} x ${l.name} @ ${money(lp)} = ${money(lq * lp)}`;
+    return `${lq} x ${l.name} @ ${money(lp)} = ${money(lq * lp)}` + (l.note ? ` (${l.note})` : '');
   });
   const total = orderTotal(o.lines);
   return [
@@ -1504,6 +1538,7 @@ function invoiceText(invNo, cust, o) {
     'Bill to: ' + (cust.name || ''),
     deliveryText(cust, o) ? 'Delivery: ' + deliveryText(cust, o) : '',
     'Order: ' + (o.orderNo || o.id),
+    (o.comment ? 'Note: ' + o.comment : ''),
     '',
     lines.join('\n'),
     '',
@@ -1778,11 +1813,12 @@ function orderText(cust, o) {
   const del = o.deliveryDate || (di ? di.date : null);
   const rows = (o.lines || []).map(l => {
     const lp = Number(l.price) || 0, lq = Number(l.qty) || 0;
-    return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '');
+    return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '') + (l.note ? ` (${l.note})` : '');
   });
   return `Happy Days — order for ${cust ? cust.name : ''}` +
     (o.orderNo ? ` (${o.orderNo})` : '') +
-    (del ? `\nFor delivery: ${niceDate(del)}` : '') + '\n' +
+    (del ? `\nFor delivery: ${niceDate(del)}` : '') +
+    (o.comment ? `\nNote: ${o.comment}` : '') + '\n' +
     rows.join('\n') +
     `\nTotal: ${money(orderTotal(o.lines))}` +
     '\n\nHappy Days Fruit Veg & Grocer · 0430 033 127';
