@@ -170,6 +170,7 @@ function renderCustomers(root) {
     <div style="display:flex;gap:8px">
       <button class="hdv-btnG slim" data-act="import">Import</button>
       <button class="hdv-btnG slim" data-act="picking">Picking</button>
+      <button class="hdv-btnG slim" data-act="owing">Owing</button>
       <button class="hdv-btnG slim" data-act="newcust">+ New</button>
     </div>
   </div>`;
@@ -227,6 +228,8 @@ function renderCustomers(root) {
       openSheet(b => customerSheet(b, null), { static: true });
     } else if (t.dataset.act === 'picking') {
       openSheet(pickingSheet);
+    } else if (t.dataset.act === 'owing') {
+      openSheet(outstandingSheet);
     } else if (t.dataset.act === 'import') {
       openSheet(importSheet, { static: true });
     }
@@ -1305,6 +1308,43 @@ function historySheet(body, custId) {
     if (t.dataset.act === 'again') reorder(custId, src);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
+  };
+}
+
+/* ---- Outstanding (AR): every placed-but-unpaid invoice + total owed ---- */
+function outstandingSheet(body) {
+  const render = () => {
+    const owed = asList(orders()).filter(o =>
+      o && o.status === 'completed' && !o.paid && Array.isArray(o.lines) && o.lines.length);
+    owed.sort((a, b) =>
+      String(a.deliveryDate || a.completed || '').localeCompare(String(b.deliveryDate || b.completed || '')) ||
+      custName(a.custId).localeCompare(custName(b.custId)));
+    const total = owed.reduce((s, o) => s + orderTotal(o.lines), 0);
+    let h = `<div class="hdv-sheettitle">Outstanding invoices</div>
+      <div class="hdv-sheetsub">${owed.length} unpaid · ${money(total)} owed</div>`;
+    if (!owed.length) {
+      h += emptyHTML('All invoices paid 🎉');
+    } else {
+      h += owed.map(o => `<div class="hdv-row">
+        <div class="hdv-info">
+          <div class="hdv-name">${esc(custName(o.custId))} · ${money(orderTotal(o.lines))}</div>
+          <div class="hdv-sub">${esc(o.orderNo || 'Order')}${o.deliveryDate ? ' · ' + esc(niceDate(o.deliveryDate)) : (o.completed ? ' · ' + esc(o.completed) : '')}</div>
+        </div>
+        <button class="hdv-btnG slim" data-act="opaid" data-id="${esc(o.id)}">Mark paid</button>
+      </div>`).join('');
+    }
+    h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="odone">Done</button></div>`;
+    body.innerHTML = h;
+  };
+  render();
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'odone') { closeSheet(); return; }
+    if (t.dataset.act === 'opaid') {
+      const o = asList(orders()).find(x => x && x.id === t.dataset.id);
+      if (o) { o.paid = todayStr(); saveOrder(o); toast('Marked paid'); render(); }
+    }
   };
 }
 
