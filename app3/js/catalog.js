@@ -5,9 +5,9 @@
    reactively whenever the store emits 'change' or #q input changes. */
 
 import {
-  catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth,
+  catalog, categories, groups, orderedCats, searchCatalog, bus, auth,
   isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty,
-  stockFor
+  stockFor, setStockCount
 } from './store.js';
 import { boxFor } from './boxes.js';
 
@@ -242,6 +242,11 @@ export function skeletonHTML(n = 8) {
 
 let shopCat = ''; // selected category chip ('' = All)
 
+/* STOCK ON HAND view (v3.47). This tab is about what we physically have on the
+   shelf — NOT a shopping list (all buying lives in the Buy tab / buy run). Each
+   row's +/- adjusts the COUNTED on-hand quantity (setStockCount); "Count stock"
+   opens the fast scan/search counter; tapping a product opens its detail (where
+   it can be marked out of stock or added to the buy run). */
 export function renderShop(root) {
   ensureCss();
   setActive(() => renderShop(root));
@@ -257,17 +262,16 @@ export function renderShop(root) {
   let list = q ? searchCatalog(q) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
 
-  let h = '';
-  if (!auth.user()) {
-    h += `<button data-act="gologin" style="display:block;width:calc(100% - 24px);margin:10px 12px 0;
-      border:0;border-radius:12px;background:var(--hdv-green);color:#fff;font-family:inherit;
-      font-size:14px;font-weight:700;padding:11px 14px;text-align:left;cursor:pointer">
-      Have an account? Sign in to see your prices &amp; order ›</button>`;
-  } else {
-    // v3.4: stocktake lives in the Stock tab — count mode is one tap away
-    h += `<div class="hdv-head"><div class="hdv-h1">Stock</div>
-      <button class="hdv-btnG slim" data-act="count">Count stock</button></div>`;
+  const today = todayStr();
+  let countedToday = 0, outN = 0;
+  for (const p of items) {
+    const s = stockFor(p.key); if (s && s.at === today) countedToday++;
+    if (isOut(p.key)) outN++;
   }
+
+  let h = `<div class="hdv-head"><div class="hdv-h1">Stock on hand</div>
+    <button class="hdv-btnG slim" data-act="count">Count stock</button></div>`;
+  h += `<div class="hdv-sec">${countedToday} counted today · ${outN} out of stock · tap &plusmn; to set what's on the shelf</div>`;
   h += chipsHTML(groups(), shopCat);
 
   if (q) {
@@ -275,11 +279,10 @@ export function renderShop(root) {
       h += emptyHTML(`No products match “${esc(q)}”`);
     } else {
       h += `<div class="hdv-sec">${list.length} result${list.length === 1 ? '' : 's'}</div>`;
-      h += list.map(p => shopRow(p, true)).join('');
+      h += list.map(p => stockRow(p, true)).join('');
     }
   } else {
-    // Empty search -> aisle/shelf layout: sections are the fine categories,
-    // ordered by aisle (produce A-B…S-Z first, then the grocery aisles).
+    // aisle/shelf layout: sections are the fine categories, ordered by aisle.
     const byCat = new Map();
     for (const p of list) {
       if (!byCat.has(p.cat)) byCat.set(p.cat, []);
@@ -288,41 +291,34 @@ export function renderShop(root) {
     for (const c of orderedCats(shopCat || undefined)) {
       const g = byCat.get(c);
       if (!g || !g.length) continue;
-      h += `<div class="hdv-sec">${esc(c)}</div>` + g.map(p => shopRow(p, false)).join('');
+      h += `<div class="hdv-sec">${esc(c)}</div>` + g.map(p => stockRow(p, false)).join('');
     }
   }
 
   h += '<div class="hdv-pad"></div>';
-
-  const n = buy.count();
-  if (n > 0) {
-    h += `<button class="hdv-bar" data-act="viewlist">
-      <span>${n} item${n === 1 ? '' : 's'}</span>
-      <span class="hdv-bar-cta">View list ›</span>
-    </button>`;
-  }
-
   root.innerHTML = h;
   root.onclick = onShopClick;
 }
 
-function shopRow(p, withCat) {
-  const qty = buy.qty(p.key) || 0;
+/* One product as a STOCK row: name (+ OUT / NEW flags), on-hand status, and a
+   stepper bound to the counted quantity. */
+function stockRow(p, withCat) {
+  const st = stockFor(p.key);
+  const onHand = st ? (Number(st.qty) || 0) : null;
   const out = isOut(p.key);
   const bits = [];
   if (withCat && p.cat) bits.push(p.cat);
-  if (typeof p.sell === 'number' && p.sell > 0) bits.push(money(p.sell));
-  const sub = bits.join(' · ');
+  bits.push(onHand == null ? 'not counted' : onHand + ' on hand' + (st.at ? ' · counted ' + esc(st.at) : ''));
   const badge = out
-    ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>' : '';
+    ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT</span>' : '';
   const rev = p.review
     ? ' <span class="hdv-newchip">NEW · review</span>' : '';
-  return `<div class="hdv-row${qty > 0 ? ' sel' : ''}${p.review ? ' review' : ''}">
+  return `<div class="hdv-row${out ? ' review' : ''}">
     <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
       <div class="hdv-name">${esc(p.name)}${rev}${badge}</div>
-      ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
+      <div class="hdv-sub">${bits.join(' · ')}</div>
     </div>
-    ${stepperHTML(p.key, qty)}
+    ${stepperHTML(p.key, onHand == null ? 0 : onHand)}
   </div>`;
 }
 
@@ -330,13 +326,16 @@ function onShopClick(e) {
   const t = e.target.closest('[data-act]');
   if (!t) return;
   const act = t.dataset.act, key = t.dataset.key;
-  if (act === 'chip') { shopCat = t.dataset.cat; rerenderNow(); }
-  else if (act === 'inc') buy.add(key, 1);                  // store emits 'change'
-  else if (act === 'dec') { if ((buy.qty(key) || 0) > 0) buy.add(key, -1); }
-  else if (act === 'detail') openSheet(productSheet(key));  // v3.3 one detail sheet
-  else if (act === 'count') import('./stock.js').then((m) => m.openCountSheet());
-  else if (act === 'viewlist') openSheet(buyListSheet);
-  else if (act === 'gologin') window.HD.go('orders');       // welcome screen
+  if (act === 'chip') { shopCat = t.dataset.cat; rerenderNow(); return; }
+  if (act === 'detail') { openSheet(productSheet(key)); return; }
+  if (act === 'count') { import('./stock.js').then((m) => m.openCountSheet()); return; }
+  if (act === 'inc' || act === 'dec') {                     // adjust the COUNTED on-hand qty
+    const st = stockFor(key);
+    const cur = st ? (Number(st.qty) || 0) : 0;
+    if (act === 'dec' && cur <= 0) return;                  // don't create a count by tapping − on an uncounted item
+    const p = catalog().find(x => x.key === key);
+    setStockCount(key, p ? p.name : key, act === 'inc' ? cur + 1 : cur - 1);  // store emits 'change'
+  }
 }
 
 /* ---- unified product detail sheet (v3.3, DESIGN.md) ----
@@ -412,65 +411,8 @@ export function productSheet(key) {
   };
 }
 
-/* ---- market list bottom sheet (chosen items, steppers, Clear, Share) */
-
-function buyEntries() {
-  // buy.entries() -> [[key,qty],...] (Object.entries shape); be lenient.
-  return (buy.entries() || [])
-    .map(e => Array.isArray(e) ? { key: e[0], qty: e[1] } : { key: e.key, qty: e.qty })
-    .filter(x => x.key && (Number(x.qty) || 0) > 0);
-}
-
-function buyListSheet(body) {
-  const map = new Map(catalog().map(p => [p.key, p]));
-  const items = buyEntries();
-
-  let h = `<div class="hdv-sheettitle">Market list</div>
-    <div class="hdv-sheetsub">${todayStr()}</div>`;
-
-  if (!items.length) {
-    h += emptyHTML('Your list is empty');
-  } else {
-    h += items.map(({ key, qty }) => {
-      const p = map.get(key);
-      const name = p ? p.name : (key.split('||')[1] || key);
-      const sell = p && typeof p.sell === 'number' && p.sell > 0 ? money(p.sell) : '';
-      return `<div class="hdv-row sel">
-        <div class="hdv-info">
-          <div class="hdv-name">${esc(name)}</div>
-          ${sell ? `<div class="hdv-sub">${sell}</div>` : ''}
-        </div>
-        ${stepperHTML(key, qty)}
-      </div>`;
-    }).join('');
-    h += `<div class="hdv-actions">
-      <button class="hdv-btnG danger" data-act="clear">Clear</button>
-      <button class="hdv-btnG" data-act="share">Share</button>
-      <button class="hdv-btnP" data-act="done">Done</button>
-    </div>`;
-  }
-
-  body.innerHTML = h;
-  body.onclick = e => {
-    const t = e.target.closest('[data-act]');
-    if (!t) return;
-    const act = t.dataset.act, key = t.dataset.key;
-    if (act === 'inc') buy.add(key, 1);
-    else if (act === 'dec') { if ((buy.qty(key) || 0) > 0) buy.add(key, -1); }
-    else if (act === 'clear') { buy.clear(); closeSheet(); toast('List cleared'); }
-    else if (act === 'share') shareText(buyListText());
-    else if (act === 'done') closeSheet();
-  };
-}
-
-function buyListText() {
-  const map = new Map(catalog().map(p => [p.key, p]));
-  const lines = buyEntries().map(({ key, qty }) => {
-    const p = map.get(key);
-    return `${qty} x ${p ? p.name : (key.split('||')[1] || key)}`;
-  });
-  return `Happy Days — market list ${todayStr()}\n` + lines.join('\n');
-}
+/* (The old ad-hoc "market list" that lived on this tab was removed in v3.47 — it
+   duplicated the demand-driven Buy run. All buying now lives in the Buy tab.) */
 
 /* ------------------------------------------------- injected view styles
    Namespaced hdv-* so nothing in css/app.css can collide. Uses the brand
