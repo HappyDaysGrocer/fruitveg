@@ -553,6 +553,122 @@ dialog.sheet::backdrop { background: rgba(13, 40, 24, .5); }
   }
 }
 
+/* ---------- 19. Desktop / laptop dashboard layout (>=1024px) ----------
+   Pure presentation: the phone column becomes a fixed LEFT SIDEBAR + TOP BAR +
+   a wide, centred content area; bottom-sheets become centred modals. No markup
+   or JS changes — the phone layout (<1024px) is completely unaffected. */
+@media (min-width: 1024px) {
+  :root { --side-w: 240px; --content-max: 1180px; }
+
+  /* fixed header height for sticky offsets; no collapse-on-scroll on desktop */
+  body, body.scrolled { --hdr-h: 68px; }
+
+  body {
+    max-width: none;
+    margin: 0;
+    padding-left: var(--side-w);
+    padding-bottom: 32px;
+  }
+
+  /* ---- top bar (logo left, search right, command button) ---- */
+  .hdr {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: var(--hdr-h);
+    padding: 0 28px;
+  }
+  .brand { height: auto; margin: 0; overflow: visible; }
+  .brand img { height: 36px; }
+  body.scrolled .brand { height: auto; opacity: 1; }      /* never collapse on desktop */
+  .searchwrap { flex: 0 1 440px; height: 40px; margin-left: auto; }
+  .searchwrap input { height: 40px; }
+
+  /* ---- left sidebar (was the bottom tab bar) ---- */
+  .nav {
+    position: fixed;
+    top: 0; bottom: 0; left: 0; right: auto;
+    width: var(--side-w);
+    max-width: none;
+    margin: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 16px 12px;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    overflow-y: auto;
+  }
+  .nav::before {
+    content: "In-House";
+    padding: 6px 14px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .navbtn {
+    flex: 0 0 auto;
+    height: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .navbtn svg { width: 22px; height: 22px; }
+  .navbtn:hover { background: var(--surface-2); }
+  .navbtn.active, .navbtn[aria-current="page"] {
+    background: var(--brand-soft);
+    color: var(--green-deep);
+  }
+  .navbtn.active::after, .navbtn[aria-current="page"]::after {
+    top: 50%; left: 0;
+    width: 3px; height: 22px;
+    transform: translateY(-50%);
+    border-radius: 0 3px 3px 0;
+  }
+
+  /* ---- main content: wide but capped + centred ---- */
+  #view {
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: 6px 28px 48px;
+  }
+  #view h2, .section-title, .chips { top: var(--hdr-h); }
+
+  /* ---- bottom action/summary bars span the main area ---- */
+  .sumbar, .totalbar, .bottombar {
+    left: var(--side-w); right: 0;
+    max-width: none; margin: 0;
+    padding-inline: 28px;
+  }
+
+  /* ---- bottom-sheets -> centred modal dialogs ---- */
+  .sheet {
+    left: calc(50% + var(--side-w) / 2); right: auto;
+    top: 50%; bottom: auto;
+    width: min(560px, calc(100vw - var(--side-w) - 64px));
+    max-width: none;
+    max-height: 86dvh;
+    border-radius: var(--radius-lg);
+    transform: translate(-50%, -50%);
+    animation: sheet-pop .18s ease;
+  }
+  .sheet::before { display: none; }                       /* no grab handle on desktop */
+  .sheet.closing { animation: sheet-pop-out .15s ease forwards; }
+
+  /* ---- login gate: drop the sidebar offset while locked ---- */
+  body.hd3-locked { padding-left: 0; }
+  body.hd3-locked .hdr { padding-left: 28px; }
+}
+@keyframes sheet-pop     { from { opacity: 0; transform: translate(-50%, -46%) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes sheet-pop-out { from { opacity: 1; transform: translate(-50%, -50%); } to { opacity: 0; transform: translate(-50%, -48%) scale(.98); } }
+
 /* ---------- 18. Install-as-app bar + help sheet (ported from v2) ---------- */
 .installbar {
   display: flex; align-items: center; gap: 10px;
