@@ -184,9 +184,10 @@ function renderCustomers(root) {
     const t = tm[c.tierId];
     const open = openOrderOf(c.id);
     const n = open && Array.isArray(open.lines) ? open.lines.length : 0;
+    const packed = open && Array.isArray(open.lines) ? open.lines.filter(l => l && l.packed).length : 0;
     const meta = [
       c.type ? typeLabel(c.type) : '',
-      n ? `${n} item${n === 1 ? '' : 's'} on open order` : 'No open order',
+      n ? `${n} item${n === 1 ? '' : 's'} on open order${packed ? ` · ${packed}/${n} packed` : ''}` : 'No open order',
       c.phone ? esc(c.phone) : ''
     ].filter(Boolean).join(' · ');
     return `<div class="hdv-card${n ? ' has-order' : ''}" data-act="cust" data-id="${esc(c.id)}">
@@ -431,6 +432,20 @@ function renderTake(root, cust) {
 
   h += chipsHTML(groups(), takeCat);
 
+  // Reorder-first (Woolies/Fresho): one tap to copy this customer's last order,
+  // then just edit what changed — the biggest time-saver for weekly repeat orders.
+  if (!q && !takeCat) {
+    const last = completedOrdersOf(cust.id)[0];
+    if (last && (last.lines || []).length) {
+      h += `<button data-act="reorderlast" style="display:block;width:calc(100% - 24px);margin:10px 12px 2px;
+        border:0;border-radius:12px;background:var(--hdv-green);color:#fff;font-family:inherit;
+        font-size:14px;font-weight:800;padding:12px 14px;text-align:left;cursor:pointer">
+        &#8635; Repeat last order &middot; ${last.lines.length} item${last.lines.length === 1 ? '' : 's'} &middot; ${money(orderTotal(last.lines))}
+        <span style="font-weight:600;opacity:.85"> &mdash; ${esc(niceDate(last.deliveryDate || last.completed || ''))}</span>
+      </button>`;
+    }
+  }
+
   // Order guide: the customer's usual products first (only on the unfiltered view)
   if (!q && !takeCat) {
     const usuals = usualsFor(cust.id);
@@ -485,6 +500,7 @@ function renderTake(root, cust) {
     else if (act === 'history') openSheet(b => historySheet(b, cust.id));
     else if (act === 'standing') openSheet(b => standingSheet(b, cust), { static: true });
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
+    else if (act === 'reorderlast') { const last = completedOrdersOf(cust.id)[0]; if (last) reorder(cust.id, last); }
   };
 }
 
@@ -504,7 +520,8 @@ function takeRow(p, line, cust) {
   }
   const onSpecial = !!specialFor(p.key);
   const out = isOut(p.key);
-  const sub = [p.cat, (typeof p.sell === 'number' && p.sell > 0) ? 'shop ' + money(p.sell) : '']
+  const srcTxt = line ? srcLabel(line.src) : '';   // once on the order, show where the price came from
+  const sub = [p.cat, srcTxt || ((typeof p.sell === 'number' && p.sell > 0) ? 'shop ' + money(p.sell) : '')]
     .filter(Boolean).join(' · ');
   let badge = onSpecial
     ? ' <span class="hdv-tchip" style="background:#fdebd0;color:#b45309">SPECIAL</span>' : '';
@@ -558,14 +575,24 @@ function lastOrderPrice(custId, key) {
   }
   return null;
 }
-function defaultLinePrice(custId, key) {
+/* Resolve a line's price AND record WHERE it came from, so the row can show a
+   trustworthy hint ('last $4.99' / 'tier' / 'shelf') and Review can flag blanks. */
+function resolveLinePrice(custId, key) {
   const lp = lastOrderPrice(custId, key);
-  if (typeof lp === 'number') return lp;
+  if (typeof lp === 'number') return { price: lp, src: 'lastorder' };
   const tp = tierPrice(custId, key);
-  if (typeof tp === 'number') return tp;
+  if (typeof tp === 'number') return { price: tp, src: specialFor(key) ? 'special' : 'tier' };
   const p = catalog().find(x => x.key === key);
-  if (p && typeof p.sell === 'number' && p.sell > 0) return p.sell;
-  return '';
+  if (p && typeof p.sell === 'number' && p.sell > 0) return { price: p.sell, src: 'shelf' };
+  return { price: '', src: 'none' };
+}
+function defaultLinePrice(custId, key) {
+  return resolveLinePrice(custId, key).price;
+}
+/* Short human label for where a line's price came from (shown on rows). */
+function srcLabel(src) {
+  return ({ lastorder: 'last paid', tier: 'tier price', special: 'special',
+            shelf: 'shop price', manual: 'your price' })[src] || '';
 }
 
 /* +/- on a take-order row. Only calls ensureOpenOrder when actually
@@ -587,12 +614,12 @@ function changeLine(cust, key, delta) {
   } else if (delta > 0) {
     const p = catalog().find(x => x.key === key);
     if (!p) return;
-    const tp = defaultLinePrice(cust.id, key);   // last-order price -> tier -> shelf
+    const r = resolveLinePrice(cust.id, key);    // last-order price -> tier -> shelf (+ source)
     o.lines.push({
       key, name: p.name, sup: p.cat, unit: '',
       qty: delta,
-      price: typeof tp === 'number' ? tp : '',   // '' until set
-      src: 'auto'
+      price: typeof r.price === 'number' ? r.price : '',   // '' until set
+      src: r.src
     });
   } else {
     return;
@@ -642,9 +669,9 @@ function editWeightInline(elm, cust, key) {
     o = ensureOpenOrder(cust.id);
     if (!o) return;
     if (!Array.isArray(o.lines)) o.lines = [];
-    const tp = defaultLinePrice(cust.id, key);
+    const r = resolveLinePrice(cust.id, key);
     line = { key, name: p ? p.name : key, sup: p ? p.cat : '', unit: 'kg', qty: 0,
-      price: typeof tp === 'number' ? tp : '', src: 'auto' };
+      price: typeof r.price === 'number' ? r.price : '', src: r.src };
     o.lines.push(line);
   }
 
@@ -847,10 +874,14 @@ function plSheet(custId) {
 /* Packing checklist: tap each line to tick it off as it goes in the box.
    Packed state is saved on the line (l.packed) so it survives reopening, and
    resets when a fresh order is created. */
-function packSheet(custId) {
+function packSheet(custId, orderId) {
   return (body) => {
     const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
-    const lineData = () => { const o = openOrderOf(custId); return (o && Array.isArray(o.lines)) ? o.lines : []; };
+    // Works on the open order by default, or a specific (e.g. just-placed) order by id.
+    const orderOf = () => orderId
+      ? (asList(orders()).find(o => o && o.id === orderId) || null)
+      : openOrderOf(custId);
+    const lineData = () => { const o = orderOf(); return (o && Array.isArray(o.lines)) ? o.lines : []; };
 
     const updateProg = () => {
       const lines = lineData(), all = lines.length, done = lines.filter(l => l && l.packed).length;
@@ -879,17 +910,9 @@ function packSheet(custId) {
           </div>`;
         }).join('');
       }
-      const o0 = openOrderOf(custId);
-      const tq = o0 ? tillQueueStatus(o0.id) : null;
-      if (tq) {
-        const lbl = { queued: 'Queued for till', sent: 'Sent to till ✓', error: 'Till error' }[tq.status] || tq.status;
-        const cls = tq.status === 'error' ? 'hdv-tq-error' : tq.status === 'sent' ? 'hdv-tq-sent' : 'hdv-tq-queued';
-        h += `<div class="hdv-tq-status ${cls}">${lbl}${tq.error ? ' — ' + esc(tq.error) : ''}</div>`;
-      }
       h += `<div class="hdv-actions">
         ${all ? `<button class="hdv-btnG slim" data-act="reset">Untick all</button>` : ''}
-        ${all ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
-        <button class="hdv-btnP" data-act="done">Done</button>
+        <button class="hdv-btnP" data-act="done">Close</button>
       </div>`;
       body.innerHTML = h;
       updateProg();
@@ -901,21 +924,12 @@ function packSheet(custId) {
       if (t) {
         if (t.dataset.act === 'done') { closeSheet(); return; }
         if (t.dataset.act === 'reset') {
-          const o = openOrderOf(custId); (o.lines || []).forEach(l => { if (l) l.packed = false; });
-          saveOrder(o); render(); return;
-        }
-        if (t.dataset.act === 'sendtill') {
-          const o = openOrderOf(custId);
-          if (!o || !(o.lines || []).length) { toast('No lines to send'); return; }
-          if ((o.lines || []).some(l => l.price === '' || l.price == null)) { toast('Some items have no price — set them first'); return; }
-          const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '' };
-          sendToTill(cust, o);
-          render();
-          return;
+          const o = orderOf(); if (o) { (o.lines || []).forEach(l => { if (l) l.packed = false; }); saveOrder(o); }
+          render(); return;
         }
         if (t.dataset.act === 'weigh') {                 // enter the ACTUAL packed weight -> reprices in place
-          const o = openOrderOf(custId);
-          const l = (o.lines || []).find(x => x.key === t.dataset.key); if (!l) return;
+          const o = orderOf();
+          const l = o && (o.lines || []).find(x => x.key === t.dataset.key); if (!l) return;
           const inp = document.createElement('input');
           inp.type = 'number'; inp.step = '0.001'; inp.min = '0'; inp.inputMode = 'decimal';
           inp.className = 'hdv-in'; inp.style.width = '84px'; inp.value = Number(l.qty) || ''; inp.placeholder = 'kg';
@@ -935,8 +949,8 @@ function packSheet(custId) {
         return;
       }
       const row = e.target.closest('.hdv-pack-row'); if (!row) return;
-      const o = openOrderOf(custId);
-      const l = (o.lines || []).find(x => x.key === row.dataset.key);
+      const o = orderOf();
+      const l = o && (o.lines || []).find(x => x.key === row.dataset.key);
       if (!l) return;
       l.packed = !l.packed; saveOrder(o);
       row.classList.toggle('hdv-pack-done', !!l.packed);
@@ -959,7 +973,6 @@ function reviewSheet(body, custId) {
   let h = `<div class="hdv-sheettitle">${esc(cust.name)}</div>
     <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}</div>`;
 
-  const isRestoOrCafe = ['restaurant', 'cafe'].includes(cust.tierId);
   const tqStatus = o ? tillQueueStatus(o.id) : null;
   const hasCosts = secureLoaded();
 
@@ -990,8 +1003,7 @@ function reviewSheet(body, custId) {
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(l.name)}</div>
-          <div class="hdv-sub">${l.src === 'manual' ? 'manual price' : 'tier price'}
-            · line ${money(lSell)}</div>
+          <div class="hdv-sub">${srcLabel(l.src) || 'price'} · line ${money(lSell)}</div>
           ${marginHtml}
         </div>
         ${priceHtml}
@@ -1020,14 +1032,18 @@ function reviewSheet(body, custId) {
     }
 
     const packedN = lines.filter(l => l && l.packed).length;
+    const nNeed = lines.filter(l => l.price === '' || l.price == null).length;
+    // Price-gate: can't place (or send to till) with a $0/blank line — set them first.
+    const cta = nNeed
+      ? `<button class="hdv-btnP" data-act="reviewprices">Set ${nNeed} price${nNeed === 1 ? '' : 's'} first</button>`
+      : `<button class="hdv-btnP" data-act="complete">Done — place order</button>`;
     h += `<div class="hdv-actions">
       <button class="hdv-btnB" data-act="pack">📦 Pack${packedN ? ` · ${packedN}/${lines.length}` : ''}</button>
       <button class="hdv-btnG slim" data-act="share">Text</button>
       <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
       <button class="hdv-btnG slim" data-act="orderform">Order form</button>
       <button class="hdv-btnG slim" data-act="pl">P&amp;L</button>
-      ${isRestoOrCafe ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
-      <button class="hdv-btnP" data-act="complete">Place order</button>
+      ${cta}
     </div>`;
   }
 
@@ -1050,7 +1066,6 @@ function reviewSheet(body, custId) {
       }).catch(() => toast('Could not make the PDF'));
     }
     else if (act === 'complete') completeOrder(custId);
-    else if (act === 'sendtill') sendToTill(c, openOrderOf(custId));
     else if (act === 'orderform') { if (!openOrderForm(openOrderOf(custId), c)) toast('Allow pop-ups to open the order form'); }
     else if (act === 'pl') openSheet(plSheet(custId), { static: true });
     else if (act === 'pack') openSheet(packSheet(custId), { static: true });
@@ -1079,10 +1094,57 @@ function completeOrder(custId) {
   o.runId = cust.runId || '';
   if (!o.orderNo) o.orderNo = makeOrderNo(delDate);
   saveOrder(o);                      // patches /custorders, emits 'change'
-  closeSheet();
   mode = 'list'; curId = null; clearSearch();
-  toast('Order placed · ' + o.orderNo);
   rerenderNow();
+  // Confirmation sheet — and the ONLY place "Send to till" now lives (post-Done).
+  openSheet(b => placedConfirmSheet(b, custId, o.id));
+}
+
+/* Shown right after Done. Confirms the placed order and offers the optional,
+   deliberate "Send to till" (the only till action in the whole flow now).
+   Re-pack and invoice are reachable here too. */
+function placedConfirmSheet(body, custId, orderId) {
+  const render = () => {
+    const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
+    const o = asList(orders()).find(x => x && x.id === orderId);
+    if (!o) { body.innerHTML = emptyHTML('Order not found'); return; }
+    const lines = o.lines || [];
+    const total = orderTotal(lines);
+    const all = lines.length, packed = lines.filter(l => l && l.packed).length;
+    const tq = tillQueueStatus(o.id);
+    let h = `<div class="hdv-sheettitle">✓ Order ${esc(o.orderNo || orderRef(o))} placed</div>
+      <div class="hdv-sheetsub">${esc(cust.name)} · ${money(total)}${o.deliveryDate ? ' · deliver ' + esc(niceDate(o.deliveryDate)) : ''}</div>
+      <div class="hdv-kv"><span class="hdv-mut">Items</span><b>${all}${all ? ` · ${packed}/${all} packed` : ''}</b></div>`;
+    if (tq) {
+      const lbl = { queued: 'Queued for till', sent: 'Sent to till ✓', error: 'Till error' }[tq.status] || tq.status;
+      const cls = tq.status === 'error' ? 'hdv-tq-error' : tq.status === 'sent' ? 'hdv-tq-sent' : 'hdv-tq-queued';
+      h += `<div class="hdv-tq-status ${cls}">${lbl}${tq.error ? ' — ' + esc(tq.error) : ''}</div>`;
+    }
+    const showSend = !tq || tq.status === 'error';   // hide once queued/sent
+    h += `<div class="hdv-actions">
+      <button class="hdv-btnG slim" data-act="pack">📦 ${all && packed === all ? 'Re-pack' : 'Pack'}</button>
+      <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
+      ${showSend ? `<button class="hdv-btnB" data-act="sendtill">Send to till</button>` : ''}
+      <button class="hdv-btnP" data-act="close">Done</button>
+    </div>`;
+    body.innerHTML = h;
+  };
+  render();
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]'); if (!t) return;
+    const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '' };
+    const o = asList(orders()).find(x => x && x.id === orderId);
+    if (t.dataset.act === 'close') { closeSheet(); return; }
+    if (t.dataset.act === 'sendtill') { if (o) { sendToTill(cust, o); render(); } return; }
+    if (t.dataset.act === 'pack') { openSheet(packSheet(custId, orderId), { static: true }); return; }
+    if (t.dataset.act === 'invpdf') {
+      if (!o || !(o.lines || []).length) { toast('No lines'); return; }
+      shareInvoice(invoiceData(orderRef(o), cust, o))
+        .then(s => { if (s === 'downloaded') toast('Invoice PDF saved'); })
+        .catch(() => toast('Could not make the PDF'));
+      return;
+    }
+  };
 }
 
 /* Sortable order number: <deliveryYYYYMMDD>-#### (#### = that day's sequence). */
