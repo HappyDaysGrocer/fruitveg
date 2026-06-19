@@ -1,2 +1,6 @@
 # Local dev / preview config — never deploy
 .claude/
+
+# local cost master — never deploy
+shopProducts.master.js
+*.master.js
