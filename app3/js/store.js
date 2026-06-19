@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.64';
+export const VERSION = 'v3.65';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -755,6 +755,21 @@ export function boxOverrides() {
     }
   }
   return out;
+}
+
+/** Set / correct a product's market box size (shared team-wide via /boxsizes;
+    read back by boxOverrides → boxFor). per<=0 clears it back to the baked rule. */
+export function setBoxSize(name, per, by) {
+  const nm = String(name || '').trim();
+  if (!nm) return;
+  let rec = Object.values(mirror.boxsizes).find(
+    (r) => r && String(r.name || '').toLowerCase().trim() === nm.toLowerCase());
+  if (!rec) rec = { id: genId('bx'), name: nm };
+  rec.per = Number(per) || 0;
+  rec.by = by || 'kg';
+  rec.at = todayStr();
+  patch('boxsizes', rec.id, rec);
+  BUS.emit('change');
 }
 
 /** Bind a barcode to a product (one record per code; re-assign overwrites). */

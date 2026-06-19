@@ -106,3 +106,58 @@ export function boxLine(name, qty) {
   return '≈ ' + m.boxes + ' box' + (m.boxes === 1 ? '' : 'es') + ' of ' + m.per + ' ' +
     unitLabel(m.by, m.per) + (m.spare > 0 ? ' (' + m.spare + ' spare)' : '');
 }
+
+/* ----- purchase (market) unit: how you BUY & STOCK an item -----------------
+   The Stock-on-hand page counts in these units (boxes / bags), not retail
+   kg/each. Source of the size: team override > baked box rule (boxFor) > a
+   pack size written into the SKU name itself (e.g. "Potato Peeled 10kg Bag"). */
+
+const PACK_WORD_RE = /\b(cartons?|boxe?s?|bags?|sacks?|cases?|crates?|trays?|sleeves?|punnets?|packs?|pk)\b/i;
+
+/** Parse a pack size embedded in a SKU name -> {per, by, word} | null.
+    "10kg Bag"->{10,kg,bag}  "Mushroom Cups 4kg Box"->{4,kg,box}  "Twin Pack"->{0,each,pack} */
+export function parsePack(name) {
+  const n = String(name || '');
+  const kg = n.match(/(\d+(?:\.\d+)?)\s*kg\b/i);
+  const g = n.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  const wm = n.match(PACK_WORD_RE);
+  if (!kg && !g && !wm) return null;
+  let per = 0, by = 'each';
+  if (kg) { per = parseFloat(kg[1]); by = 'kg'; }
+  else if (g) { per = round2(parseFloat(g[1]) / 1000); by = 'kg'; }
+  let word = wm ? wm[1].toLowerCase() : 'box';
+  if (word === 'pk') word = 'pack';
+  word = word.replace(/(es|s)$/, '');            // boxes->box, bags->bag, punnets->punnet
+  if (word === 'box' || word === 'boxe' || word === 'bo') word = 'box';
+  return { per, by, word };
+}
+
+/** The unit you BUY this item in at the market.
+    {kind:'box'|'loose'|'none', per, by, word}. */
+export function purchaseUnit(name) {
+  const box = boxFor(name);          // team override + baked rules (per kg/bunch/etc.)
+  const pack = parsePack(name);      // size/word written into the SKU name
+  const word = (pack && pack.word) ? pack.word : 'box';
+  if (box) {
+    if (box.loose) return { kind: 'loose', per: 0, by: box.by || 'kg', word: 'kg' };
+    if (box.per > 0) return { kind: 'box', per: box.per, by: box.by, word };
+  }
+  if (pack) {
+    if (pack.per > 0) return { kind: 'box', per: pack.per, by: pack.by, word };
+    return { kind: 'box', per: 0, by: 'each', word };   // pack word but no size
+  }
+  return { kind: 'none', per: 0, by: '', word: '' };
+}
+
+/** Short label for the purchase unit: "12kg box" / "box of 10 bunches" / "loose · by weight". */
+export function purchaseUnitLabel(name) {
+  const u = purchaseUnit(name);
+  if (u.kind === 'loose') return 'loose · by weight';
+  if (u.kind === 'none') return '';
+  if (u.per > 0) {
+    return u.by === 'kg'
+      ? u.per + 'kg ' + u.word
+      : u.word + ' of ' + u.per + ' ' + unitLabel(u.by, u.per);
+  }
+  return u.word;
+}

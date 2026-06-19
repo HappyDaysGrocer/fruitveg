@@ -7,9 +7,9 @@
 import {
   catalog, categories, groups, orderedCats, searchCatalog, bus, auth,
   isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty,
-  stockFor, setStockCount
+  stockFor, setStockCount, setBoxSize
 } from './store.js';
-import { boxFor } from './boxes.js';
+import { purchaseUnit, purchaseUnitLabel } from './boxes.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -247,19 +247,30 @@ let shopCat = ''; // selected category chip ('' = All)
    row's +/- adjusts the COUNTED on-hand quantity (setStockCount); "Count stock"
    opens the fast scan/search counter; tapping a product opens its detail (where
    it can be marked out of stock or added to the buy run). */
+/* Items the Stock-on-hand page covers: the Mundi PRODUCE you buy at the market,
+   plus any grocery line bought in a box / bag / carton (bulk). */
+const PRODUCE_GROUPS = new Set(['A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs']);
+const BULK_NAME_RE = /\b(cartons?|boxe?s?|bags?|sacks?|cases?|crates?|trays?|sleeves?)\b|\b\d+(?:\.\d+)?\s*kg\b|\b\d+\s*x\s*\d|\b\d+\s*(?:pk|packs?)\b/i;
+function inStockScope(p) {
+  if (!p) return false;
+  if (PRODUCE_GROUPS.has(p.cat) || PRODUCE_GROUPS.has(p.group)) return true;   // fresh produce
+  return BULK_NAME_RE.test(p.name);                                            // bulk grocery
+}
+
 export function renderShop(root) {
   ensureCss();
   setActive(() => renderShop(root));
 
-  const items = catalog();
-  if (!items.length) {           // catalogue still loading -> shimmer
+  const all = catalog();
+  if (!all.length) {             // catalogue still loading -> shimmer
     root.innerHTML = skeletonHTML();
     root.onclick = null;
     return;
   }
+  const items = all.filter(inStockScope);   // produce + bulk grocery only
 
   const q = qText();
-  let list = q ? searchCatalog(q) : items;
+  let list = q ? searchCatalog(q).filter(inStockScope) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
 
   const today = todayStr();
@@ -271,12 +282,15 @@ export function renderShop(root) {
 
   let h = `<div class="hdv-head"><div class="hdv-h1">Stock on hand</div>
     <button class="hdv-btnG slim" data-act="count">Count stock</button></div>`;
-  h += `<div class="hdv-sec">${countedToday} counted today · ${outN} out of stock · tap &plusmn; to set what's on the shelf</div>`;
-  h += chipsHTML(groups(), shopCat);
+  h += `<div class="hdv-sec">Counted by the BOX / BAG you buy at the market · ${countedToday} counted today · ${outN} out · tap the number to type any amount (e.g. 1.5)</div>`;
+
+  // chips: only the aisles that actually have in-scope items
+  const live = new Set(items.map(p => p.group));
+  h += chipsHTML(groups().filter(g => live.has(g)), shopCat);
 
   if (q) {
     if (!list.length) {
-      h += emptyHTML(`No products match “${esc(q)}”`);
+      h += emptyHTML(`No stock items match “${esc(q)}”`);
     } else {
       h += `<div class="hdv-sec">${list.length} result${list.length === 1 ? '' : 's'}</div>`;
       h += list.map(p => stockRow(p, true)).join('');
@@ -300,15 +314,36 @@ export function renderShop(root) {
   root.onclick = onShopClick;
 }
 
-/* One product as a STOCK row: name (+ OUT / NEW flags), on-hand status, and a
-   stepper bound to the counted quantity. */
+/* One product as a STOCK row: name (+ OUT / NEW flags), its market PURCHASE
+   unit (box / bag), on-hand counted in those units (+ kg/each equivalent), and
+   a stepper. The counted qty (stockFor.qty) is now the number of boxes/bags. */
 function stockRow(p, withCat) {
   const st = stockFor(p.key);
   const onHand = st ? (Number(st.qty) || 0) : null;
   const out = isOut(p.key);
+  const u = purchaseUnit(p.name);
+  const unitLbl = purchaseUnitLabel(p.name);            // "12kg box" | "loose · by weight" | ''
+  const word = u.kind === 'loose' ? 'kg' : (u.word || 'unit');
+
+  let onHandTxt;
+  if (onHand == null) {
+    onHandTxt = 'not counted';
+  } else {
+    const plural = (onHand === 1 || u.kind === 'loose') ? '' : 's';
+    let eq = '';
+    if (u.kind === 'box' && u.per > 0) {
+      const total = Math.round(onHand * u.per * 100) / 100;
+      eq = u.by === 'kg' ? ` ≈ ${total}kg` : ` ≈ ${total} ${u.by === 'each' ? 'pcs' : u.by}`;
+    }
+    onHandTxt = `${onHand} ${word}${plural} on hand${eq}` + (st.at ? ' · ' + esc(st.at) : '');
+  }
+
   const bits = [];
-  if (withCat && p.cat) bits.push(p.cat);
-  bits.push(onHand == null ? 'not counted' : onHand + ' on hand' + (st.at ? ' · counted ' + esc(st.at) : ''));
+  if (withCat && p.cat) bits.push(esc(p.cat));
+  bits.push(unitLbl ? esc(unitLbl)
+    : '<span style="color:var(--hdv-amber)">tap to set box size</span>');
+  bits.push(onHandTxt);
+
   const badge = out
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT</span>' : '';
   const rev = p.review
@@ -412,18 +447,24 @@ export function productSheet(key) {
       h += `<div class="hdv-kv"><span class="hdv-mut">On the buy run</span>
         <b class="hdv-price" style="min-width:0">+${manual} manual</b></div>`;
     }
+    const u = purchaseUnit(p.name);
+    const unitLbl = purchaseUnitLabel(p.name);
     const st = stockFor(key);
     if (st && typeof st.qty === 'number') {
+      const word = u.kind === 'loose' ? 'kg' : (u.word || 'unit');
+      const n = Number(st.qty) || 0;
+      let eq = '';
+      if (u.kind === 'box' && u.per > 0) {
+        const total = Math.round(n * u.per * 100) / 100;
+        eq = u.by === 'kg' ? ' · ≈ ' + total + 'kg' : ' · ≈ ' + total + ' ' + (u.by === 'each' ? 'pcs' : u.by);
+      }
       h += `<div class="hdv-kv"><span class="hdv-mut">On hand</span>
-        <b class="hdv-price" style="min-width:0">${st.qty}${st.at ? ' · counted ' + esc(st.at) : ''}</b></div>`;
+        <b class="hdv-price" style="min-width:0">${n} ${esc(word)}${(n === 1 || u.kind === 'loose') ? '' : 's'}${eq}${st.at ? ' · ' + esc(st.at) : ''}</b></div>`;
     }
-    const bx = boxFor(p.name);
-    if (bx) {
-      h += `<div class="hdv-kv"><span class="hdv-mut">Mandi box</span>
-        <b class="hdv-price" style="min-width:0">${bx.loose ? 'loose · by weight'
-          : bx.per + ' ' + esc(bx.by === 'kg' ? 'kg' : bx.by) + '/box'}</b></div>`;
-    }
+    h += `<div class="hdv-kv"><span class="hdv-mut">Market box</span>
+      <b class="hdv-price" style="min-width:0">${unitLbl ? esc(unitLbl) : '<span style="color:var(--hdv-amber)">not set</span>'}</b></div>`;
     h += `<div class="hdv-actions">
+      <button class="hdv-btnG" data-act-ps="setbox">Set box size</button>
       <button class="hdv-btnG${out ? '' : ' danger'}" data-act-ps="out">
         ${out ? 'Back in stock' : 'Out today'}</button>
       <button class="hdv-btnP" data-act-ps="buy">Add to buy run</button>
@@ -439,9 +480,35 @@ export function productSheet(key) {
       } else if (t.dataset.actPs === 'buy') {
         setBuyManual(key, p.name, buyManualQty(key) + 1);
         toast('Added to buy run');
+      } else if (t.dataset.actPs === 'setbox') {
+        setBoxSizeFlow(p);
       }
     };
   };
+}
+
+/* Owner sets/corrects a product's market box size from the detail sheet.
+   Writes /boxsizes (shared team-wide); the Stock page re-renders in the new unit. */
+function setBoxSizeFlow(p) {
+  const cur = purchaseUnit(p.name);
+  const def = (cur.kind === 'box' && cur.per > 0) ? cur.per + ' ' + cur.by : '';
+  const v = window.prompt(
+    'Box size for ' + p.name + '\n' +
+    'e.g. "12 kg", "10 bunch", "12 punnet", "20 each".\n' +
+    'Leave blank to clear back to the default.', def);
+  if (v == null) return;                                  // cancelled
+  const s = String(v).trim().toLowerCase();
+  if (s === '') { setBoxSize(p.name, 0, 'kg'); toast('Box size cleared'); refreshSheet(); return; }
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*(kg|each|ea|pc|pcs|piece|pieces|bunch|bunches|punnet|punnets|bag|box|carton)?/);
+  if (!m) { toast('Could not read that — try like “12 kg”'); return; }
+  let by = m[2] || 'kg';
+  if (['ea', 'pc', 'pcs', 'piece', 'pieces'].includes(by)) by = 'each';
+  else if (by === 'bunches') by = 'bunch';
+  else if (by === 'punnets') by = 'punnet';
+  else if (['bag', 'box', 'carton'].includes(by)) by = 'kg';   // worded unit, size taken as kg
+  setBoxSize(p.name, parseFloat(m[1]), by);
+  toast('Box size saved');
+  refreshSheet();
 }
 
 /* (The old ad-hoc "market list" that lived on this tab was removed in v3.47 — it
