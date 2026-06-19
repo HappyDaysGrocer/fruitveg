@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.63';
+export const VERSION = 'v3.64';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -634,14 +634,25 @@ export function patch(node, id, rec) {
     mirror[local][id] = rec;
     LS.set(LSKEY[local], mirror[local]);
   }
-  if (!_auth) return; // logged out -> local only
+  // Logged out / no token: DON'T drop the write — queue it to the outbox so it
+  // syncs on next login or pull(). (Previously a logged-out write was local-only
+  // forever and never reached Firebase — a silent "it said saved but didn't".)
+  if (!_auth) { queueWrite(remote, id, rec); return; }
   auth.token().then((t) => {
-    if (!t) return;
+    if (!t) { queueWrite(remote, id, rec); return; }
     // No Content-Type header: RTDB accepts the raw body and a "simple"
     // request avoids a CORS preflight round trip on every keystroke-save.
     return fetch(FB.databaseURL + '/' + remote + '.json?auth=' + encodeURIComponent(t), {
       method: 'PATCH',
       body: JSON.stringify({ [id]: rec })
+    }).then((res) => {
+      // A rejected write used to resolve silently (UI shows "saved", Firebase
+      // never got it). 5xx is transient -> queue for retry; a 4xx (auth/rules)
+      // will never succeed so don't loop it, but log so it isn't invisible.
+      if (res && !res.ok) {
+        if (res.status >= 500) queueWrite(remote, id, rec);
+        else console.warn('patch rejected by Firebase', remote, id, res.status);
+      }
     });
   }).catch(() => queueWrite(remote, id, rec));
 }
@@ -1277,7 +1288,8 @@ export function tierPrice(custId, key) {
 export function queueForTill(order, custName, eposCustId) {
   const qid = genId('tq');
   const lines = (order.lines || []).map((l) => ({
-    key: l.key, name: l.name, qty: l.qty, price: l.price, unit: l.unit || ''
+    key: l.key, name: l.name, qty: l.qty, price: l.price, unit: l.unit || '',
+    note: l.note || ''                       // per-line note -> till line Notes
   }));
   const total = Math.round(
     lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) * 100
@@ -1292,6 +1304,7 @@ export function queueForTill(order, custName, eposCustId) {
     lines,
     total,
     ref: order.orderNo || order.id,
+    comment: order.comment || '',            // order note -> till order Notes
     queuedAt: new Date().toISOString(),
     tillTxnId: null,
     error: null,
