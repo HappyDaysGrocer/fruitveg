@@ -6,7 +6,7 @@
 
 /* ---------- version (one source of truth, shown in the More tab) ----------
    Bump this on every change so the live app can be tracked. */
-export const VERSION = 'v2.3';
+export const VERSION = 'v2.4';
 export const UPDATED = '17 Jun 2026';
 
 const FB = {
@@ -154,10 +154,36 @@ function loadCatalog() {
   });
 }
 
+/* Form item numbers (window.HD_ORDERNO: {normName: no}) — the SAME number shown
+   on the printed order form / PDF / Excel, so a customer's order references the
+   same item number as the form. Injected fire-and-forget; read via orderNoFor(). */
+function loadOrderNo() {
+  if (window.HD_ORDERNO || document.getElementById('hd-orderno')) return;
+  const s = document.createElement('script');
+  s.id = 'hd-orderno'; s.src = 'orderno.js';
+  document.head.appendChild(s);
+}
+
+function _normName(n) {
+  n = String(n == null ? '' : n).toLowerCase().trim();
+  n = n.replace('(each)', 'each').replace('(ea)', 'each').replace('(pnt)', 'punnet');
+  return n.replace(/[(),]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Order-form item number for a product/line name (matches the form / PDF /
+    Excel), or null if it isn't a numbered produce item. */
+export function orderNoFor(name) {
+  const m = window.HD_ORDERNO;
+  if (!m) return null;
+  const v = m[_normName(name)];
+  return (typeof v === 'number') ? v : null;
+}
+
 export async function initCatalog() {
   if (CATALOG.length) return CATALOG;            // idempotent
   if (_catalogPromise) return _catalogPromise;
   _catalogPromise = (async () => {
+    loadOrderNo();                                // form numbers (background)
     const rows = await loadCatalog();
     if (Array.isArray(rows) && rows.length) {
       LS.set('hd2.catalogCache2', rows);         // cost-free cache (v2 key)

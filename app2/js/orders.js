@@ -20,7 +20,7 @@ import {
   openSheet, closeSheet, refreshSheet,
   toast, shareText,
   esc, money, asList, qText, todayStr,
-  chipsHTML, stepperHTML, emptyHTML, ensureCss
+  chipsHTML, stepperHTML, emptyHTML, ensureCss, numLabel
 } from './catalog.js';
 
 /* ------------------------------------------------------- view state */
@@ -333,7 +333,7 @@ function takeRow(p, line, cust) {
   const stepper = (out && qty === 0) ? '' : stepperHTML(p.key, qty);
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
-      <div class="hdv-name">${esc(p.name)}${badge}</div>
+      <div class="hdv-name">${esc(numLabel(p.name))}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
       ${line && line.note ? `<div class="hdv-noteshow">📝 ${esc(line.note)}</div>` : ''}
     </div>
@@ -438,7 +438,7 @@ function reviewSheet(body, custId) {
         : `<span class="hdv-price" data-act="price" data-key="${esc(l.key)}">${money(Number(l.price))}</span>`;
       return `<div class="hdv-row">
         <div class="hdv-info">
-          <div class="hdv-name">${esc(l.name)}</div>
+          <div class="hdv-name">${esc(numLabel(l.name))}</div>
           <div class="hdv-sub">${l.src === 'manual' ? 'manual price' : 'tier price'}
             · line ${money(lq * (Number(l.price) || 0))}</div>
         </div>
@@ -593,7 +593,7 @@ function invoiceSheet(body, custId, orderId) {
   h += lines.map(l => {
     const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
     return `<div class="hdv-row">
-      <div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>
+      <div class="hdv-info"><div class="hdv-name">${esc(numLabel(l.name))}</div>
         <div class="hdv-sub">${lq} × ${money(lp)}</div></div>
       <span class="hdv-price">${money(lq * lp)}</span>
     </div>`;
@@ -617,7 +617,7 @@ function invoiceSheet(body, custId, orderId) {
 function invoiceText(invNo, cust, o) {
   const lines = (o.lines || []).map(l => {
     const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
-    return `${lq} x ${l.name} @ ${money(lp)} = ${money(lq * lp)}`;
+    return `${lq} x ${numLabel(l.name)} @ ${money(lp)} = ${money(lq * lp)}`;
   });
   const total = orderTotal(o.lines);
   const terms = cust.terms === 'COD' ? 'Pay on delivery'
@@ -818,13 +818,13 @@ function pickingSheet(body) {
     for (const [cat, arr] of Array.from(byCat.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
       h += `<div class="hdv-sec">${esc(cat || 'Other')}</div>`;
       arr.sort((a, b) => a.name.localeCompare(b.name));
-      h += arr.map(it => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(it.name)}</div></div><span class="hdv-price">${it.qty}</span></div>`).join('');
+      h += arr.map(it => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(numLabel(it.name))}</div></div><span class="hdv-price">${it.qty}</span></div>`).join('');
     }
   } else {
     for (const o of dayOrders.slice().sort((a, b) => custName(a.custId).localeCompare(custName(b.custId)))) {
       h += `<div class="hdv-sec">${esc(custName(o.custId))}${o.orderNo ? ' · ' + esc(o.orderNo) : ''}</div>`;
       if (o.comment) h += `<div style="padding:4px 12px 2px;color:var(--hdv-green);font-size:13px;font-weight:700">📝 ${esc(o.comment)}</div>`;
-      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(l.name)}</div>${l.note ? `<div class="hdv-noteshow">↳ ${esc(l.note)}</div>` : ''}</div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
+      h += (o.lines || []).map(l => `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(numLabel(l.name))}</div>${l.note ? `<div class="hdv-noteshow">↳ ${esc(l.note)}</div>` : ''}</div><span class="hdv-price">${Number(l.qty) || 0}</span></div>`).join('');
     }
   }
 
@@ -850,12 +850,12 @@ function pickText(date, m) {
   let txt = `Happy Days — ${m === 'buy' ? 'buy list' : 'pick slips'} for delivery ${niceDate(date)}\n`;
   if (m === 'buy') {
     txt += aggregateBuy(day).sort((a, b) => a.name.localeCompare(b.name))
-      .map(it => `${it.qty} x ${it.name}`).join('\n');
+      .map(it => `${it.qty} x ${numLabel(it.name)}`).join('\n');
   } else {
     for (const o of day) {
       txt += `\n— ${custName(o.custId)}${o.orderNo ? ' (' + o.orderNo + ')' : ''} —\n` +
         (o.comment ? `Note: ${o.comment}\n` : '') +
-        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${l.name}` + (l.note ? ` (${l.note})` : '')).join('\n') + '\n';
+        (o.lines || []).map(l => `${Number(l.qty) || 0} x ${numLabel(l.name)}` + (l.note ? ` (${l.note})` : '')).join('\n') + '\n';
     }
   }
   return txt;
@@ -868,7 +868,7 @@ function orderText(cust, o) {
   const del = o.deliveryDate || (di ? di.date : null);
   const rows = (o.lines || []).map(l => {
     const lp = Number(l.price) || 0, lq = Number(l.qty) || 0;
-    return `${lq} x ${l.name}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '') +
+    return `${lq} x ${numLabel(l.name)}` + (lp ? ` @ ${money(lp)} = ${money(lp * lq)}` : '') +
       (l.note ? `\n     ↳ ${l.note}` : '');
   });
   return `Happy Days — order for ${cust ? cust.name : ''}` +
@@ -1008,7 +1008,7 @@ function pricesSheet(body, custId) {
     const shelf = (typeof p.sell === 'number' && p.sell > 0) ? 'shelf ' + money(p.sell) : 'no shelf price';
     const v = (cur === '' || cur == null) ? '' : Number(cur);
     return `<div class="hdv-row">
-      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+      <div class="hdv-info"><div class="hdv-name">${esc(numLabel(p.name))}</div>
         <div class="hdv-sub">${esc(shelf)}</div></div>
       <input class="hdv-pin pe-price" data-key="${esc(p.key)}" type="number" step="0.01" min="0"
         inputmode="decimal" placeholder="${typeof p.sell === 'number' ? p.sell.toFixed(2) : '—'}" value="${v}">
@@ -1250,7 +1250,7 @@ function specialsSheet(body) {
     const v = (rec && rec.price != null && rec.price !== '') ? Number(rec.price) : '';
     const shelf = (typeof p.sell === 'number' && p.sell > 0) ? 'shelf ' + money(p.sell) : 'no shelf price';
     return `<div class="hdv-row">
-      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+      <div class="hdv-info"><div class="hdv-name">${esc(numLabel(p.name))}</div>
         <div class="hdv-sub">${esc(shelf)}</div></div>
       <input class="hdv-pin sp-price" data-key="${esc(p.key)}" type="number" step="0.01" min="0"
         inputmode="decimal" placeholder="promo $" value="${v}">
@@ -1430,10 +1430,10 @@ function stockSheet(body) {
   const rowHtml = p => {
     const out = isOut(p.key);
     return `<div class="hdv-row">
-      <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>
+      <div class="hdv-info"><div class="hdv-name">${esc(numLabel(p.name))}</div>
         <div class="hdv-sub">${esc(p.cat)}</div></div>
       <button class="${out ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="sttog"
-        data-key="${esc(p.key)}" data-name="${esc(p.name)}">${out ? 'Back in stock' : 'Out today'}</button>
+        data-key="${esc(p.key)}" data-name="${esc(numLabel(p.name))}">${out ? 'Back in stock' : 'Out today'}</button>
     </div>`;
   };
 

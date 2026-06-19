@@ -4,13 +4,21 @@
    Renders into the root element passed by app.js and re-renders
    reactively whenever the store emits 'change' or #q input changes. */
 
-import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth, isOut } from './store.js';
+import { catalog, categories, groups, orderedCats, searchCatalog, buy, bus, auth, isOut, orderNoFor } from './store.js';
 
 /* ------------------------------------------------------------ helpers */
 
 export const esc = s => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/* Prefix a produce name with its order-form item number (the SAME number on the
+   printed form / PDF / Excel) so customers can order by number. Non-produce
+   (grocery) items have no form number — just the name. */
+export const numLabel = name => {
+  const no = orderNoFor(name);
+  return (no ? no + '. ' : '') + String(name == null ? '' : name);
+};
 
 export const money = n =>
   (typeof n === 'number' && isFinite(n)) ? '$' + n.toFixed(2) : '';
@@ -263,7 +271,7 @@ function shopRow(p, withCat) {
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT TODAY</span>' : '';
   return `<div class="hdv-row${qty > 0 ? ' sel' : ''}">
     <div class="hdv-info">
-      <div class="hdv-name">${esc(p.name)}${badge}</div>
+      <div class="hdv-name">${esc(numLabel(p.name))}${badge}</div>
       ${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}
     </div>
     ${stepperHTML(p.key, qty)}
