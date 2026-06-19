@@ -76,6 +76,10 @@ export function renderHome(root) {
   const standing = standingList().length;
   const custN = asList(customers()).length;
   const tq = asList(tillqueue()).filter(x => x && (x.status === 'queued' || x.status === 'error')).length;
+  // AR / delivery — money-free OPERATIONAL counts only (no $ figures; $ lives in V4).
+  const placed = asList(orders()).filter(o => o && o.status === 'completed' && (o.lines || []).length);
+  const delToday = placed.filter(o => o.deliveryDate === today).length;
+  const unpaid = placed.filter(o => !o.paid).length;
 
   const u = (auth.user && auth.user()) || null;
   const first = u && u.email ? String(u.email).split('@')[0].split(/[._-]/)[0] : '';
@@ -93,6 +97,10 @@ export function renderHome(root) {
   h += card({ view: 'orders', ico: '🧾', num: open.length, label: 'Open orders',
     sub: toPrice ? plural(toPrice, 'item') + ' need a price' : (open.length ? 'all priced' : 'none open'),
     subClass: toPrice ? 'amber' : '' });
+  h += card({ view: 'orders', ico: '🚚', num: delToday, label: 'Deliveries today',
+    sub: delToday ? 'placed for today' : 'none today' });
+  h += card({ view: 'orders', ico: '💳', num: unpaid, alert: unpaid > 0, label: 'Unpaid invoices',
+    sub: unpaid ? 'tap to chase' : 'all paid' });
   h += card({ view: 'buy', ico: '🛒', num: br.length, label: 'Buy run',
     sub: brItems ? plural(brItems, 'item') + ' to buy' : 'nothing to buy' });
   h += card({ view: 'shop', ico: '⛔', num: out, alert: out > 0, label: 'Out of stock',
