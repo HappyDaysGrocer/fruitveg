@@ -102,7 +102,7 @@ export function boxMath(name, qty) {
 export function boxLine(name, qty) {
   const m = boxMath(name, qty);
   if (!m) return '';
-  if (m.loose) return 'loose · by weight';
+  if (m.loose) return 'per kg';
   return '≈ ' + m.boxes + ' box' + (m.boxes === 1 ? '' : 'es') + ' of ' + m.per + ' ' +
     unitLabel(m.by, m.per) + (m.spare > 0 ? ' (' + m.spare + ' spare)' : '');
 }
@@ -149,10 +149,10 @@ export function purchaseUnit(name) {
   return { kind: 'none', per: 0, by: '', word: '' };
 }
 
-/** Short label for the purchase unit: "12kg box" / "box of 10 bunches" / "loose · by weight". */
+/** Short label for the purchase unit: "12kg box" / "box of 10 bunches" / "per kg". */
 export function purchaseUnitLabel(name) {
   const u = purchaseUnit(name);
-  if (u.kind === 'loose') return 'loose · by weight';
+  if (u.kind === 'loose') return 'per kg';          // by weight — count/price by the kilo
   if (u.kind === 'none') return '';
   if (u.per > 0) {
     return u.by === 'kg'
