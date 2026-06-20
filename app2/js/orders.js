@@ -6,10 +6,10 @@
 import {
   catalog, categories, groups, orderedCats, searchCatalog,
   customers, orders, tiers,
-  runs, runById, saveRun, deliveryInfo, saveTier,
+  runs, runById, saveRun, deliveryInfo, validDeliveryDates, saveTier,
   specials, saveSpecial, specialFor,
   standingFor, saveStanding, generateStandingOrders,
-  saveCustomer, saveOrder, ensureOpenOrder, tierPrice,
+  saveCustomer, saveOrder, ensureOpenOrder, tierPrice, MIN_ORDER, emailOrderConfirmation,
   customerId, createCustomerLogin,
   isOut, outList, setOut,
   auth, pull, VERSION, UPDATED
@@ -46,13 +46,33 @@ function openOrderOf(custId) {
   return asList(orders()).find(o => o && o.custId === custId && o.status === 'open');
 }
 
-/** A customer's already-PLACED order for a delivery date (still editable until
-    the run's cut-off), or null. */
-function placedOrderFor(custId, delDate) {
-  if (!delDate) return null;
-  return asList(orders()).find(o => o && o.custId === custId &&
-    o.status === 'completed' && o.deliveryDate === delDate) || null;
+/** A customer's soonest UPCOMING placed order (delivery today or later, still
+    'completed' so editable), or null. Drives the edit/cancel banner. */
+function upcomingPlacedOrder(custId) {
+  const today = todayStr();
+  return asList(orders())
+    .filter(o => o && o.custId === custId && o.status === 'completed' &&
+      o.deliveryDate && o.deliveryDate >= today)
+    .sort((a, b) => String(a.deliveryDate).localeCompare(String(b.deliveryDate)))[0] || null;
 }
+
+/* Statuses that count as a PLACED order (shown in My Orders + counted for
+   usuals). 'open' = still a cart; 'cancelled' = shown muted, not counted. */
+const PLACED = new Set(['completed', 'packing', 'packed', 'out', 'delivered', 'invoiced']);
+function isPlaced(o) { return !!(o && PLACED.has(o.status)); }
+
+/* Friendly label + colour for an order's status (forward-compatible with the
+   staff-set stages packing → packed → out → delivered → invoiced). */
+const STATUS_INFO = {
+  completed: { label: 'Ordered', bg: 'rgba(21,102,47,.12)', fg: 'var(--hdv-green)' },
+  packing:   { label: 'Packing', bg: 'rgba(180,83,9,.14)', fg: '#b45309' },
+  packed:    { label: 'Packed', bg: 'rgba(180,83,9,.14)', fg: '#b45309' },
+  out:       { label: 'Out for delivery', bg: 'rgba(37,99,235,.14)', fg: '#2563eb' },
+  delivered: { label: 'Delivered', bg: 'rgba(21,102,47,.12)', fg: 'var(--hdv-green)' },
+  invoiced:  { label: 'Invoiced', bg: 'rgba(21,102,47,.12)', fg: 'var(--hdv-green)' },
+  cancelled: { label: 'Cancelled', bg: 'rgba(107,122,112,.16)', fg: 'var(--hdv-sub)' }
+};
+function statusInfo(o) { return STATUS_INFO[(o && o.status)] || STATUS_INFO.completed; }
 
 /* ----- small formatters for customers / runs / dates ----- */
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -222,8 +242,9 @@ function renderTake(root, cust) {
 
   const run = runById(cust.runId);
   const di = run ? deliveryInfo(run) : null;
+  const chosenDate = (open && open.deliveryDate) || (di ? di.date : null);
   const delLabel = run
-    ? (di ? `${run.name} · next delivery ${niceDate(di.date)}` : run.name)
+    ? (chosenDate ? `Delivery ${niceDate(chosenDate)}` : run.name)
     : 'No delivery run set';
 
   const self = cust.id === customerId();   // customer ordering for themselves
@@ -232,7 +253,7 @@ function renderTake(root, cust) {
     ${self ? '' : '<button class="hdv-backbtn" data-act="back">‹ Customers</button>'}
     <div class="hdv-info">
       <div class="hdv-name">${self ? 'Your order · ' : ''}${esc(cust.name)}</div>
-      <div class="hdv-sub">${esc(delLabel)}</div>
+      <div class="hdv-sub">${esc(delLabel)}${run ? ` · <a class="hdv-link" data-act="changedate" style="cursor:pointer">Change</a>` : ''}</div>
     </div>
     <span class="hdv-tchip">${esc(t ? t.name : (cust.tierId || ''))}</span>
   </div>`;
@@ -259,7 +280,7 @@ function renderTake(root, cust) {
 
   // Already placed your order for this delivery (and not mid-edit)? Offer to
   // add/change or cancel it while the cut-off is still open — it's their order.
-  const placed = self && di ? placedOrderFor(cust.id, di.date) : null;
+  const placed = self ? upcomingPlacedOrder(cust.id) : null;
   if (placed && !open) {
     const pn = (placed.lines || []).length;
     h += `<div style="background:rgba(21,102,47,.10);border-bottom:1px solid var(--hdv-line);padding:12px">
@@ -270,6 +291,20 @@ function renderTake(root, cust) {
         <button class="hdv-btnG slim danger" data-act="cancelplaced" data-id="${esc(placed.id)}">Cancel order</button>
       </div>
     </div>`;
+  }
+
+  // Returning customer starting fresh (no open cart, nothing placed yet for this
+  // delivery): a big one-tap reorder of their last order.
+  if (self && !open && !placed) {
+    const last = completedOrdersOf(cust.id)[0];
+    if (last && (last.lines || []).length) {
+      h += `<button data-act="reorderlast" data-id="${esc(last.id)}" style="display:flex;width:calc(100% - 24px);
+        margin:10px 12px 2px;justify-content:space-between;align-items:center;gap:12px;border:0;border-radius:14px;
+        background:var(--hdv-green);color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:13px 16px;cursor:pointer">
+        <span>🔁 Reorder your last order</span>
+        <span style="font-weight:800">${(last.lines || []).length} item${(last.lines || []).length === 1 ? '' : 's'} · ${money(orderTotal(last.lines))} ›</span>
+      </button>`;
+    }
   }
 
   const hasSpecials = catalog().some(p => specialFor(p.key));
@@ -330,6 +365,8 @@ function renderTake(root, cust) {
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
     else if (act === 'editplaced') reopenPlaced(t2.dataset.id);
     else if (act === 'cancelplaced') cancelPlaced(t2.dataset.id);
+    else if (act === 'changedate') openSheet(b => deliveryDateSheet(b, cust), { static: true });
+    else if (act === 'reorderlast') { const src = asList(orders()).find(o2 => o2 && o2.id === t2.dataset.id); if (src) reorder(cust.id, src); }
   };
 }
 
@@ -450,10 +487,11 @@ function reviewSheet(body, custId) {
   const needPrice = lines.some(l => l.price === '' || l.price == null);
   const run = runById(cust.runId);
   const di = run ? deliveryInfo(run) : null;
-  const delDate = di ? di.date : null;
+  const delDate = (o && o.deliveryDate) || (di ? di.date : null);
+  const effMin = Math.max(Number(MIN_ORDER) || 0, Number(cust.minOrder) || 0);
 
   let h = `<div class="hdv-sheettitle">${esc(cust.name)}</div>
-    <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}</div>`;
+    <div class="hdv-sheetsub">${delDate ? 'For delivery ' + esc(niceDate(delDate)) : 'Open order · ' + esc((o && o.date) || todayStr())}${run ? ` · <a class="hdv-link" data-act="changedate" style="cursor:pointer">Change date</a>` : ''}</div>`;
 
   if (!lines.length) {
     h += emptyHTML('No lines on this order yet');
@@ -478,8 +516,9 @@ function reviewSheet(body, custId) {
       </div>`;
     }).join('');
     h += `<div class="hdv-total"><span>Total</span><span>${money(total)}</span></div>`;
-    if (cust.minOrder && total < Number(cust.minOrder)) {
-      h += `<div class="hdv-err">Below minimum order ${money(Number(cust.minOrder))} — short ${money(Number(cust.minOrder) - total)}</div>`;
+    const belowMin = effMin && total < effMin;
+    if (belowMin) {
+      h += `<div class="hdv-err">Minimum order is ${money(effMin)} — add ${money(effMin - total)} more to place.</div>`;
     }
     if (needPrice) h += '<div class="hdv-err">Some lines still need a price</div>';
     h += `<label class="hdv-lbl" for="ord-comment">Note for Happy Days (optional)</label>
@@ -487,7 +526,7 @@ function reviewSheet(body, custId) {
         placeholder="e.g. ring on arrival · leave at back door · extra ripe bananas">${esc(o.comment || '')}</textarea>`;
     h += `<div class="hdv-actions">
       <button class="hdv-btnG" data-act="share">Share</button>
-      <button class="hdv-btnP" data-act="complete">Place order</button>
+      <button class="hdv-btnP" data-act="complete"${(belowMin || needPrice) ? ' disabled' : ''}>Place order</button>
     </div>`;
   }
 
@@ -502,6 +541,7 @@ function reviewSheet(body, custId) {
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
     else if (act === 'complete') completeOrder(custId);
+    else if (act === 'changedate') openSheet(b => deliveryDateSheet(b, c), { static: true });
   };
   // Customer comment + per-line notes. oninput keeps the typed value in memory
   // (no re-render, so typing is never interrupted); onchange (blur) persists it
@@ -526,20 +566,66 @@ function completeOrder(custId) {
   const o = openOrderOf(custId);
   if (!o || !(o.lines || []).length) { toast('Nothing to complete'); return; }
   const cust = asList(customers()).find(c => c && c.id === custId) || {};
+  // $50 global minimum (or higher per-customer) blocks placing.
+  const effMin = Math.max(Number(MIN_ORDER) || 0, Number(cust.minOrder) || 0);
+  if (effMin && orderTotal(o.lines) < effMin) { toast('Minimum order is ' + money(effMin)); return; }
   const run = runById(cust.runId);
   const di = run ? deliveryInfo(run) : null;
-  const delDate = di ? di.date : todayStr();
+  const delDate = o.deliveryDate || (di ? di.date : todayStr());   // customer's chosen date, or earliest
   o.status = 'completed';            // 'open' | 'completed' (kept compatible with the classic app)
   o.completed = todayStr();
   o.placedAt = Date.now();
   o.deliveryDate = delDate;
+  o.packDate = packDateFor(delDate); // staff-facing: pack the day before delivery
   o.runId = cust.runId || '';
   if (!o.orderNo) o.orderNo = makeOrderNo(delDate);
   saveOrder(o);                      // patches /custorders, emits 'change'
+  emailOrderConfirmation(cust, o);   // best-effort order-confirmation email (EmailJS)
   mode = 'list'; curId = null; clearSearch();
   // A proper confirmation (reassurance + a keepable receipt) instead of a toast.
   openSheet(b => orderPlacedSheet(b, custId, o.id), { static: true });
   rerenderNow();
+}
+
+/* Packing date = the calendar day before the delivery date (YYYY-MM-DD). */
+function packDateFor(delDate) {
+  const p = String(delDate || '').split('-').map(Number);
+  if (p.length !== 3 || !p[0]) return '';
+  const d = new Date(p[0], p[1] - 1, p[2] - 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+/* Choose any future delivery date — the run's delivery weekdays, starting at the
+   earliest date whose cut-off is still open. Sets it on the customer's open order. */
+function deliveryDateSheet(body, cust) {
+  const run = runById(cust.runId);
+  const dates = validDeliveryDates(run, 12);
+  const o = openOrderOf(cust.id);
+  const chosen = (o && o.deliveryDate) || (dates[0] && dates[0].date) || '';
+  let h = `<div class="hdv-sheettitle">Choose delivery date</div>
+    <div class="hdv-sheetsub">Pick any available date · earliest respects the cut-off</div>`;
+  if (!dates.length) {
+    h += emptyHTML('No delivery dates available — call us on 0430 033 127');
+  } else {
+    h += dates.map(d => `<div class="hdv-row${d.date === chosen ? ' sel' : ''}" data-act="pickdate" data-d="${esc(d.date)}" style="cursor:pointer">
+      <div class="hdv-info"><div class="hdv-name">${esc(niceDate(d.date))}</div></div>
+      ${d.date === chosen ? '<span class="hdv-tchip">Selected</span>' : '<span class="hdv-link">Choose ›</span>'}
+    </div>`).join('');
+  }
+  h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="ddone">Done</button></div>`;
+  body.innerHTML = h;
+  body.onclick = e => {
+    const t = e.target.closest('[data-act]');
+    if (!t) return;
+    if (t.dataset.act === 'pickdate') {
+      const oo = openOrderOf(cust.id) || ensureOpenOrder(cust.id);
+      if (oo) { oo.deliveryDate = t.dataset.d; saveOrder(oo); }
+      deliveryDateSheet(body, cust);   // re-render with the new selection highlighted
+    } else if (t.dataset.act === 'ddone') {
+      closeSheet(); rerenderNow();
+    }
+  };
 }
 
 /* Sortable order number: <deliveryYYYYMMDD>-#### (#### = that day's sequence). */
@@ -622,7 +708,7 @@ function cancelPlaced(orderId) {
 
 function completedOrdersOf(custId) {
   return asList(orders())
-    .filter(o => o && o.custId === custId && o.status === 'completed')
+    .filter(o => o && o.custId === custId && isPlaced(o))
     .sort((a, b) => (b.placedAt || 0) - (a.placedAt || 0) ||
       String(b.deliveryDate || b.completed || '').localeCompare(String(a.deliveryDate || a.completed || '')));
 }
@@ -632,7 +718,7 @@ function completedOrdersOf(custId) {
 function usualsFor(custId, limit = 12) {
   const freq = new Map();
   for (const o of asList(orders())) {
-    if (!o || o.custId !== custId || o.status !== 'completed') continue;
+    if (!o || o.custId !== custId || !isPlaced(o)) continue;
     for (const l of (o.lines || [])) {
       const f = freq.get(l.key) || { n: 0, qty: 0 };
       f.n += 1; f.qty += Number(l.qty) || 0; freq.set(l.key, f);
@@ -647,15 +733,17 @@ function usualsFor(custId, limit = 12) {
 function historySheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const list = completedOrdersOf(custId);
-  let h = `<div class="hdv-sheettitle">Order history · ${esc(cust.name)}</div>`;
+  let h = `<div class="hdv-sheettitle">My orders · ${esc(cust.name)}</div>`;
   if (!list.length) {
     h += emptyHTML('No past orders yet');
   } else {
     h += list.map(o => {
       const n = Array.isArray(o.lines) ? o.lines.length : 0;
+      const si = statusInfo(o);
       return `<div class="hdv-row">
         <div class="hdv-info">
-          <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
+          <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}
+            <span class="hdv-tchip" style="background:${si.bg};color:${si.fg}">${si.label}</span></div>
           <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}</div>
         </div>
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>

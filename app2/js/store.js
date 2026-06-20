@@ -6,12 +6,25 @@
 
 /* ---------- version (one source of truth, shown in the More tab) ----------
    Bump this on every change so the live app can be tracked. */
-export const VERSION = 'v2.5';
+export const VERSION = 'v2.6';
 export const UPDATED = '20 Jun 2026';
 
 const FB = {
   apiKey: 'AIzaSyBlnVVwGbNW6N3ErAZMpqNIROjGkv_D3nc',
   databaseURL: 'https://happydaysgrocer-dc980-default-rtdb.asia-southeast1.firebasedatabase.app'
+};
+
+/* Minimum order value that applies to ALL customers (owner: $50). The effective
+   minimum for a customer is max(MIN_ORDER, customer.minOrder || 0). */
+export const MIN_ORDER = 50;
+
+/* EmailJS — lets this server-less app send the order-confirmation email.
+   These three IDs are PUBLIC by design (safe in client code). Paste the real
+   values from the EmailJS dashboard; until then the email is silently skipped. */
+const EMAILJS = {
+  serviceId: '',     // EmailJS "Service ID"
+  templateId: '',    // EmailJS "Template ID" for the order confirmation
+  publicKey: ''      // EmailJS "Public Key"
 };
 
 /* ---------- tiny utilities ---------- */
@@ -481,9 +494,9 @@ seedTiersIfEmpty(); // pricing must work before the first sync ever happens
 
 const DEFAULT_RUNS = {
   morning: {
-    id: 'morning', name: 'Morning delivery', code: 'AM',
-    cutoffTime: '21:00', cutoffDayOffset: -1,   // order by 9pm the night before
-    deliveryDays: [1, 2, 3, 4, 5, 6],           // Mon–Sat (0 = Sun)
+    id: 'morning', name: 'Delivery', code: 'AM',
+    cutoffTime: '14:00', cutoffDayOffset: -1,   // order by 2pm the day before delivery
+    deliveryDays: [1, 2, 3, 4, 5],              // Mon–Fri (0 = Sun)
     active: true
   }
 };
@@ -706,6 +719,31 @@ export function deliveryInfo(run, now, onlyDays) {
   return null;
 }
 
+/**
+ * The next `count` SELECTABLE delivery dates for a run: starts at the earliest
+ * date whose cut-off is still open (deliveryInfo) and walks forward over the
+ * run's delivery weekdays. Lets the customer pick any future delivery date.
+ * Returns [{ date:'YYYY-MM-DD', weekday }], possibly [].
+ */
+export function validDeliveryDates(run, count, now) {
+  if (!run) return [];
+  count = count || 10;
+  const first = deliveryInfo(run, now || new Date());
+  if (!first) return [];
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const days = (Array.isArray(run.deliveryDays) && run.deliveryDays.length)
+    ? run.deliveryDays : [1, 2, 3, 4, 5];
+  const p = first.date.split('-').map(Number);
+  const base = new Date(p[0], p[1] - 1, p[2]);
+  const out = [];
+  for (let i = 0; i < 90 && out.length < count; i++) {
+    const cand = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+    if (days.includes(cand.getDay())) out.push({ date: ymd(cand), weekday: cand.getDay() });
+  }
+  return out;
+}
+
 /* ---------- writers ---------- */
 
 export function saveCustomer(c) {
@@ -841,6 +879,43 @@ export function saveOrder(o) {
   if (o.custId) fbPatch('ordersByCustomer/' + o.custId, { [o.id]: true });
   BUS.emit('change');
   return o;
+}
+
+/**
+ * Best-effort order-confirmation email via EmailJS. Silently no-ops if the
+ * EmailJS IDs aren't set yet or the customer has no email, and never throws
+ * into the place-order flow.
+ */
+export function emailOrderConfirmation(cust, order) {
+  try {
+    if (!EMAILJS.serviceId || !EMAILJS.templateId || !EMAILJS.publicKey) return;
+    if (!cust || !cust.email || !order) return;
+    const items = (order.lines || []).map((l) => {
+      const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
+      return lq + ' x ' + l.name +
+        (lp ? '  @ $' + lp.toFixed(2) + ' = $' + (lq * lp).toFixed(2) : '') +
+        (l.note ? '  (' + l.note + ')' : '');
+    }).join('\n');
+    const total = (order.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
+    return fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: EMAILJS.serviceId,
+        template_id: EMAILJS.templateId,
+        user_id: EMAILJS.publicKey,
+        template_params: {
+          to_email: cust.email,
+          to_name: cust.name || '',
+          order_no: order.orderNo || order.id || '',
+          delivery_date: order.deliveryDate || '',
+          items: items,
+          total: '$' + total.toFixed(2),
+          comment: order.comment || ''
+        }
+      })
+    }).catch(() => { /* email is best-effort */ });
+  } catch (e) { /* never break placing an order */ }
 }
 
 /** Find this customer's open order, or create one dated today. */
