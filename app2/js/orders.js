@@ -46,6 +46,14 @@ function openOrderOf(custId) {
   return asList(orders()).find(o => o && o.custId === custId && o.status === 'open');
 }
 
+/** A customer's already-PLACED order for a delivery date (still editable until
+    the run's cut-off), or null. */
+function placedOrderFor(custId, delDate) {
+  if (!delDate) return null;
+  return asList(orders()).find(o => o && o.custId === custId &&
+    o.status === 'completed' && o.deliveryDate === delDate) || null;
+}
+
 /* ----- small formatters for customers / runs / dates ----- */
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -209,7 +217,8 @@ function renderTake(root, cust) {
 
   const q = qText();
   let list = q ? searchCatalog(q) : catalog();
-  if (takeCat) list = list.filter(p => p.group === takeCat);   // chip = aisle
+  if (takeCat === '✨ Specials') list = list.filter(p => specialFor(p.key));   // specials chip
+  else if (takeCat) list = list.filter(p => p.group === takeCat);   // chip = aisle
 
   const run = runById(cust.runId);
   const di = run ? deliveryInfo(run) : null;
@@ -248,7 +257,23 @@ function renderTake(root, cust) {
       Ordering is closed for the coming days — call us on 0430 033 127</div>`;
   }
 
-  h += chipsHTML(groups(), takeCat);
+  // Already placed your order for this delivery (and not mid-edit)? Offer to
+  // add/change or cancel it while the cut-off is still open — it's their order.
+  const placed = self && di ? placedOrderFor(cust.id, di.date) : null;
+  if (placed && !open) {
+    const pn = (placed.lines || []).length;
+    h += `<div style="background:rgba(21,102,47,.10);border-bottom:1px solid var(--hdv-line);padding:12px">
+      <div style="font-weight:800;color:var(--hdv-green);font-size:15px">✓ Order ${esc(placed.orderNo || '')} placed</div>
+      <div style="font-size:13px;color:var(--hdv-sub);margin:2px 0 9px">for delivery ${esc(niceDate(placed.deliveryDate))} · ${pn} item${pn === 1 ? '' : 's'} · ${money(orderTotal(placed.lines))}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="hdv-btnG slim" data-act="editplaced" data-id="${esc(placed.id)}">✏️ Add / change items</button>
+        <button class="hdv-btnG slim danger" data-act="cancelplaced" data-id="${esc(placed.id)}">Cancel order</button>
+      </div>
+    </div>`;
+  }
+
+  const hasSpecials = catalog().some(p => specialFor(p.key));
+  h += chipsHTML(hasSpecials ? ['✨ Specials'].concat(groups()) : groups(), takeCat);
 
   // Order guide: the customer's usual products first (only on the unfiltered view)
   if (!q && !takeCat) {
@@ -270,7 +295,7 @@ function renderTake(root, cust) {
       if (!byCat.has(p.cat)) byCat.set(p.cat, []);
       byCat.get(p.cat).push(p);
     }
-    for (const c of orderedCats(takeCat || undefined)) {
+    for (const c of orderedCats(takeCat && takeCat !== '✨ Specials' ? takeCat : undefined)) {
       const g = byCat.get(c);
       if (!g || !g.length) continue;
       h += `<div class="hdv-sec">${esc(c)}</div>` +
@@ -303,6 +328,8 @@ function renderTake(root, cust) {
     else if (act === 'history') openSheet(b => historySheet(b, cust.id));
     else if (act === 'standing') openSheet(b => standingSheet(b, cust), { static: true });
     else if (act === 'review') openSheet(b => reviewSheet(b, cust.id));
+    else if (act === 'editplaced') reopenPlaced(t2.dataset.id);
+    else if (act === 'cancelplaced') cancelPlaced(t2.dataset.id);
   };
 }
 
@@ -509,9 +536,9 @@ function completeOrder(custId) {
   o.runId = cust.runId || '';
   if (!o.orderNo) o.orderNo = makeOrderNo(delDate);
   saveOrder(o);                      // patches /custorders, emits 'change'
-  closeSheet();
   mode = 'list'; curId = null; clearSearch();
-  toast('Order placed · ' + o.orderNo);
+  // A proper confirmation (reassurance + a keepable receipt) instead of a toast.
+  openSheet(b => orderPlacedSheet(b, custId, o.id), { static: true });
   rerenderNow();
 }
 
@@ -520,6 +547,75 @@ function makeOrderNo(delDate) {
   const ymd = String(delDate || todayStr()).replace(/-/g, '');
   const sameDay = asList(orders()).filter(o => o && o.deliveryDate === delDate && o.orderNo);
   return ymd + '-' + String(sameDay.length + 1).padStart(4, '0');
+}
+
+/* Confirmation after Place order — order #, delivery date, total, share receipt. */
+function orderPlacedSheet(body, custId, orderId) {
+  const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '' };
+  const o = asList(orders()).find(x => x && x.id === orderId);
+  if (!o) { body.innerHTML = emptyHTML('Order placed'); return; }
+  const n = (o.lines || []).length;
+  body.innerHTML = `
+    <div style="text-align:center;padding:14px 6px 4px">
+      <div style="width:62px;height:62px;border-radius:50%;background:var(--hdv-green);color:#fff;
+        font-size:34px;line-height:62px;margin:0 auto 10px">✓</div>
+      <div style="font-size:20px;font-weight:800;color:var(--hdv-text)">Order placed</div>
+      <div style="font-size:13.5px;color:var(--hdv-sub);margin-top:3px">${esc(o.orderNo || '')}</div>
+    </div>
+    <div class="hdv-card" style="display:block;margin:8px 0">
+      <div class="hdv-kv"><span class="hdv-mut">Delivery</span><span>${o.deliveryDate ? esc(niceDate(o.deliveryDate)) : '—'}</span></div>
+      <div class="hdv-kv"><span class="hdv-mut">Items</span><span>${n} item${n === 1 ? '' : 's'}</span></div>
+      <div class="hdv-kv"><span class="hdv-mut">Total</span><span>${money(orderTotal(o.lines))}</span></div>
+    </div>
+    <div style="font-size:13px;color:var(--hdv-sub);text-align:center;padding:0 8px 6px">
+      We've got it${o.deliveryDate ? ' — ready for ' + esc(niceDate(o.deliveryDate)) : ''}. You can still change it until the cut-off.</div>
+    <div class="hdv-actions">
+      <button class="hdv-btnG" data-act="shareR">Share receipt</button>
+      <button class="hdv-btnP" data-act="okdone">Done</button>
+    </div>`;
+  body.onclick = e => {
+    const tt = e.target.closest('[data-act]'); if (!tt) return;
+    if (tt.dataset.act === 'shareR') shareText(orderText(cust, o));
+    else if (tt.dataset.act === 'okdone') closeSheet();
+  };
+}
+
+/* Re-open a placed order so the customer can add/change items before cut-off. */
+function reopenPlaced(orderId) {
+  const o = asList(orders()).find(x => x && x.id === orderId);
+  if (!o) return;
+  o.status = 'open';
+  saveOrder(o);
+  toast('Order re-opened — make your changes, then Place again');
+  rerenderNow();
+}
+
+/* Cancel a placed order (confirm first). Keeps custId so the write is allowed;
+   v2 picking already ignores non-completed; v3 excludes status 'cancelled'. */
+function cancelPlaced(orderId) {
+  const o = asList(orders()).find(x => x && x.id === orderId);
+  if (!o) return;
+  const n = (o.lines || []).length;
+  openSheet(b => {
+    b.innerHTML = `<div class="hdv-sheettitle">Cancel order ${esc(o.orderNo || '')}?</div>
+      <div class="hdv-sheetsub">${n} item${n === 1 ? '' : 's'} · ${money(orderTotal(o.lines))}${o.deliveryDate ? ' for ' + esc(niceDate(o.deliveryDate)) : ''}. To re-order, just build a new order.</div>
+      <div class="hdv-actions">
+        <button class="hdv-btnG" data-act="keep">Keep order</button>
+        <button class="hdv-btnP" style="background:var(--hdv-red)" data-act="confirmcancel">Cancel order</button>
+      </div>`;
+    b.onclick = e => {
+      const tt = e.target.closest('[data-act]'); if (!tt) return;
+      if (tt.dataset.act === 'keep') { closeSheet(); return; }
+      if (tt.dataset.act === 'confirmcancel') {
+        o.status = 'cancelled';
+        o.cancelledAt = Date.now();
+        saveOrder(o);
+        closeSheet();
+        toast('Order cancelled');
+        rerenderNow();
+      }
+    };
+  }, { static: true });
 }
 
 /* ---- order history + reorder ---------------------------------------- */
@@ -1323,6 +1419,27 @@ export function renderMore(root) {
   </div>`;
 
   const isCust = !!customerId();   // customer logins see no admin tools
+
+  // customer login: their own delivery details (read-only) + how to change them
+  if (isCust) {
+    const me = asList(customers()).find(c => c && c.id === customerId());
+    if (me) {
+      const run = runById(me.runId);
+      const rows = [];
+      if (me.address || me.suburb) rows.push(['Deliver to', [me.address, me.suburb].filter(Boolean).join(', ')]);
+      if (run) rows.push(['Delivery', run.name + (Array.isArray(run.deliveryDays) && run.deliveryDays.length ? ' · ' + daysLabel(run.deliveryDays) : '')]);
+      if (me.contact) rows.push(['Contact', me.contact]);
+      if (me.terms) rows.push(['Terms', me.terms === 'COD' ? 'Pay on delivery' : String(me.terms).replace('days', ' days')]);
+      if (me.minOrder) rows.push(['Min order', money(Number(me.minOrder))]);
+      h += `<div class="hdv-card" style="display:block">
+        <div class="hdv-name" style="margin-bottom:6px">Your delivery details</div>
+        ${rows.map(([k, v]) => `<div class="hdv-kv"><span class="hdv-mut">${esc(k)}</span><span style="text-align:right">${esc(v)}</span></div>`).join('') ||
+          '<div class="hdv-count">No delivery details on file yet</div>'}
+        <div class="hdv-kv" style="margin-top:6px"><span class="hdv-mut">Need a change?</span>
+          <a class="hdv-link" href="tel:0430033127">Call us · 0430 033 127</a></div>
+      </div>`;
+    }
+  }
 
   // price levels
   if (!isCust) h += `<div class="hdv-card">

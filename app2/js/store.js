@@ -6,8 +6,8 @@
 
 /* ---------- version (one source of truth, shown in the More tab) ----------
    Bump this on every change so the live app can be tracked. */
-export const VERSION = 'v2.4';
-export const UPDATED = '17 Jun 2026';
+export const VERSION = 'v2.5';
+export const UPDATED = '20 Jun 2026';
 
 const FB = {
   apiKey: 'AIzaSyBlnVVwGbNW6N3ErAZMpqNIROjGkv_D3nc',
