@@ -7,9 +7,9 @@
 import {
   catalog, categories, groups, orderedCats, searchCatalog, bus, auth,
   isOut, setOut, marginInfo, eposFor, secureLoaded, setBuyManual, buyManualQty,
-  stockFor, setStockCount, setBoxSize
+  stockFor, setStockCount, setBoxSize, buyRunList
 } from './store.js';
-import { purchaseUnit, purchaseUnitLabel } from './boxes.js';
+import { purchaseUnit, purchaseUnitLabel, boxMath } from './boxes.js';
 
 /* ------------------------------------------------------------ helpers */
 
@@ -257,6 +257,20 @@ function inStockScope(p) {
   return BULK_NAME_RE.test(p.name);                                            // bulk grocery
 }
 
+/* Buy-run cross-reference (the brief): show "to buy: N" from the LIVE buy run on
+   each stock line + a Buy-run-only filter. _buyMap (key -> qty to buy) is rebuilt
+   each render; stockBuyOnly narrows the list to what's on the run. */
+let stockBuyOnly = false;
+let _buyMap = new Map();
+
+/* Short "to buy" label in market units: "2 boxes" / "1.5 kg" (loose) / raw qty. */
+function buyLabel(name, qty) {
+  const m = boxMath(name, qty);
+  if (!m) return String(qty);                         // no box rule -> raw qty
+  if (m.loose) return qty + ' kg';
+  return m.boxes + ' box' + (m.boxes === 1 ? '' : 'es');
+}
+
 export function renderShop(root) {
   ensureCss();
   setActive(() => renderShop(root));
@@ -268,10 +282,12 @@ export function renderShop(root) {
     return;
   }
   const items = all.filter(inStockScope);   // produce + bulk grocery only
+  _buyMap = new Map(buyRunList().map(x => [x.key, Number(x.total) || 0]));   // live buy run
 
   const q = qText();
   let list = q ? searchCatalog(q).filter(inStockScope) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
+  if (stockBuyOnly) list = list.filter(p => _buyMap.has(p.key));   // only what's on the buy run
 
   const today = todayStr();
   let countedToday = 0, outN = 0;
@@ -280,9 +296,15 @@ export function renderShop(root) {
     if (isOut(p.key)) outN++;
   }
 
+  const onRun = items.filter(p => _buyMap.has(p.key)).length;
   let h = `<div class="hdv-head"><div class="hdv-h1">Stock on hand</div>
-    <button class="hdv-btnG slim" data-act="count">Count stock</button></div>`;
-  h += `<div class="hdv-sec">Counted by the BOX / BAG you buy at the market · ${countedToday} counted today · ${outN} out · tap the number to type any amount (e.g. 1.5)</div>`;
+    <div style="display:flex;gap:6px">
+      <button class="${stockBuyOnly ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="buyonly">🛒 Buy run${stockBuyOnly ? ' ✓' : ''}</button>
+      <button class="hdv-btnG slim" data-act="count">Count stock</button>
+    </div></div>`;
+  h += `<div class="hdv-sec">${stockBuyOnly
+    ? 'Showing the ' + onRun + ' item' + (onRun === 1 ? '' : 's') + ' on the buy run — count what you bought'
+    : 'Counted by the BOX / BAG you buy at the market · ' + countedToday + ' counted today · ' + onRun + ' on the buy run'} · tap the number to type any amount (e.g. 1.5)</div>`;
 
   // chips: only the aisles that actually have in-scope items
   const live = new Set(items.map(p => p.group));
@@ -348,9 +370,13 @@ function stockRow(p, withCat) {
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT</span>' : '';
   const rev = p.review
     ? ' <span class="hdv-newchip">NEW · review</span>' : '';
+  const toBuy = _buyMap.get(p.key);                    // qty the buy run says to buy
+  const buyChip = (toBuy > 0)
+    ? ` <span class="hdv-tchip" style="background:rgba(21,102,47,.14);color:var(--hdv-green);font-weight:700">buy ${esc(buyLabel(p.name, toBuy))}</span>`
+    : '';
   return `<div class="hdv-row${out ? ' review' : ''}">
     <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
-      <div class="hdv-name">${esc(p.name)}${rev}${badge}</div>
+      <div class="hdv-name">${esc(p.name)}${rev}${badge}${buyChip}</div>
       <div class="hdv-sub">${bits.join(' · ')}</div>
     </div>
     ${stockStepper(p.key, onHand == null ? 0 : onHand)}
@@ -393,6 +419,7 @@ function onShopClick(e) {
   const t = e.target.closest('[data-act]');
   if (!t) return;
   const act = t.dataset.act, key = t.dataset.key;
+  if (act === 'buyonly') { stockBuyOnly = !stockBuyOnly; rerenderNow(); return; }
   if (act === 'chip') { shopCat = t.dataset.cat; rerenderNow(); return; }
   if (act === 'detail') { openSheet(productSheet(key)); return; }
   if (act === 'count') { import('./stock.js').then((m) => m.openCountSheet()); return; }
