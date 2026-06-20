@@ -1285,6 +1285,8 @@ function usualsFor(custId, limit = 12) {
 function historySheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const list = completedOrdersOf(custId);
+  // editable date chips (received / packing / delivery) — save to the SHARED order, so V4 sees them
+  const dchip = (lbl, f, o) => `<label style="font-size:10.5px;color:var(--hdv-mut);font-weight:700;line-height:1.1">${lbl}<br><input type="date" data-df="${f}" data-id="${esc(o.id)}" value="${esc(o[f] || '')}" style="font-size:12px;padding:4px 6px;border:1px solid var(--hdv-line,#dcdcdc);border-radius:6px;margin-top:2px"></label>`;
   let h = `<div class="hdv-sheettitle">Order history · ${esc(cust.name)}</div>`;
   if (!list.length) {
     h += emptyHTML('No past orders yet');
@@ -1297,6 +1299,7 @@ function historySheet(body, custId) {
         <div class="hdv-info">
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
           <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${o.paid ? ' · <b style="color:var(--hdv-green)">PAID</b>' : ' · <b style="color:var(--hdv-red)">unpaid</b>'}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${dchip('Received', 'date', o)}${dchip('Pack', 'packingDate', o)}${dchip('Deliver', 'deliveryDate', o)}</div>
         </div>
         ${(!tq || tq.status === 'error') ? `<button class="hdv-btnG slim" data-act="sendtill" data-id="${esc(o.id)}">→ Till</button>` : ''}
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
@@ -1325,6 +1328,17 @@ function historySheet(body, custId) {
     if (t.dataset.act === 'again') reorder(custId, src);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
+  };
+  // edit a date (received / packing / delivery) inline — writes to the shared order; change bubbles to body
+  body.onchange = e => {
+    const inp = e.target.closest('input[data-df]'); if (!inp) return;
+    const o = asList(orders()).find(x => x && x.id === inp.dataset.id); if (!o) return;
+    const f = inp.dataset.df;
+    if (f === 'date') { if (!inp.value) { inp.value = o.date || ''; return; } o.date = inp.value; }  // received date can't be blank
+    else { o[f] = inp.value || ''; }                                                                 // packing/delivery: blank clears
+    saveOrder(o);
+    toast((f === 'date' ? 'Date received' : f === 'packingDate' ? 'Packing date' : 'Delivery date') + ' saved');
+    refreshSheet();
   };
 }
 
