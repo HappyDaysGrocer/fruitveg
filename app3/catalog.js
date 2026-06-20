@@ -12,7 +12,7 @@ window.HD_CATALOG = [
   {"c": "H-O", "n": "Leeks Each", "s": 2.99, "b": ""},
   {"c": "A-B", "n": "Apples Golden /kg", "s": 4.99, "b": ""},
   {"c": "A-B", "n": "Apples Golden Each", "s": 1.11, "b": ""},
-  {"c": "A-B", "n": "Apples Granny Smith /kg", "s": 4.99, "b": "0605053615"},
+  {"c": "A-B", "n": "Apples Granny Smith /kg", "s": 5.5, "b": "0605053615"},
   {"c": "A-B", "n": "Apples Granny Smith Each", "s": 1.11, "b": ""},
   {"c": "A-B", "n": "Apples Jazz /kg", "s": 5.49, "b": "7040521315"},
   {"c": "A-B", "n": "Apples Jazz Each", "s": 1.11, "b": ""},

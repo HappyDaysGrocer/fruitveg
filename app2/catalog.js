@@ -2,7 +2,7 @@
    AUTO-GENERATED from the order-form master (gen_catalog.py) — do not hand-edit.
    ONLY: category, name, retail sell price, barcode, aisle. No cost, ever. */
 window.HD_CATALOG = [
-  {"c": "Fruit", "n": "Apples, Granny Smith /kg", "s": 4.99, "b": "0605053615", "g": "Fruit"},
+  {"c": "Fruit", "n": "Apples, Granny Smith /kg", "s": 5.5, "b": "0605053615", "g": "Fruit"},
   {"c": "Fruit", "n": "Apples, Granny Smith (ea)", "s": 1.11, "b": "", "g": "Fruit"},
   {"c": "Fruit", "n": "Apples, Pink Lady /kg", "s": 5.5, "b": "1176562342", "g": "Fruit"},
   {"c": "Fruit", "n": "Apples, Pink Lady (ea)", "s": 1.11, "b": "", "g": "Fruit"},
