@@ -29,13 +29,16 @@ import { shareInvoice, sharePL } from './pdfinvoice.js';
 import { openOrderForm } from './orderform.js';
 
 /* Business + payment details — one source for the text invoice and the PDF.
-   (Trading name only; the legal entity is intentionally not shown.) */
+   Legal entity now shown on invoices (owner 2026-06-22, to match the V4 invoice):
+   "Mango People Pty Ltd" trading as "Happy Days Fruit Veg & Grocer". */
 const BIZ = {
   name: 'Happy Days Fruit Veg & Grocer',
+  legal: 'Mango People Pty Ltd',
   abn: '95 688 893 156',
   addr: 'Unit 4, 684-700 Frankston-Dandenong Rd, Carrum Downs VIC 3201',
   phone: '0430 033 127',
   email: 'happydaysgrocer@gmail.com',
+  accName: 'Mango People Pty Ltd',
   // ⚠ PAYMENT DETAILS — LOCKED. Owner directive 2026-06-14: these NEVER change.
   // Do not edit bsb/acc without an explicit, unambiguous instruction from the owner.
   bsb: '063-118',
@@ -1568,12 +1571,12 @@ function statementText(cust, list) {
   const owing = billed - paid;
   return [
     'STATEMENT — ' + (cust.name || ''),
-    BIZ.name, 'ABN ' + BIZ.abn, '',
+    BIZ.legal || BIZ.name, 'trading as ' + BIZ.name, 'ABN ' + BIZ.abn, '',
     rows.join('\n'), '',
     'Billed: ' + money(billed),
     'Paid:   ' + money(paid),
     'OWING:  ' + money(owing), '',
-    'Pay: BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc,
+    'Pay: ' + (BIZ.accName ? BIZ.accName + '  ' : '') + 'BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc,
     BIZ.name + ' · ' + BIZ.phone
   ].filter(s => s !== '').join('\n');
 }
@@ -1758,7 +1761,8 @@ function invoiceText(invNo, cust, o) {
   const total = orderTotal(o.lines);
   return [
     'TAX INVOICE ' + invNo,
-    BIZ.name,
+    BIZ.legal || BIZ.name,
+    'trading as ' + BIZ.name,
     'ABN ' + BIZ.abn,
     BIZ.addr,
     'Ph ' + BIZ.phone + ' · ' + BIZ.email,
@@ -1772,7 +1776,7 @@ function invoiceText(invNo, cust, o) {
     '',
     'TOTAL: ' + money(total) + '  (all items GST-free)',
     '',
-    'Payment: BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc + '  Ref ' + invNo,
+    'Payment: ' + (BIZ.accName ? BIZ.accName + '  ' : '') + 'BSB ' + BIZ.bsb + '  Acc ' + BIZ.acc + '  Ref ' + invNo,
     invoiceTerms(cust)
   ].filter(s => s !== '').join('\n');
 }
