@@ -281,11 +281,14 @@ export function renderShop(root) {
     root.onclick = null;
     return;
   }
-  const items = all.filter(inStockScope);   // produce + bulk grocery only
   _buyMap = new Map(buyRunList().map(x => [x.key, Number(x.total) || 0]));   // live buy run
+  // Stock take covers produce + bulk AND everything on the buy run, so the two lists
+  // always reconcile (brief: every Buy-run product must appear on Count stock).
+  const inScope = (p) => inStockScope(p) || _buyMap.has(p.key);
+  const items = all.filter(inScope);   // produce + bulk grocery + anything on the buy run
 
   const q = qText();
-  let list = q ? searchCatalog(q).filter(inStockScope) : items;
+  let list = q ? searchCatalog(q).filter(inScope) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
   if (stockBuyOnly) list = list.filter(p => _buyMap.has(p.key));   // only what's on the buy run
 

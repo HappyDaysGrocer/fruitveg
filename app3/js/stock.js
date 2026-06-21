@@ -8,7 +8,7 @@
    so the 600 products get barcoded progressively as the team counts. */
 
 import {
-  catalog, searchCatalog, stockFor, setStockCount, keyForBarcode, assignBarcode, orderedCats
+  catalog, searchCatalog, stockFor, setStockCount, keyForBarcode, assignBarcode, orderedCats, buyRunList
 } from './store.js';
 import { esc, money, openSheet, closeSheet, toast, inStockScope } from './catalog.js';
 import { purchaseUnitLabel } from './boxes.js';
@@ -131,7 +131,9 @@ export function openCountSheet() {
         <div id="hdv-ct-res"></div>`;
       // Pre-listed: every Mundi produce + box/bag item you buy, grouped by aisle,
       // each with a +/- counter (in box/bag units) — like the Buy Run, but for counting.
-      const all = catalog().filter(inStockScope);
+      // Includes everything on the buy run too, so Count stock always matches the Buy run.
+      const _buyKeys = new Set(buyRunList().map((x) => x.key));
+      const all = catalog().filter((p) => inStockScope(p) || _buyKeys.has(p.key));
       const byCat = new Map();
       for (const p of all) { if (!byCat.has(p.cat)) byCat.set(p.cat, []); byCat.get(p.cat).push(p); }
       h += `<div class="hdv-sec">${n} counted so far · ${all.length} items to count (tap a number to type 1.5 etc.)</div>`;
