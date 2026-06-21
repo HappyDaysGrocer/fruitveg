@@ -1081,6 +1081,159 @@ function packSheet(custId, orderId) {
   };
 }
 
+/* ===== Edit an order — view + edit every line / dates / note (matches the v4
+   dashboard's order editor). Writes the SAME /custorders record (no duplicate):
+   saveOrder does a WHOLE-CHILD PATCH, so we read-modify-write the LIVE mirror
+   order object and only touch edited fields — preserving v4-only fields
+   (track / payment / remittance / dueDate). A price edit here touches ONLY this
+   order's line (never the customer price list / tiers / catalogue). ============ */
+function orderById(orderId) {
+  return asList(orders()).find(o => o && o.id === orderId) || null;
+}
+
+function orderEditSheet(orderId) {
+  // working copy — seeded once, survives our own draw() repaints so typing isn't wiped.
+  // Opened {static:true} so external store 'change' events never wipe the form; ALL
+  // repaints go through draw() (refreshSheet is a no-op on static sheets).
+  let L = null, comment = '', oDate = '', pDate = '', dDate = '', confirm = false, _body = null;
+  const seed = (o) => {
+    L = (Array.isArray(o.lines) ? o.lines : []).map(l => ({
+      ...l,                                    // keep every existing line field (note/cost/packed/… + future)
+      name: l.name || l.product || '', unit: l.unit || '',
+      qty: Number(l.qty) || 0,
+      price: (l.price === '' || l.price == null) ? '' : (Number(l.price) || 0)
+    }));
+    if (!L.length) L.push({ name: '', qty: 1, unit: '', price: '' });
+    comment = o.comment || ''; oDate = o.date || ''; pDate = o.packingDate || ''; dDate = o.deliveryDate || '';
+  };
+  const kept = () => L.filter(l => String(l.name || '').trim() !== '');
+  const total = () => kept().reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
+
+  const draw = () => {
+    const body = _body; if (!body) return;
+    const o = orderById(orderId);
+    if (!o) { body.innerHTML = emptyHTML('Order not found'); return; }
+    if (L === null) seed(o);
+    const cust = asList(customers()).find(c => c && c.id === o.custId) || { name: o.business || '—' };
+    const tot = total();
+
+    let h = `<div class="hdv-sheettitle">Edit order · ${esc(cust.name || '—')}</div>
+      <div class="hdv-sheetsub">${esc(o.orderNo || orderRef(o))} · ${o.status === 'completed' ? 'placed' : 'open'} order — changes save to the same record (the dashboard sees them too)</div>`;
+
+    h += L.map((l, i) => `<div class="hdv-row" style="align-items:flex-start">
+      <div class="hdv-info" style="flex:1">
+        <input class="hdv-in" data-lf="name" data-i="${i}" value="${esc(l.name)}" placeholder="item name" style="width:100%;margin:0 0 4px">
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <input class="hdv-in" data-lf="qty" data-i="${i}" type="number" inputmode="decimal" min="0" value="${l.qty}" style="width:54px;margin:0" aria-label="quantity">
+          <input class="hdv-in" data-lf="unit" data-i="${i}" value="${esc(l.unit)}" placeholder="unit" style="width:56px;margin:0" aria-label="unit">
+          <span class="hdv-sub">@</span>
+          <input class="hdv-in" data-lf="price" data-i="${i}" type="number" inputmode="decimal" min="0" value="${l.price}" placeholder="$" style="width:70px;margin:0" aria-label="price">
+          <span class="hdv-sub" data-amt="${i}">${money((Number(l.qty) || 0) * (Number(l.price) || 0)) || '$0.00'}</span>
+          <button data-erm="${i}" aria-label="remove line" style="margin-left:auto;background:none;border:0;color:#b91c1c;font-weight:800;font-size:18px;line-height:1;cursor:pointer">&times;</button>
+        </div>
+      </div>
+    </div>`).join('');
+
+    h += `<button class="hdv-btnG slim" data-act="eadd" style="margin:6px 0">+ add line</button>`;
+
+    h += `<div class="hdv-sub" style="margin-top:8px;font-weight:700">Order note</div>
+      <input class="hdv-in" data-of="comment" value="${esc(comment)}" placeholder="note for this order" style="width:100%;margin:2px 0 8px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="hdv-sub">Received<br><input class="hdv-in" data-of="date" type="date" value="${esc(oDate)}" style="margin:2px 0 0"></label>
+        <label class="hdv-sub">Packing<br><input class="hdv-in" data-of="packingDate" type="date" value="${esc(pDate)}" style="margin:2px 0 0"></label>
+        <label class="hdv-sub">Delivery<br><input class="hdv-in" data-of="deliveryDate" type="date" value="${esc(dDate)}" style="margin:2px 0 0"></label>
+      </div>`;
+    if (pDate && dDate && dDate < pDate) h += `<div class="hdv-sub" style="color:var(--hdv-amber);margin-top:5px">⚠ delivery date is before packing date</div>`;
+    h += `<button class="hdv-btnG slim" data-act="edclr" style="margin:6px 0">Clear packing + delivery</button>`;
+
+    h += `<div class="hdv-total"><span>Order total</span><span id="eTot" class="js-etot">${money(tot)}</span></div>`;
+    if (!confirm) {
+      h += `<div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="ecancel">Cancel</button>
+        <button class="hdv-btnP" data-act="econfirm">Save changes</button>
+      </div>`;
+    } else {
+      h += `<div class="hdv-sheetsub" style="margin-top:6px">Save this order — new total <b class="js-etot">${money(tot)}</b>?</div>
+        <div class="hdv-actions">
+          <button class="hdv-btnG slim" data-act="ekeep">Keep editing</button>
+          <button class="hdv-btnP" data-act="esave">Save · <span class="js-etot">${money(tot)}</span></button>
+        </div>`;
+    }
+    body.innerHTML = h;
+
+    body.oninput = e => {
+      const t = e.target, d = t.dataset || {};
+      if (d.lf != null) {
+        const i = +d.i, f = d.lf;
+        if (f === 'qty') L[i].qty = (t.value === '' ? 0 : Math.max(0, Number(t.value) || 0));
+        else if (f === 'price') { L[i].price = (t.value === '' ? '' : Math.max(0, Number(t.value) || 0)); L[i].src = 'manual'; }
+        else L[i][f] = t.value;
+        const amt = body.querySelector(`[data-amt="${i}"]`);
+        if (amt) amt.textContent = money((Number(L[i].qty) || 0) * (Number(L[i].price) || 0)) || '$0.00';
+        body.querySelectorAll('.js-etot').forEach(el => el.textContent = money(total()));   // keep every total display live
+      } else if (d.of != null) {
+        if (d.of === 'comment') comment = t.value;
+        else if (d.of === 'date') oDate = t.value;
+        else if (d.of === 'packingDate') pDate = t.value;
+        else if (d.of === 'deliveryDate') dDate = t.value;
+      }
+    };
+    body.onclick = e => {
+      const t = e.target.closest('[data-act],[data-erm]');
+      if (!t) return;
+      if (t.dataset.erm != null) {
+        L.splice(+t.dataset.erm, 1);
+        if (!L.length) L.push({ name: '', qty: 1, unit: '', price: '' });
+        confirm = false; draw(); return;
+      }
+      const act = t.dataset.act;
+      if (act === 'eadd') { L.push({ name: '', qty: 1, unit: '', price: '' }); confirm = false; draw(); }
+      else if (act === 'edclr') { pDate = ''; dDate = ''; confirm = false; draw(); }
+      else if (act === 'ecancel') closeSheet();
+      else if (act === 'econfirm') { confirm = true; draw(); }
+      else if (act === 'ekeep') { confirm = false; draw(); }
+      else if (act === 'esave') applyOrderEdits(orderId, { L, comment, oDate, pDate, dDate });
+    };
+  };
+
+  return (body) => { _body = body; draw(); };
+}
+
+function applyOrderEdits(orderId, ed) {
+  const o = orderById(orderId);   // re-resolve the LIVE object at save time (no stale clone)
+  if (!o) { toast('Order no longer exists'); closeSheet(); return; }
+  // rebuild kept lines (drop blank-name rows, like v4); resolve a catalogue key for
+  // hand-typed lines so Buy Run / till / cost still work.
+  o.lines = ed.L.filter(l => String(l.name || '').trim() !== '').map(l => {
+    const name = String(l.name).trim();
+    let key = l.key, sup = l.sup;
+    // resolve / re-resolve the catalogue key (exact-then-fuzzy, the same matcher as Import)
+    // so Buy Run / till / cost still work — and a renamed line never keeps a stale key.
+    const ok = key && catalog().some(x => x.key === key && x.name === name);
+    if (!ok) { const hit = matchProduct(name); key = hit ? hit.key : undefined; if (hit) sup = hit.cat || hit.sup || sup; }
+    const line = {
+      ...l,                                    // keep every other line field (note/cost/packed/… + future)
+      name, unit: l.unit || '',
+      qty: Math.max(0, Number(l.qty) || 0),
+      price: (l.price === '' || l.price == null) ? '' : Math.max(0, Number(l.price) || 0),
+      src: l.src || 'manual'
+    };
+    if (key) line.key = key; else delete line.key;
+    if (sup != null) line.sup = sup;
+    return line;
+  });
+  o.total = Math.round(orderTotal(o.lines) * 100) / 100;   // keep the shared record's total fresh (v4 reads o.total)
+  o.comment = ed.comment || '';
+  if (ed.oDate) o.date = ed.oDate;            // received date — never blanked (match v4)
+  o.packingDate = ed.pDate || null;           // blank clears
+  o.deliveryDate = ed.dDate || null;          // blank clears
+  o.editedAt = todayStr(); o.editedBy = whoami();
+  o.v4editedBy = whoami();                     // so the v4 dashboard's "edited by" shows it too
+  saveOrder(o);                                // whole-child PATCH /custorders — same id, NO duplicate
+  toast('Order updated · ' + money(orderTotal(o.lines)));
+  closeSheet();
+}
+
 function reviewSheet(body, custId) {
   const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
   const o = openOrderOf(custId);
@@ -1173,6 +1326,7 @@ function reviewSheet(body, custId) {
       <button class="hdv-btnG slim" data-act="invpdf">Invoice PDF</button>
       <button class="hdv-btnG slim" data-act="orderform">Order form</button>
       <button class="hdv-btnG slim" data-act="note">📝 Note</button>
+      ${customerId() ? '' : '<button class="hdv-btnG slim" data-act="editorder">✏️ Edit</button>'}
       <button class="hdv-btnG slim" data-act="pl">P&amp;L</button>
       ${cta}
     </div>`;
@@ -1191,6 +1345,11 @@ function reviewSheet(body, custId) {
     else if (act === 'price') editPriceInline(t, c, key);
     else if (act === 'share') shareText(orderText(c, openOrderOf(custId)));
     else if (act === 'note') editOrderNote(custId);
+    else if (act === 'editorder') {
+      const oo = openOrderOf(custId);
+      if (oo) openSheet(orderEditSheet(oo.id), { static: true });
+      else toast('No open order to edit');
+    }
     else if (act === 'invpdf') {
       const o = openOrderOf(custId);
       if (!o || !(o.lines || []).length) { toast('No lines yet'); return; }
@@ -1224,7 +1383,7 @@ function completeOrder(custId) {
   o.status = 'completed';            // 'open' | 'completed' (kept compatible with the classic app)
   o.completed = todayStr();
   o.placedAt = Date.now();
-  o.deliveryDate = delDate;
+  o.deliveryDate = o.deliveryDate || delDate;   // keep a delivery date the editor set; else default from the run
   o.runId = cust.runId || '';
   if (!o.orderNo) o.orderNo = makeOrderNo(delDate);
   saveOrder(o);                      // patches /custorders, emits 'change'
