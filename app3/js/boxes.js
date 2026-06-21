@@ -132,6 +132,51 @@ export function parsePack(name) {
   return { per, by, word };
 }
 
+/* Last-resort SEED sizes (owner-approved 2026-06-21) for items that have NO box
+   rule, NO team override, and NO pack size in their name — i.e. the items that
+   would otherwise show "tap to set box size". Only reached after boxFor + parsePack,
+   so broad patterns here are safe (pack-named SKUs never get this far). Each is a
+   sensible STARTING size for the stock take; a tap-to-set override beats it. The
+   final /./ rule gives anything still unmatched a 12 kg box default. */
+const BAKED = [
+  { re: /asparagus/i, per: 10, by: 'bunch' },
+  { re: /brussel/i, per: 5, by: 'kg' },
+  { re: /cabbage/i, per: 10, by: 'each' },
+  { re: /chill?i|chillies/i, per: 5, by: 'kg' },
+  { re: /coconut/i, per: 12, by: 'each' },
+  { re: /\bdates?\b/i, per: 5, by: 'kg' },
+  { re: /dragon\s*fruit|dragonfruit/i, per: 5, by: 'kg' },
+  { re: /endive/i, per: 12, by: 'each' },
+  { re: /guava/i, per: 5, by: 'kg' },
+  { re: /honey\s*dew|rock\s*melon|rockmelon|melon/i, per: 6, by: 'each' },
+  { re: /\bleek/i, per: 12, by: 'each' },
+  { re: /\blime/i, per: 5, by: 'kg' },
+  { re: /\bghia\b|long\s*melon/i, per: 10, by: 'kg' },
+  { re: /mandarin/i, per: 10, by: 'kg' },
+  { re: /okra|bhindi/i, per: 5, by: 'kg' },
+  { re: /passionfruit/i, per: 5, by: 'kg' },
+  { re: /persimmon/i, per: 5, by: 'kg' },
+  { re: /\bplum/i, per: 10, by: 'kg' },
+  { re: /sweet\s*potato/i, per: 10, by: 'kg' },
+  { re: /potato/i, per: 20, by: 'kg' },
+  { re: /\bsaag\b|daikon|curry\s*leaf|\bpatha\b|fenugreek|methi/i, per: 10, by: 'bunch' },
+  { re: /salad\s*mix|wild\s*rocket|\brocket\b|baby\s*spinach|spinach\s*packet/i, per: 5, by: 'kg' },
+  { re: /tomato/i, per: 10, by: 'kg' },
+  { re: /turmeric/i, per: 5, by: 'kg' },
+  { re: /bitter\s*melon|bittermelon|karela/i, per: 5, by: 'kg' },
+  // grocery cartons (count read from the SKU name)
+  { re: /english\s*tea\s*shop/i, per: 6, by: 'each' },
+  { re: /olitalia|olive\s*oil/i, per: 9, by: 'each' },
+  { re: /sugar\s*pc|\bcsr\b/i, per: 1, by: 'each' },
+  // final fallback — a 12 kg box default (owner-approved; correct via tap-to-set)
+  { re: /./, per: 12, by: 'kg' }
+];
+
+function bakedDefault(name) {
+  for (const d of BAKED) if (d.re.test(name)) return { per: d.per, by: d.by };
+  return null;
+}
+
 /** The unit you BUY this item in at the market.
     {kind:'box'|'loose'|'none', per, by, word}. */
 export function purchaseUnit(name) {
@@ -146,6 +191,8 @@ export function purchaseUnit(name) {
     if (pack.per > 0) return { kind: 'box', per: pack.per, by: pack.by, word };
     return { kind: 'box', per: 0, by: 'each', word };   // pack word but no size
   }
+  const baked = bakedDefault(name);   // last-resort seed (owner-approved 2026-06-21)
+  if (baked) return { kind: 'box', per: baked.per, by: baked.by, word: 'box' };
   return { kind: 'none', per: 0, by: '', word: '' };
 }
 

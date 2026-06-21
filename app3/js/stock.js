@@ -10,7 +10,7 @@
 import {
   catalog, searchCatalog, stockFor, setStockCount, keyForBarcode, assignBarcode, orderedCats, buyRunList
 } from './store.js';
-import { esc, money, openSheet, closeSheet, toast, inStockScope } from './catalog.js';
+import { esc, money, openSheet, closeSheet, toast, inStockScope, dedupeVariants } from './catalog.js';
 import { purchaseUnitLabel } from './boxes.js';
 
 /* Draft survives an accidental close — same-day only. */
@@ -42,16 +42,28 @@ export function openCountSheet() {
   let lastCode = '', lastAt = 0;       // debounce repeated detections
   let body = null;
 
+  // MERGE sell-variants into ONE stock product (count once). _groups = the pre-list;
+  // primaryOf maps any variant key → the product's single count key, so a scan or
+  // search of "Apples Granny Smith Each" counts the same row as "… /kg".
+  const _buyKeys = new Set(buyRunList().map((x) => x.key));
+  const _groups = dedupeVariants(catalog().filter((p) => inStockScope(p) || _buyKeys.has(p.key)));
+  const primaryOf = {}, primaryName = {};
+  for (const g of _groups) for (const k of (g._members || [g.key])) { primaryOf[k] = g.key; primaryName[k] = g._base || g.name; }
+  const toPrimary = (key) => primaryOf[key] || key;
+
   const nameFor = (key) => {
-    const p = catalog().find((x) => x.key === key);
-    return p ? p.name : (String(key).split('||')[1] || key);
+    const pk = toPrimary(key);
+    if (primaryName[pk]) return primaryName[pk];
+    const p = catalog().find((x) => x.key === pk);
+    return p ? p.name : (String(pk).split('||')[1] || pk);
   };
 
   const bump = (key, name, by) => {
-    const cur = counts[key] || { name, qty: 0 };
+    const pk = toPrimary(key);
+    const cur = counts[pk] || { name: primaryName[pk] || name, qty: 0 };
     cur.qty = Math.max(0, (Number(cur.qty) || 0) + by);
-    cur.name = name;
-    counts[key] = cur;
+    cur.name = primaryName[pk] || name;
+    counts[pk] = cur;
     saveDraft(counts);
     if (navigator.vibrate) navigator.vibrate(20);
     draw();
@@ -131,25 +143,25 @@ export function openCountSheet() {
         <div id="hdv-ct-res"></div>`;
       // Pre-listed: every Mundi produce + box/bag item you buy, grouped by aisle,
       // each with a +/- counter (in box/bag units) — like the Buy Run, but for counting.
-      // Includes everything on the buy run too, so Count stock always matches the Buy run.
-      const _buyKeys = new Set(buyRunList().map((x) => x.key));
-      const all = catalog().filter((p) => inStockScope(p) || _buyKeys.has(p.key));
+      // Sell-variants are merged (count once); includes everything on the buy run too.
+      const all = _groups;
       const byCat = new Map();
       for (const p of all) { if (!byCat.has(p.cat)) byCat.set(p.cat, []); byCat.get(p.cat).push(p); }
       h += `<div class="hdv-sec">${n} counted so far · ${all.length} items to count (tap a number to type 1.5 etc.)</div>`;
       for (const cat of orderedCats()) {
         const g = byCat.get(cat); if (!g || !g.length) continue;
         h += `<div class="hdv-sec">${esc(cat)}</div>` + g.map((p) => {
+          const nm = p._base || p.name;
           const d = counts[p.key]; const q = d ? (Number(d.qty) || 0) : 0;
           const onh = stockFor(p.key);
           const lbl = purchaseUnitLabel(p.name);
           const sub = [lbl, (onh && typeof onh.qty === 'number') ? 'was ' + onh.qty : ''].filter(Boolean).join(' · ');
           return `<div class="hdv-row${d ? ' sel' : ''}">
-            <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}</div>
+            <div class="hdv-info"><div class="hdv-name">${esc(nm)}</div>${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}</div>
             <div class="hdv-step">
-              <button class="hdv-sbtn" data-cs="dec" data-key="${esc(p.key)}" data-name="${esc(p.name)}" aria-label="less">&minus;</button>
-              <span class="hdv-qty" data-cs="type" data-key="${esc(p.key)}" data-name="${esc(p.name)}" style="cursor:pointer;text-decoration:underline dotted">${q}</span>
-              <button class="hdv-sbtn plus" data-cs="inc" data-key="${esc(p.key)}" data-name="${esc(p.name)}" aria-label="more">+</button>
+              <button class="hdv-sbtn" data-cs="dec" data-key="${esc(p.key)}" data-name="${esc(nm)}" aria-label="less">&minus;</button>
+              <span class="hdv-qty" data-cs="type" data-key="${esc(p.key)}" data-name="${esc(nm)}" style="cursor:pointer;text-decoration:underline dotted">${q}</span>
+              <button class="hdv-sbtn plus" data-cs="inc" data-key="${esc(p.key)}" data-name="${esc(nm)}" aria-label="more">+</button>
             </div>
           </div>`;
         }).join('');
@@ -192,7 +204,8 @@ export function openCountSheet() {
       else if (act === 'inc') bump(key, t.dataset.name || (counts[key] && counts[key].name) || nameFor(key), 1);
       else if (act === 'dec') bump(key, t.dataset.name || (counts[key] && counts[key].name) || nameFor(key), -1);
       else if (act === 'type') {                          // tap the number to type any amount (e.g. 1.5)
-        const cur = counts[key] ? (Number(counts[key].qty) || 0) : 0;
+        const pk = toPrimary(key);
+        const cur = counts[pk] ? (Number(counts[pk].qty) || 0) : 0;
         const inp = document.createElement('input');
         inp.type = 'number'; inp.step = 'any'; inp.min = '0'; inp.inputMode = 'decimal';
         inp.className = 'hdv-in'; inp.style.width = '72px'; inp.value = cur || '';
@@ -201,7 +214,7 @@ export function openCountSheet() {
         const commit = () => {
           if (dn) return; dn = true;
           const v = parseFloat(inp.value);
-          if (isFinite(v) && v >= 0) { counts[key] = { name: t.dataset.name || nameFor(key), qty: Math.round(v * 1000) / 1000 }; saveDraft(counts); }
+          if (isFinite(v) && v >= 0) { counts[pk] = { name: t.dataset.name || nameFor(pk), qty: Math.round(v * 1000) / 1000 }; saveDraft(counts); }
           draw();
         };
         inp.addEventListener('change', commit);

@@ -257,6 +257,43 @@ export function inStockScope(p) {
   return BULK_NAME_RE.test(p.name);                                            // bulk grocery
 }
 
+/* Display name with the sell-variant suffix stripped: "Apples Granny Smith /kg" ->
+   "Apples Granny Smith". Used to MERGE variants into one stock-take row. */
+export function stockBaseName(name) {
+  let n = String(name == null ? '' : name);
+  n = n.replace(/\s*\((?:ea|each)\)\s*$/i, '')
+       .replace(/\s+(?:each|whole)\s*$/i, '')
+       .replace(/\s+loose(?:\s*\/kg)?\s*$/i, '')
+       .replace(/\s*\/kg\s*$/i, '');
+  return n.trim();
+}
+
+/* Collapse sell-variants of the same product into ONE stock row, so it's counted
+   once (owner brief). Distinct pack SKUs (10kg Bag, box, etc.) never merge. The
+   primary item (prefer the /kg variant) holds the count; _members lists every key
+   in the group (to sum buy-run demand), _base is the display name. */
+export function dedupeVariants(items) {
+  const groups = new Map();
+  for (const p of items) {
+    if (BULK_NAME_RE.test(p.name)) {                 // a distinct pack SKU — never merged
+      groups.set('#' + p.key, Object.assign({}, p, { _members: [p.key], _base: p.name }));
+      continue;
+    }
+    const b = stockBaseName(p.name).toLowerCase();
+    const ex = groups.get(b);
+    if (!ex) {
+      groups.set(b, Object.assign({}, p, { _members: [p.key], _base: stockBaseName(p.name) }));
+    } else {
+      ex._members.push(p.key);
+      // prefer the /kg variant as primary (its key carries the stored count)
+      if (/\/kg\s*$/i.test(p.name) && !/\/kg\s*$/i.test(ex.name)) {
+        groups.set(b, Object.assign({}, p, { _members: ex._members, _base: ex._base }));
+      }
+    }
+  }
+  return Array.from(groups.values());
+}
+
 /* Buy-run cross-reference (the brief): show "to buy: N" from the LIVE buy run on
    each stock line + a Buy-run-only filter. _buyMap (key -> qty to buy) is rebuilt
    each render; stockBuyOnly narrows the list to what's on the run. */
@@ -285,12 +322,14 @@ export function renderShop(root) {
   // Stock take covers produce + bulk AND everything on the buy run, so the two lists
   // always reconcile (brief: every Buy-run product must appear on Count stock).
   const inScope = (p) => inStockScope(p) || _buyMap.has(p.key);
-  const items = all.filter(inScope);   // produce + bulk grocery + anything on the buy run
+  // MERGE sell-variants (/kg + Each) into ONE stock row so each product is counted once.
+  const items = dedupeVariants(all.filter(inScope));   // produce + bulk + buy-run, variants merged
+  const onBuyRun = (p) => (p._members || [p.key]).some(k => _buyMap.has(k));
 
   const q = qText();
-  let list = q ? searchCatalog(q).filter(inScope) : items;
+  let list = q ? dedupeVariants(searchCatalog(q).filter(inScope)) : items;
   if (shopCat) list = list.filter(p => p.group === shopCat);   // chip = aisle
-  if (stockBuyOnly) list = list.filter(p => _buyMap.has(p.key));   // only what's on the buy run
+  if (stockBuyOnly) list = list.filter(onBuyRun);   // only what's on the buy run
 
   const today = todayStr();
   let countedToday = 0, outN = 0;
@@ -299,7 +338,7 @@ export function renderShop(root) {
     if (isOut(p.key)) outN++;
   }
 
-  const onRun = items.filter(p => _buyMap.has(p.key)).length;
+  const onRun = items.filter(onBuyRun).length;
   let h = `<div class="hdv-head"><div class="hdv-h1">Stock on hand</div>
     <div style="display:flex;gap:6px">
       <button class="${stockBuyOnly ? 'hdv-btnP' : 'hdv-btnG'} slim" data-act="buyonly">🛒 Buy run${stockBuyOnly ? ' ✓' : ''}</button>
@@ -373,13 +412,14 @@ function stockRow(p, withCat) {
     ? ' <span class="hdv-tchip" style="background:rgba(185,28,28,.14);color:#b91c1c">OUT</span>' : '';
   const rev = p.review
     ? ' <span class="hdv-newchip">NEW · review</span>' : '';
-  const toBuy = _buyMap.get(p.key);                    // qty the buy run says to buy
+  // sum the buy-run demand across all merged variants (/kg + Each share one box)
+  const toBuy = (p._members || [p.key]).reduce((s, k) => s + (Number(_buyMap.get(k)) || 0), 0);
   const buyChip = (toBuy > 0)
     ? ` <span class="hdv-tchip" style="background:rgba(21,102,47,.14);color:var(--hdv-green);font-weight:700">buy ${esc(buyLabel(p.name, toBuy))}</span>`
     : '';
   return `<div class="hdv-row${out ? ' review' : ''}">
     <div class="hdv-info" data-act="detail" data-key="${esc(p.key)}">
-      <div class="hdv-name">${esc(p.name)}${rev}${badge}${buyChip}</div>
+      <div class="hdv-name">${esc(p._base || p.name)}${rev}${badge}${buyChip}</div>
       <div class="hdv-sub">${bits.join(' · ')}</div>
     </div>
     ${stockStepper(p.key, onHand == null ? 0 : onHand)}
