@@ -8,9 +8,10 @@
    so the 600 products get barcoded progressively as the team counts. */
 
 import {
-  catalog, searchCatalog, stockFor, setStockCount, keyForBarcode, assignBarcode
+  catalog, searchCatalog, stockFor, setStockCount, keyForBarcode, assignBarcode, orderedCats
 } from './store.js';
-import { esc, money, openSheet, closeSheet, toast } from './catalog.js';
+import { esc, money, openSheet, closeSheet, toast, inStockScope } from './catalog.js';
+import { purchaseUnitLabel } from './boxes.js';
 
 /* Draft survives an accidental close — same-day only. */
 const DRAFT_KEY = 'hd3.countdraft';
@@ -120,24 +121,36 @@ export function openCountSheet() {
         <div id="hdv-as-res"></div>
         <div class="hdv-actions"><button class="hdv-btnG" data-cs="cancel-assign">Skip this barcode</button></div>`;
     } else {
-      h += `<div class="hdv-sheetsub">Scan or search; counts stage as a draft until you apply.</div>
+      h += `<div class="hdv-sheetsub">Tap ± on an item to count what you have (in boxes / bags). Staged as a draft until you Apply. Scanning is optional.</div>
         <video id="hdv-cam" playsinline muted
           style="width:100%;max-height:30vh;border-radius:12px;background:#0d2818;${_stream ? '' : 'display:none'}"></video>
-        ${_stream ? '' : `<button class="hdv-btnG" style="width:100%" data-cs="cam">📷 Start scanning</button>`}
+        ${_stream ? '' : `<button class="hdv-btnG" style="width:100%" data-cs="cam">📷 Scan to count (optional)</button>`}
         ${scanMsg ? `<div class="hdv-sheetsub">${esc(scanMsg)}</div>` : ''}
-        <input class="hdv-in" id="hdv-ct-q" type="search" placeholder="Search to count…"
+        <input class="hdv-in" id="hdv-ct-q" type="search" placeholder="Search to jump to an item…"
           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <div id="hdv-ct-res"></div>`;
-      if (n) {
-        h += `<div class="hdv-sec">Counted — draft (${n})</div>` + items.map(([key, c]) =>
-          `<div class="hdv-row sel">
-            <div class="hdv-info"><div class="hdv-name">${esc(c.name)}</div></div>
+      // Pre-listed: every Mundi produce + box/bag item you buy, grouped by aisle,
+      // each with a +/- counter (in box/bag units) — like the Buy Run, but for counting.
+      const all = catalog().filter(inStockScope);
+      const byCat = new Map();
+      for (const p of all) { if (!byCat.has(p.cat)) byCat.set(p.cat, []); byCat.get(p.cat).push(p); }
+      h += `<div class="hdv-sec">${n} counted so far · ${all.length} items to count (tap a number to type 1.5 etc.)</div>`;
+      for (const cat of orderedCats()) {
+        const g = byCat.get(cat); if (!g || !g.length) continue;
+        h += `<div class="hdv-sec">${esc(cat)}</div>` + g.map((p) => {
+          const d = counts[p.key]; const q = d ? (Number(d.qty) || 0) : 0;
+          const onh = stockFor(p.key);
+          const lbl = purchaseUnitLabel(p.name);
+          const sub = [lbl, (onh && typeof onh.qty === 'number') ? 'was ' + onh.qty : ''].filter(Boolean).join(' · ');
+          return `<div class="hdv-row${d ? ' sel' : ''}">
+            <div class="hdv-info"><div class="hdv-name">${esc(p.name)}</div>${sub ? `<div class="hdv-sub">${esc(sub)}</div>` : ''}</div>
             <div class="hdv-step">
-              <button class="hdv-sbtn" data-cs="dec" data-key="${esc(key)}" aria-label="less">&minus;</button>
-              <span class="hdv-qty">${c.qty}</span>
-              <button class="hdv-sbtn plus" data-cs="inc" data-key="${esc(key)}" aria-label="more">+</button>
+              <button class="hdv-sbtn" data-cs="dec" data-key="${esc(p.key)}" data-name="${esc(p.name)}" aria-label="less">&minus;</button>
+              <span class="hdv-qty" data-cs="type" data-key="${esc(p.key)}" data-name="${esc(p.name)}" style="cursor:pointer;text-decoration:underline dotted">${q}</span>
+              <button class="hdv-sbtn plus" data-cs="inc" data-key="${esc(p.key)}" data-name="${esc(p.name)}" aria-label="more">+</button>
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
       }
       h += `<div class="hdv-actions">
         <button class="hdv-btnG" data-cs="close">Close</button>
@@ -174,8 +187,25 @@ export function openCountSheet() {
       if (!t) return;
       const act = t.dataset.cs, key = t.dataset.key;
       if (act === 'cam') startCamera();
-      else if (act === 'inc') bump(key, counts[key].name, 1);
-      else if (act === 'dec') bump(key, counts[key].name, -1);
+      else if (act === 'inc') bump(key, t.dataset.name || (counts[key] && counts[key].name) || nameFor(key), 1);
+      else if (act === 'dec') bump(key, t.dataset.name || (counts[key] && counts[key].name) || nameFor(key), -1);
+      else if (act === 'type') {                          // tap the number to type any amount (e.g. 1.5)
+        const cur = counts[key] ? (Number(counts[key].qty) || 0) : 0;
+        const inp = document.createElement('input');
+        inp.type = 'number'; inp.step = 'any'; inp.min = '0'; inp.inputMode = 'decimal';
+        inp.className = 'hdv-in'; inp.style.width = '72px'; inp.value = cur || '';
+        t.replaceWith(inp); inp.focus(); inp.select();
+        let dn = false;
+        const commit = () => {
+          if (dn) return; dn = true;
+          const v = parseFloat(inp.value);
+          if (isFinite(v) && v >= 0) { counts[key] = { name: t.dataset.name || nameFor(key), qty: Math.round(v * 1000) / 1000 }; saveDraft(counts); }
+          draw();
+        };
+        inp.addEventListener('change', commit);
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
+      }
       else if (act === 'pick') {
         const mode = t.parentElement.dataset.pick;
         if (mode === 'assign' && pendingCode) {

@@ -251,7 +251,7 @@ let shopCat = ''; // selected category chip ('' = All)
    plus any grocery line bought in a box / bag / carton (bulk). */
 const PRODUCE_GROUPS = new Set(['A-B', 'C-G', 'H-O', 'P-R', 'S-Z', 'Herbs']);
 const BULK_NAME_RE = /\b(cartons?|boxe?s?|bags?|sacks?|cases?|crates?|trays?|sleeves?)\b|\b\d+(?:\.\d+)?\s*kg\b|\b\d+\s*x\s*\d|\b\d+\s*(?:pk|packs?)\b/i;
-function inStockScope(p) {
+export function inStockScope(p) {
   if (!p) return false;
   if (PRODUCE_GROUPS.has(p.cat) || PRODUCE_GROUPS.has(p.group)) return true;   // fresh produce
   return BULK_NAME_RE.test(p.name);                                            // bulk grocery
