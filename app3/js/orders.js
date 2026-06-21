@@ -1507,6 +1507,7 @@ function historySheet(body, custId) {
         <button class="hdv-btnG slim" data-act="pack" data-id="${esc(o.id)}">${packBtnLabel(o)}</button>
         ${(!tq || tq.status === 'error') ? `<button class="hdv-btnG slim" data-act="sendtill" data-id="${esc(o.id)}">→ Till</button>` : ''}
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
+        ${customerId() ? '' : `<button class="hdv-btnG slim" data-act="editorder" data-id="${esc(o.id)}">✏️ Edit</button>`}
         <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Again</button>
       </div>`;
     }).join('');
@@ -1530,6 +1531,7 @@ function historySheet(body, custId) {
     const src = asList(orders()).find(o => o && o.id === t.dataset.id);
     if (!src) return;
     if (t.dataset.act === 'again') reorder(custId, src);
+    else if (t.dataset.act === 'editorder') openSheet(orderEditSheet(src.id), { static: true });
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
     else if (t.dataset.act === 'pack') {                            // Start pack (first open stamps who/when) -> open the checklist
