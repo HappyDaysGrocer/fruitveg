@@ -950,6 +950,31 @@ function plSheet(custId) {
 /* Packing checklist: tap each line to tick it off as it goes in the box.
    Packed state is saved on the line (l.packed) so it survives reopening, and
    resets when a fresh order is created. */
+/* ---- packing: who/when stamps + fulfilment state (brief 2026-06-20) ---------
+   packState is SEPARATE from o.status (open/completed/cancelled) so nothing breaks:
+   'packed' once Finish pack is tapped, 'packing' once Start pack is, else 'unpacked'. */
+function whoami() {
+  const u = auth && auth.user && auth.user();
+  return (u && u.email) ? String(u.email).split('@')[0] : 'staff';
+}
+function packState(o) {
+  if (!o) return 'unpacked';
+  if (o.packedAt) return 'packed';
+  if (o.packStartedAt) return 'packing';
+  return 'unpacked';
+}
+function packStamp(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  catch (e) { return String(iso).slice(0, 16); }
+}
+function packBtnLabel(o) {
+  const st = packState(o);
+  if (st === 'packed') return '📦 Packed ✓';
+  if (st === 'packing') return '📦 ' + packLabel(o);   // e.g. "📦 3/8 packed"
+  return '📦 Start pack';
+}
+
 function packSheet(custId, orderId) {
   return (body) => {
     const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
@@ -969,7 +994,7 @@ function packSheet(custId, orderId) {
     const render = () => {
       const lines = lineData(), all = lines.length;
       let h = `<div class="hdv-sheettitle">Packing · ${esc(cust.name)}</div>
-        <div class="hdv-sheetsub">Tap a row to tick it off as you pack it</div>
+        <div class="hdv-sheetsub">Tap a row to tick it off${(orderOf() || {}).packStartedAt ? ' · started by ' + esc((orderOf() || {}).packStartedBy || '?') + ' · ' + esc(packStamp((orderOf() || {}).packStartedAt)) : ''}</div>
         <div class="hdv-packprog"><span id="pack-count"></span><span id="pack-alllbl" class="hdv-packdone-lbl">✓ all packed</span></div>
         <div class="hdv-packbar"><div id="pack-bar" class="hdv-packbar-fill" style="width:0%"></div></div>`;
       h += noteBanner((orderOf() || {}).comment);
@@ -982,14 +1007,16 @@ function packSheet(custId, orderId) {
           return `<div class="hdv-pack-row${l.packed ? ' hdv-pack-done' : ''}" data-key="${esc(l.key)}">
             <div class="hdv-pack-tick">${l.packed ? '✓' : ''}</div>
             <div class="hdv-pack-qty">${qty}${l.unit ? '<span class="hdv-pack-unit"> ' + esc(l.unit) + '</span>' : ''}</div>
-            <div class="hdv-pack-name">${esc(l.name)}${l.note ? `<div class="hdv-who" style="font-weight:600">📝 ${esc(l.note)}</div>` : ''}</div>
+            <div class="hdv-pack-name">${esc(l.name)}${l.note ? `<div class="hdv-who" style="font-weight:600">📝 ${esc(l.note)}</div>` : ''}${l.subNote ? `<div class="hdv-who" style="color:var(--hdv-amber);font-weight:700">⚠ ${esc(l.subNote)}</div>` : ''}</div>
+            <button class="hdv-btnG slim" data-act="sub" data-key="${esc(l.key)}" style="flex:0 0 auto;margin-left:6px;padding:6px 9px" title="short / substituted">⚠</button>
             ${isKg ? `<button class="hdv-btnG slim" data-act="weigh" data-key="${esc(l.key)}" style="flex:0 0 auto;margin-left:6px;padding:6px 9px">⚖ kg</button>` : ''}
           </div>`;
         }).join('');
       }
       h += `<div class="hdv-actions">
         ${all ? `<button class="hdv-btnG slim" data-act="reset">Untick all</button>` : ''}
-        <button class="hdv-btnP" data-act="done">Close</button>
+        <button class="hdv-btnG slim" data-act="done">Close</button>
+        ${all ? `<button class="hdv-btnP" data-act="finish">${(orderOf() || {}).packedAt ? 'Re-finish ✓' : 'Finish pack'}</button>` : ''}
       </div>`;
       body.innerHTML = h;
       updateProg();
@@ -1022,6 +1049,23 @@ function packSheet(custId, orderId) {
           inp.addEventListener('blur', commit);
           inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
           return;
+        }
+        if (t.dataset.act === 'sub') {                    // mark a line short / substituted + note
+          const o = orderOf();
+          const l = o && (o.lines || []).find(x => x.key === t.dataset.key); if (!l) return;
+          const note = window.prompt('Short or substituted — quick note (e.g. "only 2, out of stock" / "swapped for cos"). Blank to clear.', l.subNote || '');
+          if (note === null) return;
+          if (note.trim()) { l.subNote = note.trim(); l.short = true; } else { delete l.subNote; delete l.short; }
+          saveOrder(o); render(); return;
+        }
+        if (t.dataset.act === 'finish') {                 // Finish pack -> stamp who/when, update P badge + v4
+          const o = orderOf(); if (!o) return;
+          o.packedAt = new Date().toISOString(); o.packedBy = whoami();
+          if (!o.packStartedAt) { o.packStartedAt = o.packedAt; o.packStartedBy = o.packedBy; }
+          if (!o.packingDate) o.packingDate = todayStr();
+          saveOrder(o);
+          toast('Packed ✓ by ' + o.packedBy);
+          closeSheet(); refreshSheet(); return;
         }
         return;
       }
@@ -1298,9 +1342,10 @@ function historySheet(body, custId) {
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
-          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${o.paid ? ' · <b style="color:var(--hdv-green)">PAID</b>' : ' · <b style="color:var(--hdv-red)">unpaid</b>'}</div>
+          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${o.paid ? ' · <b style="color:var(--hdv-green)">PAID</b>' : ' · <b style="color:var(--hdv-red)">unpaid</b>'}${o.packedAt ? ' · <b style="color:var(--hdv-green)">📦 packed</b> by ' + esc(o.packedBy || '?') : (o.packStartedAt ? ' · 📦 packing (' + esc(o.packStartedBy || '?') + ')' : '')}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${dchip('Received', 'date', o)}${dchip('Pack', 'packingDate', o)}${dchip('Deliver', 'deliveryDate', o)}</div>
         </div>
+        <button class="hdv-btnG slim" data-act="pack" data-id="${esc(o.id)}">${packBtnLabel(o)}</button>
         ${(!tq || tq.status === 'error') ? `<button class="hdv-btnG slim" data-act="sendtill" data-id="${esc(o.id)}">→ Till</button>` : ''}
         <button class="hdv-btnG slim" data-act="inv" data-id="${esc(o.id)}">Invoice</button>
         <button class="hdv-btnG slim" data-act="again" data-id="${esc(o.id)}">Again</button>
@@ -1328,6 +1373,14 @@ function historySheet(body, custId) {
     if (t.dataset.act === 'again') reorder(custId, src);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
+    else if (t.dataset.act === 'pack') {                            // Start pack (first open stamps who/when) -> open the checklist
+      if (!src.packStartedAt) {
+        src.packStartedAt = new Date().toISOString(); src.packStartedBy = whoami();
+        if (!src.packingDate) src.packingDate = todayStr();
+        saveOrder(src); toast('Packing started by ' + src.packStartedBy);
+      }
+      openSheet(packSheet(custId, src.id), { static: true });
+    }
   };
   // edit a date (received / packing / delivery) inline — writes to the shared order; change bubbles to body
   body.onchange = e => {
