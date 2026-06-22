@@ -49,7 +49,7 @@ const dollars = (n) => '$' + (Number(n) || 0).toFixed(2);
 /* ---- page geometry (A4 portrait, points) ---- */
 const PAGE_W = 595, PAGE_H = 842;
 const LEFT = 42, RIGHT = PAGE_W - 42, TOP = PAGE_H - 50, BOTTOM = 60;
-const COL_QTY = 320, COL_UNIT = 430, COL_AMT = RIGHT;   // right edges of numeric cols
+const COL_QTY = 378, COL_UNIT = 465, COL_AMT = RIGHT;   // right edges of numeric cols (grouped on the right, less spread)
 
 export function invoicePdfBytes(d) {
   const biz = d.biz || {};
@@ -67,7 +67,7 @@ export function invoicePdfBytes(d) {
     TR(COL_QTY, y, 'Qty', 9, true);
     TR(COL_UNIT, y, 'Unit', 9, true);
     TR(COL_AMT, y, 'Amount', 9, true);
-    y -= 6; RULE(y); y -= 14;
+    y -= 5; RULE(y); y -= 12;
   };
 
   const newPage = (first) => {
@@ -77,25 +77,25 @@ export function invoicePdfBytes(d) {
     // header band — legal entity (if set) leads, trading name beneath, to match the V4 invoice
     const taxW = widthOf('TAX INVOICE', 16, true);
     const nameMaxW = (RIGHT - taxW - 20) - LEFT;
-    T(LEFT, y, fit(biz.legal || biz.name || 'Happy Days', nameMaxW, 14, true), 14, true); y -= 15;
+    T(LEFT, y, fit(biz.legal || biz.name || 'Happy Days', nameMaxW, 13, true), 13, true); y -= 13;
     const sub = [biz.legal && biz.name ? 'trading as ' + biz.name : '', biz.abn ? 'ABN ' + biz.abn : ''].filter(Boolean).join('  ·  ');
-    if (sub) { T(LEFT, y, sub, 9); y -= 12; }
-    if (biz.addr) { T(LEFT, y, biz.addr, 9); y -= 12; }
-    if (biz.contacts || biz.phone) { T(LEFT, y, biz.contacts || ('Ph ' + biz.phone), 9); y -= 12; }
-    if (biz.email) { T(LEFT, y, biz.email, 9); y -= 12; }
+    if (sub) { T(LEFT, y, sub, 8.5); y -= 10.5; }
+    if (biz.addr) { T(LEFT, y, biz.addr, 8.5); y -= 10.5; }
+    if (biz.contacts || biz.phone) { T(LEFT, y, biz.contacts || ('Ph ' + biz.phone), 8.5); y -= 10.5; }
+    if (biz.email) { T(LEFT, y, biz.email, 8.5); y -= 10.5; }
     // invoice title block (right)
-    TR(RIGHT, TOP, 'TAX INVOICE', 16, true);
-    TR(RIGHT, TOP - 18, d.invNo || '', 10);
-    if (d.date) TR(RIGHT, TOP - 31, d.date, 10);
-    y -= 6; RULE(y, LEFT, RIGHT, 1.2); y -= 20;
+    TR(RIGHT, TOP, 'TAX INVOICE', 15, true);
+    TR(RIGHT, TOP - 17, d.invNo || '', 10);
+    if (d.date) TR(RIGHT, TOP - 29, d.date, 9);
+    y -= 3; RULE(y, LEFT, RIGHT, 1.1); y -= 13;
     if (first) {
-      T(LEFT, y, 'Bill to', 9, true); y -= 13;
-      T(LEFT, y, d.customer || '', 12, true); y -= 14;
-      if (d.custAddr) { T(LEFT, y, fit(d.custAddr, RIGHT - LEFT, 9), 9); y -= 12; }
-      if (d.custPhone || d.custEmail) { T(LEFT, y, [d.custPhone, d.custEmail].filter(Boolean).join('   '), 9); y -= 12; }
-      if (d.deliver) { T(LEFT, y, 'Delivery: ' + d.deliver, 9); y -= 12; }
-      if (d.orderRef) { T(LEFT, y, 'Order: ' + d.orderRef, 9); y -= 12; }
-      y -= 8;
+      T(LEFT, y, 'Bill to', 8.5, true); y -= 11;
+      T(LEFT, y, d.customer || '', 11.5, true); y -= 12;
+      if (d.custAddr) { T(LEFT, y, fit(d.custAddr, RIGHT - LEFT, 9), 9); y -= 11; }
+      if (d.custPhone || d.custEmail) { T(LEFT, y, [d.custPhone, d.custEmail].filter(Boolean).join('   '), 9); y -= 11; }
+      if (d.deliver) { T(LEFT, y, 'Delivery: ' + d.deliver, 9); y -= 11; }
+      if (d.orderRef) { T(LEFT, y, 'Order: ' + d.orderRef, 9); y -= 11; }
+      y -= 5;
     } else { y -= 4; }
     tableHead();
   };
@@ -109,26 +109,26 @@ export function invoicePdfBytes(d) {
     TR(COL_QTY, y, String(qty) + (l.unit ? ' ' + ascii(l.unit) : ''), 10);
     TR(COL_UNIT, y, dollars(price), 10);
     TR(COL_AMT, y, dollars(qty * price), 10);
-    y -= 15;
+    y -= 13;
   }
 
   // total
-  y -= 2; RULE(y); y -= 18;
+  y -= 2; RULE(y); y -= 15;
   T(COL_UNIT - 70, y, 'TOTAL' + (d.gstFree ? ' (GST-free)' : ''), 11, true);
   TR(COL_AMT, y, dollars(d.total), 12, true);
-  y -= 26;
+  y -= 20;
 
   // payment details block
   if (biz.bsb || biz.acc) {
-    if (y < BOTTOM + 70) newPage(false);
-    RULE(y, LEFT, RIGHT, 0.6); y -= 16;
-    T(LEFT, y, 'Payment details', 10, true); y -= 14;
-    if (biz.accName) { T(LEFT, y, 'Account name: ' + biz.accName, 10); y -= 13; }
+    if (y < BOTTOM + 58) newPage(false);
+    RULE(y, LEFT, RIGHT, 0.6); y -= 13;
+    T(LEFT, y, 'Payment details', 10, true); y -= 13;
+    if (biz.accName) { T(LEFT, y, 'Account name: ' + biz.accName, 10); y -= 12; }
     const bsbAcc = [biz.bsb ? 'BSB ' + biz.bsb : '', biz.acc ? 'Account ' + biz.acc : ''].filter(Boolean).join('     ');
-    if (bsbAcc) { T(LEFT, y, bsbAcc, 10); y -= 13; }
-    T(LEFT, y, 'Reference: ' + (d.invNo || d.orderRef || ''), 10); y -= 16;
+    if (bsbAcc) { T(LEFT, y, bsbAcc, 10); y -= 12; }
+    T(LEFT, y, 'Reference: ' + (d.invNo || d.orderRef || ''), 10); y -= 13;
   }
-  if (d.terms) { T(LEFT, y, ascii(d.terms), 9); y -= 13; }
+  if (d.terms) { T(LEFT, y, ascii(d.terms), 9); y -= 12; }
   T(LEFT, y, 'Thank you for your business.', 9); y -= 12;
 
   pages.push(ops);
