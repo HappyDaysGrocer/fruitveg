@@ -81,9 +81,8 @@ export function invoicePdfBytes(d) {
     const sub = [biz.legal && biz.name ? 'trading as ' + biz.name : '', biz.abn ? 'ABN ' + biz.abn : ''].filter(Boolean).join('  ·  ');
     if (sub) { T(LEFT, y, sub, 9); y -= 12; }
     if (biz.addr) { T(LEFT, y, biz.addr, 9); y -= 12; }
-    if (biz.phone || biz.email) {
-      T(LEFT, y, [biz.phone ? 'Ph ' + biz.phone : '', biz.email].filter(Boolean).join('  ·  '), 9); y -= 12;
-    }
+    if (biz.contacts || biz.phone) { T(LEFT, y, biz.contacts || ('Ph ' + biz.phone), 9); y -= 12; }
+    if (biz.email) { T(LEFT, y, biz.email, 9); y -= 12; }
     // invoice title block (right)
     TR(RIGHT, TOP, 'TAX INVOICE', 16, true);
     TR(RIGHT, TOP - 18, d.invNo || '', 10);
@@ -92,6 +91,8 @@ export function invoicePdfBytes(d) {
     if (first) {
       T(LEFT, y, 'Bill to', 9, true); y -= 13;
       T(LEFT, y, d.customer || '', 12, true); y -= 14;
+      if (d.custAddr) { T(LEFT, y, fit(d.custAddr, RIGHT - LEFT, 9), 9); y -= 12; }
+      if (d.custPhone || d.custEmail) { T(LEFT, y, [d.custPhone, d.custEmail].filter(Boolean).join('   '), 9); y -= 12; }
       if (d.deliver) { T(LEFT, y, 'Delivery: ' + d.deliver, 9); y -= 12; }
       if (d.orderRef) { T(LEFT, y, 'Order: ' + d.orderRef, 9); y -= 12; }
       y -= 8;
