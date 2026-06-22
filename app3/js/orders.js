@@ -979,6 +979,89 @@ function packBtnLabel(o) {
   return '📦 Start pack';
 }
 
+/* ---- Shared order tracking (mirrors the V4 dashboard: Ordered → Packed → Delivered → Emailed → Paid,
+   stored on o.track = {stage:{at,by}}), kept in sync with v3's own o.packedAt / o.paid so BOTH apps agree.
+   Tapping a step in either app shows in the other. "Emailed" auto-ticks from V4's email-invoice helper. ---- */
+const TRK = [['packed', 'Packed'], ['delivered', 'Delivered'], ['emailed', 'Emailed'], ['paid', 'Paid']];
+function trkNow() { const d = new Date(), p = n => ('0' + n).slice(-2); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+function trkDone(o, k) {
+  if (k === 'packed') return !!((o.track && o.track.packed) || o.packedAt);
+  if (k === 'paid') return !!((o.track && o.track.paid) || o.paid);
+  return !!(o.track && o.track[k]);
+}
+function trkAt(o, k) {
+  if (o.track && o.track[k] && o.track[k].at) return o.track[k].at;
+  if (k === 'packed' && o.packedAt) return o.packedAt;
+  if (k === 'paid' && o.paid) return o.paid;
+  return '';
+}
+function trkSet(o, k, on) {
+  o.track = o.track || {};
+  if (on) o.track[k] = { at: trkNow(), by: whoami() }; else delete o.track[k];
+  if (k === 'packed') { if (on) { o.packedAt = o.packedAt || todayStr(); o.packedBy = o.packedBy || whoami(); } else { o.packedAt = ''; } }
+  if (k === 'paid') { o.paid = on ? (o.paid || todayStr()) : ''; }
+  saveOrder(o);
+}
+function paidProofDone(o) { return !!(o.paid && o.remittance); }   // "Completed" only once PAID + a payment proof image
+function trackerHtml3(o) {
+  const steps = [{ k: '', label: 'Ordered', done: true, at: o.completed || o.date || '' }]
+    .concat(TRK.map(s => ({ k: s[0], label: s[1], done: trkDone(o, s[0]), at: trkAt(o, s[0]) })));
+  const dots = steps.map((s, i) => {
+    const col = s.done ? 'var(--hdv-green)' : '#d8e0db', tc = s.done ? '#fff' : '#8a958f';
+    return `<div style="flex:1;text-align:center;min-width:52px">
+      <div ${s.k ? `data-trk="${s.k}"` : ''} style="width:30px;height:30px;line-height:30px;border-radius:50%;margin:0 auto;background:${col};color:${tc};font-weight:800;font-size:13px;${s.k ? 'cursor:pointer' : ''}">${s.done ? '✓' : (i + 1)}</div>
+      <div style="font-size:10.5px;font-weight:700;margin-top:3px">${s.label}</div>
+      <div style="font-size:9px;color:var(--hdv-mut)">${s.done && s.at ? esc(packStamp(s.at) || s.at) : ''}</div></div>`;
+  }).join('<div style="flex:0 0 7px;height:2px;background:#e2e8e4;margin-top:15px"></div>');
+  return `<div style="display:flex;align-items:flex-start;margin:10px 0 2px;border:1px solid var(--hdv-line);border-radius:12px;padding:12px 8px">${dots}</div>
+    <div class="hdv-sub" style="text-align:center;color:var(--hdv-mut);font-size:10px;margin:0 0 4px">Tap a step to mark it — saves instantly &amp; shows on the dashboard too</div>`;
+}
+/* Attach a delivery-proof photo (signed invoice / dropped-off goods) — same shape V4 reads (o.podSigned). */
+function attachPod(o) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height; const max = 1100;
+        if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        try { o.podSigned = cv.toDataURL('image/jpeg', 0.6); } catch (e) { toast('Could not read that image'); return; }
+        o.podSignedAt = todayStr();
+        if (!trkDone(o, 'delivered')) trkSet(o, 'delivered', true); else saveOrder(o);   // proof of delivery -> mark delivered
+        toast('Delivery proof attached'); refreshSheet();
+      };
+      img.onerror = () => toast('Could not read that image');
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  };
+  inp.click();
+}
+function podViewer(o) {
+  return (body) => {
+    const src = o.podSigned || o.podGoods;
+    body.innerHTML = `<div class="hdv-sheettitle">Delivery proof</div>
+      <div class="hdv-sheetsub">${o.podSignedAt ? 'attached ' + esc(niceDate(o.podSignedAt)) : ''}</div>
+      <img src="${src}" alt="delivery proof" style="width:100%;border-radius:10px;border:1px solid var(--hdv-line)">
+      <div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="repod">Replace</button>
+        <button class="hdv-btnG slim danger" data-act="delpod">Remove</button>
+        <button class="hdv-btnP" data-act="pclose">Close</button>
+      </div>`;
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]'); if (!t) return;
+      if (t.dataset.act === 'repod') { closeSheet(); attachPod(o); }
+      else if (t.dataset.act === 'delpod') { o.podSigned = ''; o.podSignedAt = ''; saveOrder(o); toast('Removed'); closeSheet(); }
+      else if (t.dataset.act === 'pclose') closeSheet();
+    };
+  };
+}
+
 function packSheet(custId, orderId) {
   return (body) => {
     const cust = asList(customers()).find(c => c && c.id === custId) || { id: custId, name: '?' };
@@ -1505,7 +1588,7 @@ function historySheet(body, custId) {
       return `<div class="hdv-row">
         <div class="hdv-info">
           <div class="hdv-name">${esc(o.orderNo || 'Order')} · ${money(orderTotal(o.lines))}</div>
-          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${o.paid ? ' · <b style="color:var(--hdv-green)">PAID</b>' : ' · <b style="color:var(--hdv-red)">unpaid</b>'}${o.packedAt ? ' · <b style="color:var(--hdv-green)">📦 packed</b> by ' + esc(o.packedBy || '?') : (o.packStartedAt ? ' · 📦 packing (' + esc(o.packStartedBy || '?') + ')' : '')}</div>
+          <div class="hdv-sub">${o.deliveryDate ? 'deliver ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')} · ${n} item${n === 1 ? '' : 's'}${tqTxt}${paidProofDone(o) ? ' · <b style="color:var(--hdv-green)">Completed</b>' : ' · <b style="color:var(--hdv-red)">Unpaid</b>'}${o.packedAt ? ' · <b style="color:var(--hdv-green)">📦 packed</b> by ' + esc(o.packedBy || '?') : (o.packStartedAt ? ' · 📦 packing (' + esc(o.packStartedBy || '?') + ')' : '')}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${dchip('Received', 'date', o)}${dchip('Pack', 'packingDate', o)}${dchip('Deliver', 'deliveryDate', o)}</div>
         </div>
         <button class="hdv-btnG slim" data-act="pack" data-id="${esc(o.id)}">${packBtnLabel(o)}</button>
@@ -1643,26 +1726,36 @@ function invoiceSheet(body, custId, orderId) {
   h += `<div class="hdv-total"><span>Total (GST-free)</span><span>${money(total)}</span></div>`;
   h += `<div class="hdv-sub" style="padding:6px 0 0">Payment: BSB ${BIZ.bsb} · Acc ${BIZ.acc} · Ref ${esc(invNo)}</div>`;
   if (cust.terms) h += `<div class="hdv-sub" style="padding:2px 0">Terms: ${esc(cust.terms === 'COD' ? 'Pay on delivery' : cust.terms.replace('days', ' days'))}</div>`;
-  h += `<div class="hdv-sub" style="padding:6px 0;font-weight:800;color:${o.paid ? 'var(--hdv-green)' : 'var(--hdv-red)'}">${o.paid ? '● PAID ' + esc(niceDate(o.paid)) : '○ UNPAID'}</div>`;
-  if (o.remittance) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">📎 Remittance attached${o.remittanceAt ? ' · ' + esc(niceDate(o.remittanceAt)) : ''}</div>`;
-  else if (o.paid) h += `<div class="hdv-sub" style="color:var(--hdv-amber);font-weight:700">⚠ no remittance/receipt attached yet</div>`;
+  h += trackerHtml3(o);                                   // shared Ordered→Packed→Delivered→Emailed→Paid tracker
+  const tq3 = tillQueueStatus(o.id);
+  if (tq3) { const lbl3 = { queued: 'Queued for till', sent: 'Sent to till ✓', error: 'Till error' }[tq3.status] || tq3.status; h += `<div class="hdv-tq-status ${tq3.status === 'error' ? 'hdv-tq-error' : tq3.status === 'sent' ? 'hdv-tq-sent' : 'hdv-tq-queued'}">${lbl3}${tq3.error ? ' — ' + esc(tq3.error) : ''}</div>`; }
+  const done3 = paidProofDone(o);
+  h += `<div class="hdv-sub" style="padding:4px 0;font-weight:800;color:${done3 ? 'var(--hdv-green)' : 'var(--hdv-red)'}">${done3 ? '● Completed — paid &amp; proof on file' : (o.paid ? '○ Unpaid — attach the payment proof to complete' : '○ Unpaid')}</div>`;
+  if (o.remittance) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">📎 Payment proof attached${o.remittanceAt ? ' · ' + esc(niceDate(o.remittanceAt)) : ''}</div>`;
+  if (o.podSigned || o.podGoods) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">🚚 Delivery proof attached</div>`;
   h += `<div class="hdv-actions">
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
     <button class="hdv-btnG slim" data-act="oform">Order form</button>
     <button class="hdv-btnG slim" data-act="paid">${o.paid ? 'Mark unpaid' : 'Mark paid'}</button>
-    <button class="hdv-btnG slim" data-act="remit">${o.remittance ? '📎 View proof' : '📎 Attach proof'}</button>
+    <button class="hdv-btnG slim" data-act="remit">${o.remittance ? '📎 View payment proof' : '📎 Add payment proof'}</button>
+    <button class="hdv-btnG slim" data-act="pod">${(o.podSigned || o.podGoods) ? '🚚 Delivery proof' : '🚚 Add delivery proof'}</button>
+    <button class="hdv-btnG slim" data-act="sendtill">📤 Send to till</button>
     <button class="hdv-btnG slim" data-act="idone">Done</button>
     <button class="hdv-btnP" data-act="ipdf">Share PDF</button>
   </div>`;
 
   body.innerHTML = h;
   body.onclick = e => {
+    const trk = e.target.closest('[data-trk]');
+    if (trk) { const k = trk.dataset.trk, on = !trkDone(o, k); trkSet(o, k, on); toast(k.charAt(0).toUpperCase() + k.slice(1) + (on ? ' ✓' : ' cleared')); refreshSheet(); return; }
     const t = e.target.closest('[data-act]');
     if (!t) return;
     if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
-    else if (t.dataset.act === 'paid') { o.paid = o.paid ? '' : todayStr(); saveOrder(o); toast(o.paid ? 'Marked paid' : 'Marked unpaid'); }
+    else if (t.dataset.act === 'paid') { const on = !o.paid; trkSet(o, 'paid', on); toast(on ? 'Marked paid' : 'Marked unpaid'); refreshSheet(); }
     else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
     else if (t.dataset.act === 'remit') { if (o.remittance) openSheet(remittanceViewer(o)); else attachRemittance(o); }
+    else if (t.dataset.act === 'pod') { if (o.podSigned || o.podGoods) openSheet(podViewer(o)); else attachPod(o); }
+    else if (t.dataset.act === 'sendtill') { queueForTill(o, cust.name, cust.eposId || null); toast('Queued for till'); refreshSheet(); }
     else if (t.dataset.act === 'ipdf') {
       shareInvoice(invoiceData(invNo, cust, o)).then(s => {
         if (s === 'downloaded') toast('Invoice PDF saved');
