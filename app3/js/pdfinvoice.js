@@ -77,8 +77,8 @@ export function invoicePdfBytes(d) {
     // header band — legal entity (if set) leads, trading name beneath, to match the V4 invoice
     const taxW = widthOf('TAX INVOICE', 16, true);
     const nameMaxW = (RIGHT - taxW - 20) - LEFT;
-    T(LEFT, y, fit(biz.legal || biz.name || 'Happy Days', nameMaxW, 13, true), 13, true); y -= 13;
-    const sub = [biz.legal && biz.name ? 'trading as ' + biz.name : '', biz.abn ? 'ABN ' + biz.abn : ''].filter(Boolean).join('  ·  ');
+    T(LEFT, y, fit(biz.name || 'Happy Days', nameMaxW, 13, true), 13, true); y -= 13;
+    const sub = [biz.abn ? 'ABN ' + biz.abn : ''].filter(Boolean).join('  ·  ');
     if (sub) { T(LEFT, y, sub, 8.5); y -= 10.5; }
     if (biz.addr) { T(LEFT, y, biz.addr, 8.5); y -= 10.5; }
     if (biz.contacts || biz.phone) { T(LEFT, y, biz.contacts || ('Ph ' + biz.phone), 8.5); y -= 10.5; }

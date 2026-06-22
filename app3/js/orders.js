@@ -1572,7 +1572,7 @@ function statementText(cust, list) {
   const owing = billed - paid;
   return [
     'STATEMENT — ' + (cust.name || ''),
-    BIZ.legal || BIZ.name, 'trading as ' + BIZ.name, 'ABN ' + BIZ.abn, '',
+    BIZ.name, 'ABN ' + BIZ.abn, '',
     rows.join('\n'), '',
     'Billed: ' + money(billed),
     'Paid:   ' + money(paid),
@@ -1765,8 +1765,7 @@ function invoiceText(invNo, cust, o) {
   const total = orderTotal(o.lines);
   return [
     'TAX INVOICE ' + invNo,
-    BIZ.legal || BIZ.name,
-    'trading as ' + BIZ.name,
+    BIZ.name,
     'ABN ' + BIZ.abn,
     BIZ.addr,
     (BIZ.contacts || ('Ph ' + BIZ.phone)),
