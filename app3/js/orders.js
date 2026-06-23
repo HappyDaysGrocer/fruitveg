@@ -48,8 +48,9 @@ const BIZ = {
 
 /* ------------------------------------------------------- view state */
 
-let mode = 'list';   // 'list' (customer cards) | 'take' (take-order screen)
+let mode = 'list';   // 'list' (customer cards) | 'take' (take-order screen) | 'board' (orders board)
 let curId = null;    // customer id when mode === 'take'
+let boardFilter = 'all';   // Orders board active filter chip
 let takeCat = '';    // category chip on the take-order screen
 let pickDate = '';   // selected delivery date in the picking sheet
 let pickMode = 'buy'; // 'buy' (aggregated) | 'cust' (per-customer slips)
@@ -123,6 +124,7 @@ export function renderOrders(root) {
     return;
   }
 
+  if (mode === 'board') { renderBoard(root); return; }
   const cust = mode === 'take'
     ? asList(customers()).find(c => c && c.id === curId)
     : null;
@@ -171,7 +173,8 @@ function renderCustomers(root) {
 
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Customers</div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <button class="hdv-btnP slim" data-act="board">📋 Orders</button>
       <button class="hdv-btnG slim" data-act="import">Import</button>
       <button class="hdv-btnG slim" data-act="picking">Picking</button>
       <button class="hdv-btnG slim" data-act="owing">Owing</button>
@@ -222,7 +225,9 @@ function renderCustomers(root) {
   root.onclick = e => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
-    if (t.dataset.act === 'cust') {
+    if (t.dataset.act === 'board') {
+      mode = 'board'; clearSearch(); rerenderNow();
+    } else if (t.dataset.act === 'cust') {
       mode = 'take'; curId = t.dataset.id; takeCat = '';
       clearSearch(); rerenderNow();
     } else if (t.dataset.act === 'edit') {
@@ -237,6 +242,105 @@ function renderCustomers(root) {
     } else if (t.dataset.act === 'import') {
       openSheet(importSheet, { static: true });
     }
+  };
+}
+
+/* ===== Orders BOARD — every order at a glance (v4-style) ==================
+   An order-first view (vs the customer-first cards): all live orders in one
+   searchable, filterable list with To pack / To deliver / Awaiting $ cards and
+   tappable packed·delivered·paid dots. Tap a row → the rich invoice detail
+   (tracker / proof / till / pay / edit). Reuses v3.80's SHARED tracker
+   (trkDone/trkSet) so the board, the detail and the V4 dashboard all agree. == */
+
+const isPacked    = (o) => trkDone(o, 'packed');
+const isDelivered = (o) => trkDone(o, 'delivered');
+const isPaidOrder = (o) => trkDone(o, 'paid');
+const setOrderStage = (o, stage, on) => trkSet(o, stage, on);
+
+function renderBoard(root) {
+  const q = qText().toLowerCase();
+  const all = asList(orders()).filter(o => o && o.status !== 'cancelled' && Array.isArray(o.lines) && o.lines.length);
+  all.sort((a, b) => String(b.deliveryDate || b.date || b.completed || '').localeCompare(String(a.deliveryDate || a.date || a.completed || '')));
+  const placed = all.filter(o => o.status === 'completed');
+  const toPack = placed.filter(o => !isPacked(o)).length;
+  const toDeliver = placed.filter(o => !isDelivered(o)).length;
+  const unpaid = placed.filter(o => !isPaidOrder(o));
+  const unpaidAmt = unpaid.reduce((s, o) => s + orderTotal(o.lines), 0);
+
+  let list;
+  if (boardFilter === 'unpaid') list = placed.filter(o => !isPaidOrder(o));
+  else if (boardFilter === 'topack') list = placed.filter(o => !isPacked(o));
+  else if (boardFilter === 'todeliver') list = placed.filter(o => !isDelivered(o));
+  else if (boardFilter === 'open') list = all.filter(o => o.status !== 'completed');
+  else list = all;
+  if (q) list = list.filter(o => (custName(o.custId) + ' ' + (o.orderNo || '') + ' ' + (o.deliveryDate || o.date || '')).toLowerCase().includes(q));
+
+  const stat = (k, v, s, col) => `<div style="flex:1;min-width:84px;background:var(--hdv-card);border:1px solid var(--hdv-line);border-radius:12px;padding:9px 10px;text-align:center">
+    <div style="font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--hdv-sub)">${k}</div>
+    <div style="font-size:19px;font-weight:800;color:${col}">${v}</div>${s ? `<div style="font-size:10.5px;color:var(--hdv-sub)">${s}</div>` : ''}</div>`;
+
+  const FILT = [['all', 'All'], ['unpaid', 'Unpaid'], ['topack', 'To pack'], ['todeliver', 'To deliver'], ['open', 'Open']];
+  const chip = (k, lbl) => { const on = boardFilter === k; return `<button data-bfilter="${k}" style="flex:0 0 auto;min-height:36px;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid ${on ? 'var(--hdv-green)' : 'var(--hdv-line)'};background:${on ? 'var(--hdv-green)' : 'var(--hdv-card)'};color:${on ? '#fff' : 'var(--hdv-text)'}">${esc(lbl)}</button>`; };
+
+  const dot = (o, st, lbl) => { const on = st === 'packed' ? isPacked(o) : st === 'delivered' ? isDelivered(o) : isPaidOrder(o);
+    return `<button data-stage="${st}" data-id="${esc(o.id)}" title="${on ? 'Tap to undo' : 'Tap to mark ' + lbl}" aria-label="${lbl}" style="width:30px;height:30px;border-radius:50%;border:0;font-size:12px;font-weight:800;cursor:pointer;margin-right:6px;${on ? 'background:var(--hdv-green);color:#fff' : 'background:var(--hdv-lt);color:var(--hdv-sub)'}">${lbl}</button>`; };
+
+  let h = `<div class="hdv-head">
+    <div class="hdv-h1">Orders</div>
+    <div style="display:flex;gap:8px">
+      <button class="hdv-btnG slim" data-bact="customers">Customers</button>
+      <button class="hdv-btnG slim" data-bact="picking">Picking</button>
+    </div>
+  </div>`;
+  h += `<div style="display:flex;gap:7px;padding:4px 12px 10px">
+    ${stat('To pack', toPack, '', toPack ? 'var(--hdv-amber)' : 'var(--hdv-green)')}
+    ${stat('To deliver', toDeliver, '', toDeliver ? 'var(--hdv-amber)' : 'var(--hdv-green)')}
+    ${stat('Awaiting $', money(unpaidAmt), unpaid.length + ' unpaid', unpaid.length ? 'var(--hdv-red)' : 'var(--hdv-green)')}
+  </div>`;
+  h += `<div style="display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px;scrollbar-width:none">${FILT.map(f => chip(f[0], f[1])).join('')}</div>`;
+
+  if (!list.length) {
+    h += emptyHTML(q || boardFilter !== 'all' ? 'No orders match' : 'No orders yet');
+  } else {
+    h += `<div class="hdv-sec">${list.length} order${list.length === 1 ? '' : 's'}</div>`;
+    h += list.map(o => {
+      const completed = o.status === 'completed', paid = isPaidOrder(o);
+      const status = !completed ? '<b style="color:var(--hdv-amber)">Open</b>'
+        : paid ? '<b style="color:var(--hdv-green)">Paid</b>' : '<b style="color:var(--hdv-red)">Unpaid</b>';
+      let due = '';
+      if (completed && !paid && o.dueDate) { const od = o.dueDate < todayStr(); due = ` · <span style="color:${od ? 'var(--hdv-red)' : 'var(--hdv-sub)'};font-weight:${od ? '800' : '400'}">${od ? '⚠ overdue ' : 'due '}${esc(o.dueDate)}</span>`; }
+      const n = o.lines.length;
+      const when = o.deliveryDate ? 'deliver ' + niceDate(o.deliveryDate) : (o.completed || 'open');
+      return `<div class="hdv-row" data-oopen="${esc(o.id)}" style="cursor:pointer">
+        <div class="hdv-info">
+          <div class="hdv-name">${esc(custName(o.custId))} · ${money(orderTotal(o.lines))}</div>
+          <div class="hdv-sub">${esc(when)} · ${esc(o.orderNo || '—')} · ${n} item${n === 1 ? '' : 's'} · ${status}${due}</div>
+          <div style="margin-top:7px">${dot(o, 'packed', 'P')}${dot(o, 'delivered', 'D')}${dot(o, 'paid', '$')}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  h += '<div class="hdv-pad"></div>';
+  root.innerHTML = h;
+  root.onclick = e => {
+    const d = e.target.closest('[data-stage]');
+    if (d) {
+      const o = orderById(d.dataset.id); if (!o) return;
+      const st = d.dataset.stage, on = st === 'packed' ? isPacked(o) : st === 'delivered' ? isDelivered(o) : isPaidOrder(o);
+      setOrderStage(o, st, !on);
+      toast((on ? 'Unmarked ' : '✓ ') + (st === 'packed' ? 'packed' : st === 'delivered' ? 'delivered' : 'paid'));
+      return;
+    }
+    const fb = e.target.closest('[data-bfilter]');
+    if (fb) { boardFilter = fb.dataset.bfilter; rerenderNow(); return; }
+    const ba = e.target.closest('[data-bact]');
+    if (ba) {
+      if (ba.dataset.bact === 'customers') { mode = 'list'; clearSearch(); rerenderNow(); }
+      else if (ba.dataset.bact === 'picking') openSheet(pickingSheet);
+      return;
+    }
+    const row = e.target.closest('[data-oopen]');
+    if (row) { const o = orderById(row.dataset.oopen); if (o) openSheet(b => invoiceSheet(b, o.custId, o.id)); }
   };
 }
 
@@ -1734,6 +1838,7 @@ function invoiceSheet(body, custId, orderId) {
   if (o.remittance) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">📎 Payment proof attached${o.remittanceAt ? ' · ' + esc(niceDate(o.remittanceAt)) : ''}</div>`;
   if (o.podSigned || o.podGoods) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">🚚 Delivery proof attached</div>`;
   h += `<div class="hdv-actions">
+    ${customerId() ? '' : '<button class="hdv-btnG slim" data-act="iedit">✏️ Edit</button>'}
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
     <button class="hdv-btnG slim" data-act="oform">Order form</button>
     <button class="hdv-btnG slim" data-act="paid">${o.paid ? 'Mark unpaid' : 'Mark paid'}</button>
@@ -1750,7 +1855,8 @@ function invoiceSheet(body, custId, orderId) {
     if (trk) { const k = trk.dataset.trk, on = !trkDone(o, k); trkSet(o, k, on); toast(k.charAt(0).toUpperCase() + k.slice(1) + (on ? ' ✓' : ' cleared')); refreshSheet(); return; }
     const t = e.target.closest('[data-act]');
     if (!t) return;
-    if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
+    if (t.dataset.act === 'iedit') openSheet(orderEditSheet(o.id), { static: true });
+    else if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
     else if (t.dataset.act === 'paid') { const on = !o.paid; trkSet(o, 'paid', on); toast(on ? 'Marked paid' : 'Marked unpaid'); refreshSheet(); }
     else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
     else if (t.dataset.act === 'remit') { if (o.remittance) openSheet(remittanceViewer(o)); else attachRemittance(o); }
