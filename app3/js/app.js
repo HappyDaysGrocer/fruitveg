@@ -167,6 +167,56 @@ function registerSW() {
   navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
 }
 
+/* ---------- "new version — tap to update" nudge ----------
+   The SW is network-first, but a phone can still be running an OLDER service
+   worker / cached bundle (the classic PWA-stuck-on-an-old-build trap). So we
+   POLL the deployed store.js (cache-busted, so it bypasses ANY SW/HTTP cache)
+   and compare its VERSION to the one THIS running bundle booted with. If they
+   differ, the app on screen is stale — show a tap-to-update banner that clears
+   the caches, drops the old service worker, and reloads fresh. */
+let _updateShown = false;
+async function checkForUpdate() {
+  if (!navigator.onLine || _updateShown) return;
+  try {
+    const r = await fetch('./js/store.js?cb=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/VERSION\s*=\s*'([^']+)'/);
+    if (m && m[1] && m[1] !== VERSION) showUpdateBanner(m[1]);
+  } catch (e) { /* offline / blocked — ignore, try again next time */ }
+}
+
+function showUpdateBanner(ver) {
+  if (_updateShown || document.getElementById('hd3-update')) return;
+  _updateShown = true;
+  const b = document.createElement('div');
+  b.id = 'hd3-update';
+  b.style.cssText = 'position:fixed;left:12px;right:12px;z-index:60;' +
+    'bottom:calc(80px + env(safe-area-inset-bottom));background:#15662f;color:#fff;' +
+    'border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:12px;' +
+    'box-shadow:0 8px 24px rgba(0,0,0,.34);font-family:inherit;cursor:pointer';
+  b.innerHTML =
+    '<div style="flex:1;line-height:1.3">' +
+      '<div style="font-size:14.5px;font-weight:800">✨ New version ready' + (ver ? ' (' + ver + ')' : '') + '</div>' +
+      '<div style="font-size:12.5px;opacity:.9">Tap to update — just a second</div></div>' +
+    '<div id="hd3-update-btn" style="flex:0 0 auto;background:rgba(255,255,255,.22);' +
+      'border-radius:10px;padding:9px 15px;font-weight:800;font-size:13.5px">Update</div>';
+  b.onclick = doUpdate;
+  document.body.appendChild(b);
+}
+
+async function doUpdate() {
+  const btn = document.getElementById('hd3-update-btn');
+  if (btn) btn.textContent = 'Updating…';
+  try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch (e) { /* ignore */ }
+  try {
+    if (navigator.serviceWorker) {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map((r) => r.unregister()));
+    }
+  } catch (e) { /* ignore */ }
+  location.reload();
+}
+
 /* ---------- base styles for app.js-owned chrome (toast / sheet /
    skeleton). Self-contained so this module never depends on class names
    another builder may or may not have defined. ---------- */
@@ -224,6 +274,9 @@ async function boot() {
   try { await initCatalog(); } catch (e) { /* store falls back to cache */ }
   render();              // first real paint from local mirrors (offline-first)
   pull();                // background refresh; bus 'change' repaints when done
+
+  setTimeout(checkForUpdate, 3000);   // once the app has settled, see if a newer build is live
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
 }
 
 boot();
