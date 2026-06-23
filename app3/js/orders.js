@@ -287,8 +287,8 @@ function renderBoard(root) {
 
   let h = `<div class="hdv-head">
     <div class="hdv-h1">Orders</div>
-    <div style="display:flex;gap:8px">
-      <button class="hdv-btnG slim" data-bact="customers">Customers</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="hdv-btnP" data-bact="customers">Customers</button>
       <button class="hdv-btnG slim" data-bact="picking">Picking</button>
     </div>
   </div>`;
