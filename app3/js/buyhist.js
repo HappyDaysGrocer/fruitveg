@@ -12,20 +12,40 @@ let bRun = null;        // drilled-into run date
 const m = (n) => (n == null || isNaN(n)) ? '—' : '$' + Number(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const m0 = (n) => '$' + Math.round(+n || 0).toLocaleString('en-AU');
 
-function runsView(H) {
+function runsView(H, q) {
+  const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (bRun) {
     const r = (H.runs || []).filter((x) => x.date === bRun)[0];
-    if (!r) { bRun = null; return runsView(H); }
+    if (!r) { bRun = null; return runsView(H, q); }
     let h = `<div class="hdv-sec"><a href="#" data-act="bback">&larr; back to runs</a></div>`;
     h += `<div class="hdv-sec" style="font-weight:700">${esc(r.label)} · ${m(r.total)} · ${r.lineCount} lines</div>`;
-    h += (r.items || []).map((l) => `<div class="hdv-row"><div class="hdv-info">
+    // alphabetical by product, then live-filter on the search bar (product / supplier / stall)
+    let items = (r.items || []).slice().sort((a, b) =>
+      String(a.productName || '').localeCompare(String(b.productName || ''), undefined, { sensitivity: 'base' }));
+    if (terms.length) {
+      items = items.filter((l) => {
+        const s = ((l.productName || '') + ' ' + (l.supplier || '') + ' ' + (l.stall || '')).toLowerCase();
+        return terms.every((t) => s.includes(t));
+      });
+      h += `<div class="hdv-sec">${items.length} of ${(r.items || []).length} lines match “${esc(q)}”</div>`;
+    } else {
+      h += `<div class="hdv-sec">A–Z · type in the search bar above to filter</div>`;
+    }
+    if (!items.length) return h + emptyHTML(`No products match “${esc(q)}”`);
+    h += items.map((l) => `<div class="hdv-row"><div class="hdv-info">
       <div class="hdv-name">${esc(l.productName)}</div>
       <div class="hdv-sub">${esc(l.supplier || '')}${l.stall ? ' · stall ' + esc(l.stall) : ''} · ${l.qty} × ${m(l.price)} = <b>${m(l.total)}</b></div>
     </div></div>`).join('');
     return h;
   }
+  let runs = (H.runs || []);
+  if (terms.length) runs = runs.filter((r) => {
+    const s = ((r.label || '') + ' ' + (r.date || '')).toLowerCase();
+    return terms.every((t) => s.includes(t));
+  });
   let h = `<div class="hdv-sec">${H.runCount} market runs · ${m0(H.totalSpend)} spent${H.dateRange ? ' · ' + esc(H.dateRange[0] + ' to ' + H.dateRange[1]) : ''}</div>`;
-  h += (H.runs || []).map((r) => `<div class="hdv-row" data-act="brun" data-run="${esc(r.date)}" style="cursor:pointer">
+  if (!runs.length) return h + emptyHTML(`No runs match “${esc(q)}”`);
+  h += runs.map((r) => `<div class="hdv-row" data-act="brun" data-run="${esc(r.date)}" style="cursor:pointer">
     <div class="hdv-info"><div class="hdv-name">${esc(r.label)}</div>
     <div class="hdv-sub">${r.lineCount} lines · <b>${m(r.total)}</b> · ${r.source === 'Buy sheet' ? 'buy sheet' : 'confirmed run'}</div></div></div>`).join('');
   return h;
@@ -73,7 +93,7 @@ export function renderBuyHist(root) {
   </div>`;
   if (bTab === 'suppliers') h += suppliersView(H);
   else if (bTab === 'prices') h += pricesView(H, q);
-  else h += runsView(H);
+  else h += runsView(H, q);
   h += '<div class="hdv-pad"></div>';
   root.innerHTML = h;
   root.onclick = (e) => {
