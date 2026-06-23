@@ -257,6 +257,17 @@ const isDelivered = (o) => trkDone(o, 'delivered');
 const isPaidOrder = (o) => trkDone(o, 'paid');
 const setOrderStage = (o, stage, on) => trkSet(o, stage, on);
 
+/* Payment method per order — mirrors the V4 dashboard rule (23 Jun): Reddy Roast pays by CARD on the
+   till; every other customer pays by BANK TRANSFER. o.payMethod (set from the V4 dashboard) overrides. */
+function payMethodOf(o) {
+  if (o && o.payMethod) { const m = String(o.payMethod).toLowerCase(); return m.indexOf('cash') >= 0 ? 'cash' : m.indexOf('card') >= 0 ? 'card' : m.indexOf('other') >= 0 ? 'other' : 'bank'; }
+  return /reddy/i.test(custName(o && o.custId)) ? 'card' : 'bank';
+}
+function payBadgeHtml(o) {
+  const p = payMethodOf(o);
+  const d = p === 'card' ? ['💳', 'Card', '#4b5563', '#f1f3f5'] : p === 'cash' ? ['💵', 'Cash', '#b45309', '#fef3e2'] : p === 'other' ? ['•', 'Other', '#6b7280', '#f1f3f5'] : ['🏦', 'Bank transfer', 'var(--hdv-green)', '#eaf3ec'];
+  return `<span style="display:inline-block;font-size:11px;font-weight:600;color:${d[2]};background:${d[3]};border-radius:8px;padding:1px 6px;white-space:nowrap">${d[0]} ${d[1]}</span>`;
+}
 function renderBoard(root) {
   const q = qText().toLowerCase();
   const all = asList(orders()).filter(o => o && o.status !== 'cancelled' && Array.isArray(o.lines) && o.lines.length);
@@ -313,7 +324,7 @@ function renderBoard(root) {
       const when = o.deliveryDate ? 'deliver ' + niceDate(o.deliveryDate) : (o.completed || 'open');
       return `<div class="hdv-row" data-oopen="${esc(o.id)}" style="cursor:pointer">
         <div class="hdv-info">
-          <div class="hdv-name">${esc(custName(o.custId))} · ${money(orderTotal(o.lines))}</div>
+          <div class="hdv-name">${esc(custName(o.custId))} · ${money(orderTotal(o.lines))} ${payBadgeHtml(o)}</div>
           <div class="hdv-sub">${esc(when)} · ${esc(o.orderNo || '—')} · ${n} item${n === 1 ? '' : 's'} · ${status}${due}</div>
           <div style="margin-top:7px">${dot(o, 'packed', 'P')}${dot(o, 'delivered', 'D')}${dot(o, 'paid', '$')}</div>
         </div>
