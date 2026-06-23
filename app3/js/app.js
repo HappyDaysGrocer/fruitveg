@@ -85,8 +85,10 @@ function renderLoginWall() {
 }
 
 function setNavActive() {
-  document.querySelectorAll('[data-view]').forEach((btn) => {
-    const active = btn.dataset.view === current;
+  const ALIAS = { money: 'more' };          // Money opens from the More menu now → light up More
+  const v = ALIAS[current] || current;
+  document.querySelectorAll('#nav [data-view]').forEach((btn) => {
+    const active = btn.dataset.view === v;
     btn.classList.toggle('active', active);
     if (active) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');

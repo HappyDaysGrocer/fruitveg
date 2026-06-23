@@ -2767,13 +2767,14 @@ export function renderMore(root) {
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
   </div>`;
 
-  // Buying history — read-only window into V4 (staff only; data loads from the locked vault after login)
-  if (who && !customerId()) h += `<div class="hdv-card" data-view="buyhist" style="cursor:pointer">
+  // Money — costs / margins / profit (staff only; cost data loads from the locked vault after login).
+  // (Buying history is now a bottom tab; Money lives here.)
+  if (who && !customerId()) h += `<div class="hdv-card" data-view="money" style="cursor:pointer">
     <div class="hdv-info">
-      <div class="hdv-name">📊 Buying history</div>
-      <div class="hdv-count">Market runs, spend by supplier &amp; buy-price history (kg per box, price trends)</div>
+      <div class="hdv-name">💰 Money</div>
+      <div class="hdv-count">Costs, margins &amp; profit — Today / Week / Month / YTD (loads after login)</div>
     </div>
-    <button class="hdv-btnG slim" data-view="buyhist">Open</button>
+    <button class="hdv-btnG slim" data-view="money">Open</button>
   </div>`;
 
   const isCust = !!customerId();   // customer logins see no admin tools
