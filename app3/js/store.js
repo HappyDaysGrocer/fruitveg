@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.83';
+export const VERSION = 'v3.84';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -230,6 +230,21 @@ export async function loadSecureCatalog() {
     } catch (e) { /* fall through to the public-cost fallback */ }
   }
   return await loadPublicCosts();                      // vault empty/blocked
+}
+
+/** BUYING HISTORY (read-only) — the V4 buying history, pulled from the LOCKED /buyhist node
+    AFTER a staff login (anonymous reads are blocked, 401). Data only: no docket photos.
+    Never in the public app files — same protection as the /catalog cost vault. */
+let _buyhist = null;
+export function buyHistData() { if (!_buyhist) { try { _buyhist = LS.get('hd3.buyhist', null); } catch (e) {} } return _buyhist; }
+export async function loadBuyHist() {
+  let t = null; try { t = await auth.token(); } catch (e) { t = null; }
+  if (!t) return _buyhist;
+  try {
+    const r = await fetch(FB.databaseURL + '/buyhist.json?auth=' + encodeURIComponent(t));
+    if (r.ok) { const blob = await r.json(); if (blob && blob.json) { _buyhist = JSON.parse(blob.json); LS.set('hd3.buyhist', _buyhist); BUS.emit('change'); } }
+  } catch (e) { /* keep whatever cache we have */ }
+  return _buyhist;
 }
 
 /* ===========================================================================

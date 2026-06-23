@@ -11,9 +11,10 @@ import { renderOrders, renderMore, loginSheet } from './orders.js';
 import { renderMoney } from './money.js';
 import { renderBuy } from './buyrun.js';
 import { renderHome } from './home.js';
+import { renderBuyHist } from './buyhist.js';
 import { openCommandBar } from './searchBar.js';
 
-const VIEWS = { home: renderHome, buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore };
+const VIEWS = { home: renderHome, buy: renderBuy, shop: renderShop, orders: renderOrders, money: renderMoney, more: renderMore, buyhist: renderBuyHist };
 
 let current = 'home';
 
