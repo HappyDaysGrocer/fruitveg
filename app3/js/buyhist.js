@@ -12,6 +12,22 @@ let bRun = null;        // drilled-into run date
 const m = (n) => (n == null || isNaN(n)) ? '—' : '$' + Number(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const m0 = (n) => '$' + Math.round(+n || 0).toLocaleString('en-AU');
 
+/* Stall (market shop) lookup, derived from the run lines (priceTrends points dropped it).
+   exact = stall for a specific date+product+supplier; bySup = that supplier's most-recent stall.
+   Memoised on the history object so it isn't rebuilt every render. */
+let _stallFor = null, _stallCache = null;
+function stalls(H) {
+  if (_stallFor === H && _stallCache) return _stallCache;
+  const bySup = {}, exact = {};
+  for (const r of (H.runs || [])) for (const it of (r.items || [])) {   // runs are newest-first → first seen = latest stall
+    if (!it.stall) continue;
+    if (it.supplier && !bySup[it.supplier]) bySup[it.supplier] = it.stall;
+    exact[(r.date || '') + '|' + (it.productName || '') + '|' + (it.supplier || '')] = it.stall;
+  }
+  _stallFor = H; _stallCache = { bySup, exact };
+  return _stallCache;
+}
+
 function runsView(H, q) {
   const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (bRun) {
@@ -53,11 +69,13 @@ function runsView(H, q) {
 
 function suppliersView(H) {
   const bs = H.bySupplier || [];
+  const S = stalls(H);
   const max = Math.max.apply(null, bs.map((s) => s.spend).concat([1]));
   let h = `<div class="hdv-sec">Spend by supplier · ${bs.length} suppliers</div>`;
   h += bs.slice(0, 80).map((s) => {
     const pc = Math.round((s.spend / max) * 100);
-    return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(s.supplier)} · <b>${m(s.spend)}</b></div>
+    const st = S.bySup[s.supplier] || '';
+    return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(s.supplier)} · <b>${m(s.spend)}</b>${st ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">🏪 stall ${esc(st)}</span>` : ''}</div>
       <div class="hdv-sub">${s.lines} lines · last ${esc(s.lastDate || '')}</div>
       <div style="height:6px;background:#e6efe9;border-radius:4px;margin-top:5px"><div style="height:6px;width:${pc}%;background:#15662f;border-radius:4px"></div></div></div></div>`;
   }).join('');
@@ -66,6 +84,7 @@ function suppliersView(H) {
 
 function pricesView(H, q) {
   const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const S = stalls(H);
   const hits = (H.priceTrends || []).filter((p) => { const n = p.product.toLowerCase(); return !terms.length ? p.times > 1 : terms.every((t) => n.includes(t)); });
   let h = `<div class="hdv-sec">${terms.length ? hits.length + ' product' + (hits.length === 1 ? '' : 's') + ' match “' + esc(q) + '” — every date you bought it + the price each time' : 'Type a product in the search bar above (banana, tomato…) to see every buy price + kg per box. Showing items bought more than once.'}</div>`;
   if (!hits.length) return h + emptyHTML(`No products match “${esc(q)}” — try a simpler word (e.g. just “banana”)`);
@@ -73,7 +92,10 @@ function pricesView(H, q) {
     const arrow = p.changePct == null ? '' : (p.changePct > 0 ? ` <span style="color:#c0392b;font-weight:700">↑${p.changePct}%</span>` : p.changePct < 0 ? ` <span style="color:#15662f;font-weight:700">↓${Math.abs(p.changePct)}%</span>` : '');
     const box = p.boxLabel ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">📦 ${esc(p.boxLabel)}</span>` : '';
     const pk = !!p.boxKg;
-    const pts = (p.points || []).map((x) => `<div class="hdv-sub" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.date)} · ${esc(x.supplier || '')}</span><span style="white-space:nowrap"><b>${m(x.price)}</b>${pk && x.perKg != null ? ' · ' + m(x.perKg) + '/kg' : ''}</span></div>`).join('');
+    const pts = (p.points || []).map((x) => {
+      const st = S.exact[(x.date || '') + '|' + (p.product || '') + '|' + (x.supplier || '')] || S.bySup[x.supplier] || '';
+      return `<div class="hdv-sub" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.date)} · ${esc(x.supplier || '')}${st ? ' · 🏪 ' + esc(st) : ''}</span><span style="white-space:nowrap"><b>${m(x.price)}</b>${pk && x.perKg != null ? ' · ' + m(x.perKg) + '/kg' : ''}</span></div>`;
+    }).join('');
     return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(p.product)}${box}${arrow}</div>${pts}</div></div>`;
   }).join('');
   return h;
