@@ -29,6 +29,15 @@ function stalls(H) {
   return _stallCache;
 }
 
+/* ONE shared supplier element — used EVERYWHERE a supplier name shows (run detail,
+   buy prices, by supplier). Tapping it opens the same Call/Text pop-up; a 📞 marks
+   suppliers we have a number on file for. One flow, identical everywhere. */
+function supLink(name) {
+  if (!name) return '';
+  const c = supplierContact(name);
+  return `<span data-callsup="${esc(name)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${esc(name)}${(c && c.phone) ? ' 📞' : ''}</span>`;
+}
+
 function runsView(H, q) {
   const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (bRun) {
@@ -51,7 +60,7 @@ function runsView(H, q) {
     if (!items.length) return h + emptyHTML(`No products match “${esc(q)}”`);
     h += items.map((l) => `<div class="hdv-row"><div class="hdv-info">
       <div class="hdv-name">${esc(l.productName)}</div>
-      <div class="hdv-sub">${esc(l.supplier || '')}${l.stall ? ' · stall ' + esc(l.stall) : ''} · ${l.qty} × ${m(l.price)} = <b>${m(l.total)}</b></div>
+      <div class="hdv-sub">${supLink(l.supplier)}${l.stall ? ' · 🏪 ' + esc(l.stall) : ''} · ${l.qty} × ${m(l.price)} = <b>${m(l.total)}</b></div>
     </div></div>`).join('');
     return h;
   }
@@ -97,7 +106,7 @@ function pricesView(H, q) {
     const pk = !!p.boxKg;
     const pts = (p.points || []).map((x) => {
       const st = S.exact[(x.date || '') + '|' + (p.product || '') + '|' + (x.supplier || '')] || S.bySup[x.supplier] || '';
-      return `<div class="hdv-sub" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.date)} · ${esc(x.supplier || '')}${st ? ' · 🏪 ' + esc(st) : ''}</span><span style="white-space:nowrap"><b>${m(x.price)}</b>${pk && x.perKg != null ? ' · ' + m(x.perKg) + '/kg' : ''}</span></div>`;
+      return `<div class="hdv-sub" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.date)} · ${supLink(x.supplier)}${st ? ' · 🏪 ' + esc(st) : ''}</span><span style="white-space:nowrap"><b>${m(x.price)}</b>${pk && x.perKg != null ? ' · ' + m(x.perKg) + '/kg' : ''}</span></div>`;
     }).join('');
     return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(p.product)}${box}${arrow}</div>${pts}</div></div>`;
   }).join('');
