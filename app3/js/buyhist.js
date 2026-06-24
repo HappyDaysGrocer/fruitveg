@@ -67,9 +67,9 @@ function suppliersView(H) {
 function pricesView(H, q) {
   const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   const hits = (H.priceTrends || []).filter((p) => { const n = p.product.toLowerCase(); return !terms.length ? p.times > 1 : terms.every((t) => n.includes(t)); });
-  let h = `<div class="hdv-sec">${terms.length ? 'Showing "' + esc(q) + '" — price each time + kg per box' : 'Search a product in the bar above (banana, tomato…) to see every buy price + kg per box. Showing items bought more than once.'}</div>`;
-  if (!hits.length) return h + emptyHTML('No products match');
-  h += hits.slice(0, 60).map((p) => {
+  let h = `<div class="hdv-sec">${terms.length ? hits.length + ' product' + (hits.length === 1 ? '' : 's') + ' match “' + esc(q) + '” — every date you bought it + the price each time' : 'Type a product in the search bar above (banana, tomato…) to see every buy price + kg per box. Showing items bought more than once.'}</div>`;
+  if (!hits.length) return h + emptyHTML(`No products match “${esc(q)}” — try a simpler word (e.g. just “banana”)`);
+  h += hits.slice(0, 120).map((p) => {
     const arrow = p.changePct == null ? '' : (p.changePct > 0 ? ` <span style="color:#c0392b;font-weight:700">↑${p.changePct}%</span>` : p.changePct < 0 ? ` <span style="color:#15662f;font-weight:700">↓${Math.abs(p.changePct)}%</span>` : '');
     const box = p.boxLabel ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">📦 ${esc(p.boxLabel)}</span>` : '';
     const pk = !!p.boxKg;
@@ -85,13 +85,18 @@ export function renderBuyHist(root) {
   const H = buyHistData();
   if (!H) { loadBuyHist(); root.innerHTML = `<div class="hdv-head"><div class="hdv-h1">Buying history</div></div>` + emptyHTML('Loading your buying history…'); return; }
   const q = qText();
+  const searching = !!q && !bRun;          // typing (not inside a run) → jump straight to Buy-price history, like the V4 dashboard
+  const hot = searching ? 'prices' : bTab;
   let h = `<div class="hdv-head"><div class="hdv-h1">Buying history</div></div>`;
   h += `<div class="hdv-viewtog">
-    <button class="hdv-vbtn${bTab === 'runs' ? ' on' : ''}" data-act="btab" data-tab="runs">Market runs</button>
-    <button class="hdv-vbtn${bTab === 'suppliers' ? ' on' : ''}" data-act="btab" data-tab="suppliers">By supplier</button>
-    <button class="hdv-vbtn${bTab === 'prices' ? ' on' : ''}" data-act="btab" data-tab="prices">Buy prices</button>
+    <button class="hdv-vbtn${hot === 'runs' ? ' on' : ''}" data-act="btab" data-tab="runs">Market runs</button>
+    <button class="hdv-vbtn${hot === 'suppliers' ? ' on' : ''}" data-act="btab" data-tab="suppliers">By supplier</button>
+    <button class="hdv-vbtn${hot === 'prices' ? ' on' : ''}" data-act="btab" data-tab="prices">Buy prices</button>
   </div>`;
-  if (bTab === 'suppliers') h += suppliersView(H);
+  if (!q && !bRun) h += `<div class="hdv-sec" style="color:var(--hdv-green)">🔍 Search any product in the bar above — every date you bought it, the price each time &amp; kg per box (${(H.priceTrends || []).length} products on file)</div>`;
+  if (bRun) h += runsView(H, q);                 // inside a run → the search filters that run's lines
+  else if (searching) h += pricesView(H, q);     // typing anywhere else → full buy-price history (all products)
+  else if (bTab === 'suppliers') h += suppliersView(H);
   else if (bTab === 'prices') h += pricesView(H, q);
   else h += runsView(H, q);
   h += '<div class="hdv-pad"></div>';
@@ -100,7 +105,7 @@ export function renderBuyHist(root) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const a = t.dataset.act;
-    if (a === 'btab') { bTab = t.dataset.tab; bRun = null; renderBuyHist(root); }
+    if (a === 'btab') { bTab = t.dataset.tab; bRun = null; const qb = document.getElementById('q'); if (qb && qb.value) qb.value = ''; renderBuyHist(root); }
     else if (a === 'brun') { bRun = t.dataset.run; renderBuyHist(root); }
     else if (a === 'bback') { e.preventDefault(); bRun = null; renderBuyHist(root); }
   };
