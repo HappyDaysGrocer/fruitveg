@@ -2858,6 +2858,15 @@ export function renderMore(root) {
     <button class="hdv-btnG slim" data-act="sync">Sync now</button>
   </div>`;
 
+  // Force update — clears the saved cache + reloads the very latest version (fixes a stuck/old screen)
+  h += `<div class="hdv-card">
+    <div class="hdv-info">
+      <div class="hdv-name">App version · ${VERSION}</div>
+      <div class="hdv-count">On the latest? If a screen looks old, tap to force the newest version.</div>
+    </div>
+    <button class="hdv-btnP slim" data-act="forceupd">🔄 Update</button>
+  </div>`;
+
   // Money — costs / margins / profit (staff only; cost data loads from the locked vault after login).
   // (Buying history is now a bottom tab; Money lives here.)
   if (who && !customerId()) h += `<div class="hdv-card" data-view="money" style="cursor:pointer">
@@ -2953,6 +2962,11 @@ export function renderMore(root) {
     else if (act === 'logout') { auth.logout(); toast('Logged out'); rerenderNow(); }
     else if (act === 'chpw') openSheet(changePwSheet, { static: true });
     else if (act === 'sync') doSync(t);
+    else if (act === 'forceupd') {
+      toast('Updating to the latest…');
+      if (window.HD && window.HD.forceUpdate) window.HD.forceUpdate();
+      else location.reload();
+    }
     else if (act === 'runs') openSheet(runsAdminSheet);
     else if (act === 'groups') openSheet(groupsSheet);
     else if (act === 'specials') openSheet(b => specialsSheet(b), { static: true });

@@ -261,7 +261,7 @@ function injectBaseStyles() {
 
 /* ---------- shared helpers for the other modules ---------- */
 
-window.HD = { go, toast };
+window.HD = { go, toast, forceUpdate: doUpdate };   // forceUpdate = clear caches + drop SW + reload (More → Update)
 
 /* ---------- boot ---------- */
 
