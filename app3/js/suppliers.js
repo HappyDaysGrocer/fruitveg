@@ -50,6 +50,22 @@ export function stallFor(name) {
   return SUPPLIERS[best] || null;
 }
 
+/** Directory entry for a SUPPLIER NAME (from the buying history) → {supplier, stall, phone}
+   or null. Tolerant of spacing/punctuation/case (e.g. "Maz Corp" → "MazCorp"). */
+export function supplierContact(name) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const n = norm(name);
+  if (!n) return null;
+  let contains = null;
+  for (const sup of SUPPLIERS) {
+    const sn = norm(sup.supplier);
+    if (!sn) continue;
+    if (sn === n) return sup;                                   // exact (spacing-insensitive)
+    if (!contains && (n.indexOf(sn) >= 0 || sn.indexOf(n) >= 0) && sn.length >= 4) contains = sup;
+  }
+  return contains;
+}
+
 /** Suppliers matching a query by stall number, supplier name or phone
    (multi-word, any order). Returns [] for an empty query. */
 export function searchSuppliers(q) {

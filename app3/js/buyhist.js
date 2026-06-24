@@ -3,8 +3,9 @@
    (anonymous reads are blocked). It is NEVER baked into the public app files. Photos are
    not included (data only) — phones can't open the laptop's local docket files. Staff can
    SEE this; they can't edit it — V4 on the laptop stays the single source of truth. */
-import { setActive, esc, emptyHTML, ensureCss, qText } from './catalog.js';
+import { setActive, esc, emptyHTML, ensureCss, qText, openSheet, closeSheet, fmtPhone } from './catalog.js';
 import { buyHistData, loadBuyHist } from './store.js';
+import { supplierContact } from './suppliers.js';
 
 let bTab = 'runs';      // runs | suppliers | prices
 let bRun = null;        // drilled-into run date
@@ -74,9 +75,11 @@ function suppliersView(H) {
   let h = `<div class="hdv-sec">Spend by supplier · ${bs.length} suppliers</div>`;
   h += bs.slice(0, 80).map((s) => {
     const pc = Math.round((s.spend / max) * 100);
-    const st = S.bySup[s.supplier] || '';
-    return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(s.supplier)} · <b>${m(s.spend)}</b>${st ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">🏪 stall ${esc(st)}</span>` : ''}</div>
-      <div class="hdv-sub">${s.lines} lines · last ${esc(s.lastDate || '')}</div>
+    const c = supplierContact(s.supplier);
+    const st = S.bySup[s.supplier] || (c && c.stall) || '';
+    const ph = c && c.phone ? c.phone : '';
+    return `<div class="hdv-row" data-callsup="${esc(s.supplier)}" style="cursor:pointer"><div class="hdv-info"><div class="hdv-name">${esc(s.supplier)} · <b>${m(s.spend)}</b>${st ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">🏪 stall ${esc(st)}</span>` : ''}</div>
+      <div class="hdv-sub">${s.lines} lines · last ${esc(s.lastDate || '')}${ph ? ' · 📞 ' + esc(fmtPhone(ph)) + ' · tap to call/text' : ' · tap for contact'}</div>
       <div style="height:6px;background:#e6efe9;border-radius:4px;margin-top:5px"><div style="height:6px;width:${pc}%;background:#15662f;border-radius:4px"></div></div></div></div>`;
   }).join('');
   return h;
@@ -99,6 +102,30 @@ function pricesView(H, q) {
     return `<div class="hdv-row"><div class="hdv-info"><div class="hdv-name">${esc(p.product)}${box}${arrow}</div>${pts}</div></div>`;
   }).join('');
   return h;
+}
+
+/* Tap a supplier → a Call / Text pop-up (for ringing the stall in the morning). */
+function supplierContactSheet(name) {
+  return (body) => {
+    const c = supplierContact(name);
+    const phone = c && c.phone ? c.phone : '';
+    const tel = phone.replace(/[^0-9+]/g, '');
+    const stall = c && c.stall ? c.stall : '';
+    let h = `<div class="hdv-sheettitle">${esc(name)}</div>
+      <div class="hdv-sheetsub">${stall ? '🏪 stall ' + esc(stall) : 'stall not on file'}${phone ? ' · ' + esc(fmtPhone(phone)) : ''}</div>`;
+    if (phone) {
+      h += `<div class="hdv-actions" style="flex-direction:column;gap:10px;align-items:stretch">
+        <a class="hdv-btnP" style="text-align:center;text-decoration:none;display:block" href="tel:${esc(tel)}">📞 Call ${esc(fmtPhone(phone))}</a>
+        <a class="hdv-btnG" style="text-align:center;text-decoration:none;display:block" href="sms:${esc(tel)}">✉️ Text message</a>
+        <button class="hdv-btnG slim" data-act="cclose">Close</button>
+      </div>`;
+    } else {
+      h += emptyHTML('No phone number on file for this supplier');
+      h += `<div class="hdv-actions"><button class="hdv-btnP" data-act="cclose">Close</button></div>`;
+    }
+    body.innerHTML = h;
+    body.onclick = (e) => { const t = e.target.closest('[data-act]'); if (t && t.dataset.act === 'cclose') closeSheet(); };
+  };
 }
 
 export function renderBuyHist(root) {
@@ -124,6 +151,8 @@ export function renderBuyHist(root) {
   h += '<div class="hdv-pad"></div>';
   root.innerHTML = h;
   root.onclick = (e) => {
+    const sup = e.target.closest('[data-callsup]');
+    if (sup) { openSheet(supplierContactSheet(sup.getAttribute('data-callsup'))); return; }
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const a = t.dataset.act;
