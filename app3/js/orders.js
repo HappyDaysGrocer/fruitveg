@@ -277,6 +277,10 @@ function renderBoard(root) {
   const toDeliver = placed.filter(o => !isDelivered(o)).length;
   const unpaid = placed.filter(o => !isPaidOrder(o));
   const unpaidAmt = unpaid.reduce((s, o) => s + orderTotal(o.lines), 0);
+  // FLAG (never delete) customers with 2+ OPEN orders — the duplicate-open symptom
+  const _openByCust = {};
+  for (const o of all) if (o.status !== 'completed') _openByCust[o.custId] = (_openByCust[o.custId] || 0) + 1;
+  const dupCusts = new Set(Object.keys(_openByCust).filter(k => _openByCust[k] > 1));
 
   let list;
   if (boardFilter === 'unpaid') list = placed.filter(o => !isPaidOrder(o));
@@ -309,6 +313,7 @@ function renderBoard(root) {
     ${stat('Awaiting $', money(unpaidAmt), unpaid.length + ' unpaid', unpaid.length ? 'var(--hdv-red)' : 'var(--hdv-green)')}
   </div>`;
   h += `<div style="display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px;scrollbar-width:none">${FILT.map(f => chip(f[0], f[1])).join('')}</div>`;
+  if (dupCusts.size) h += `<div class="hdv-sec" style="color:var(--hdv-red)">⚠ ${dupCusts.size} customer${dupCusts.size === 1 ? '' : 's'} have 2+ open orders — review &amp; merge (nothing is deleted)</div>`;
 
   if (!list.length) {
     h += emptyHTML(q || boardFilter !== 'all' ? 'No orders match' : 'No orders yet');
@@ -325,7 +330,7 @@ function renderBoard(root) {
       return `<div class="hdv-row" data-oopen="${esc(o.id)}" style="cursor:pointer">
         <div class="hdv-info">
           <div class="hdv-name">${esc(custName(o.custId))} · ${money(orderTotal(o.lines))} ${payBadgeHtml(o)}</div>
-          <div class="hdv-sub">${esc(when)} · ${esc(o.orderNo || '—')} · ${n} item${n === 1 ? '' : 's'} · ${status}${due}</div>
+          <div class="hdv-sub">${esc(when)} · ${esc(o.orderNo || '—')} · ${n} item${n === 1 ? '' : 's'} · ${status}${due}${(!completed && dupCusts.has(o.custId)) ? ' · <b style="color:var(--hdv-red)">⚠ DUPLICATE OPEN</b>' : ''}</div>
           <div style="margin-top:7px">${dot(o, 'packed', 'P')}${dot(o, 'delivered', 'D')}${dot(o, 'paid', '$')}</div>
         </div>
       </div>`;
@@ -1401,9 +1406,82 @@ function orderEditSheet(orderId) {
   return (body) => { _body = body; draw(); };
 }
 
+/* Snapshot the editable fields so an edit can be diffed for the change log. */
+function orderSnapshot(o) {
+  return {
+    lines: (Array.isArray(o.lines) ? o.lines : []).map(l => ({
+      name: l.name, qty: Number(l.qty) || 0,
+      price: (l.price === '' || l.price == null) ? '' : (Number(l.price) || 0)
+    })),
+    comment: o.comment || '', date: o.date || '', packingDate: o.packingDate || '', deliveryDate: o.deliveryDate || ''
+  };
+}
+/* Plain-English list of what changed between two snapshots (for the change log). */
+function diffOrder(b, a) {
+  const ch = [];
+  const bm = new Map(b.lines.map(l => [l.name, l])), am = new Map(a.lines.map(l => [l.name, l]));
+  for (const [nm, al] of am) {
+    const bl = bm.get(nm);
+    if (!bl) { ch.push(`added ${nm} ×${al.qty}${al.price !== '' ? ' @ ' + money(al.price) : ''}`); continue; }
+    if ((bl.qty || 0) !== (al.qty || 0)) ch.push(`${nm} qty ${bl.qty}→${al.qty}`);
+    const bp = bl.price === '' ? '' : Number(bl.price), ap = al.price === '' ? '' : Number(al.price);
+    if (bp !== ap) ch.push(`${nm} price ${money(Number(bl.price) || 0) || '—'}→${money(Number(al.price) || 0) || '—'}`);
+  }
+  for (const [nm] of bm) if (!am.has(nm)) ch.push(`removed ${nm}`);
+  if ((b.comment || '') !== (a.comment || '')) ch.push('note changed');
+  if ((b.deliveryDate || '') !== (a.deliveryDate || '')) ch.push(`delivery ${b.deliveryDate || '—'}→${a.deliveryDate || '—'}`);
+  if ((b.packingDate || '') !== (a.packingDate || '')) ch.push(`packing ${b.packingDate || '—'}→${a.packingDate || '—'}`);
+  if ((b.date || '') !== (a.date || '')) ch.push(`received ${b.date || '—'}→${a.date || '—'}`);
+  return ch;
+}
+
+/* Open the order editor. A PLACED or PAID order must be "Open to edit" first —
+   a one-tap reopen that's stamped + logged (owner's edit-control choice). An
+   open/draft order — or one already reopened — goes straight into the editor. */
+function openOrderEditor(orderId) {
+  const o = orderById(orderId);
+  if (!o) { toast('Order not found'); return; }
+  const locked = (o.status === 'completed' || !!o.paid) && !o.reopenedAt;
+  if (locked) openSheet(reopenConfirmSheet(orderId), { static: true });
+  else openSheet(orderEditSheet(orderId), { static: true });
+}
+
+function reopenConfirmSheet(orderId) {
+  return (body) => {
+    const o = orderById(orderId);
+    if (!o) { body.innerHTML = emptyHTML('Order not found'); return; }
+    const cust = asList(customers()).find(c => c && c.id === o.custId) || { name: custName(o.custId) };
+    body.innerHTML = `<div class="hdv-sheettitle">Open to edit?</div>
+      <div class="hdv-sheetsub">${esc(cust.name || '—')} · ${esc(o.orderNo || orderRef(o))} is ${o.paid ? '<b style="color:var(--hdv-green)">PAID</b>' : 'placed'}. Reopen it to change items, prices or dates? The change is logged.</div>
+      <div class="hdv-sub" style="margin:8px 0 2px;font-weight:700">Reason (optional)</div>
+      <input class="hdv-in" id="reopenreason" placeholder="e.g. customer changed their order" style="width:100%;margin:0 0 8px">
+      <div class="hdv-actions">
+        <button class="hdv-btnG slim" data-act="rcancel">Cancel</button>
+        <button class="hdv-btnP" data-act="ropen">🔓 Open to edit</button>
+      </div>`;
+    body.onclick = e => {
+      const t = e.target.closest('[data-act]'); if (!t) return;
+      if (t.dataset.act === 'rcancel') { closeSheet(); return; }
+      if (t.dataset.act === 'ropen') {
+        const reason = ((body.querySelector('#reopenreason') || {}).value || '').slice(0, 200);
+        const oo = orderById(orderId);
+        if (oo) {
+          oo.reopenedAt = trkNow(); oo.reopenedBy = whoami();
+          oo.editLog = Array.isArray(oo.editLog) ? oo.editLog : [];
+          oo.editLog.push({ at: oo.reopenedAt, by: whoami(), action: 'reopen', reason });
+          saveOrder(oo);
+          toast('Opened to edit');
+        }
+        openSheet(orderEditSheet(orderId), { static: true });
+      }
+    };
+  };
+}
+
 function applyOrderEdits(orderId, ed) {
   const o = orderById(orderId);   // re-resolve the LIVE object at save time (no stale clone)
   if (!o) { toast('Order no longer exists'); closeSheet(); return; }
+  const _before = orderSnapshot(o);   // capture BEFORE mutating, for the change log
   // rebuild kept lines (drop blank-name rows, like v4); resolve a catalogue key for
   // hand-typed lines so Buy Run / till / cost still work.
   o.lines = ed.L.filter(l => String(l.name || '').trim() !== '').map(l => {
@@ -1429,6 +1507,13 @@ function applyOrderEdits(orderId, ed) {
   if (ed.oDate) o.date = ed.oDate;            // received date — never blanked (match v4)
   o.packingDate = ed.pDate || null;           // blank clears
   o.deliveryDate = ed.dDate || null;          // blank clears
+  // append-only change log: record who/when/what changed (keep history, don't overwrite)
+  const _changes = diffOrder(_before, orderSnapshot(o));
+  if (_changes.length) {
+    o.editLog = Array.isArray(o.editLog) ? o.editLog : [];
+    o.editLog.push({ at: trkNow(), by: whoami(), action: 'edit', changes: _changes });
+    if (o.editLog.length > 50) o.editLog = o.editLog.slice(-50);
+  }
   o.editedAt = todayStr(); o.editedBy = whoami();
   o.v4editedBy = whoami();                     // so the v4 dashboard's "edited by" shows it too
   saveOrder(o);                                // whole-child PATCH /custorders — same id, NO duplicate
@@ -1549,7 +1634,7 @@ function reviewSheet(body, custId) {
     else if (act === 'note') editOrderNote(custId);
     else if (act === 'editorder') {
       const oo = openOrderOf(custId);
-      if (oo) openSheet(orderEditSheet(oo.id), { static: true });
+      if (oo) openOrderEditor(oo.id);
       else toast('No open order to edit');
     }
     else if (act === 'invpdf') {
@@ -1733,7 +1818,7 @@ function historySheet(body, custId) {
     const src = asList(orders()).find(o => o && o.id === t.dataset.id);
     if (!src) return;
     if (t.dataset.act === 'again') reorder(custId, src);
-    else if (t.dataset.act === 'editorder') openSheet(orderEditSheet(src.id), { static: true });
+    else if (t.dataset.act === 'editorder') openOrderEditor(src.id);
     else if (t.dataset.act === 'inv') openSheet(b => invoiceSheet(b, custId, src.id));
     else if (t.dataset.act === 'sendtill') sendToTill(cust, src);   // queue a placed order to the till (refreshSheet re-renders the badge)
     else if (t.dataset.act === 'pack') {                            // Start pack (first open stamps who/when) -> open the checklist
@@ -1848,6 +1933,12 @@ function invoiceSheet(body, custId, orderId) {
   h += `<div class="hdv-sub" style="padding:4px 0;font-weight:800;color:${done3 ? 'var(--hdv-green)' : 'var(--hdv-red)'}">${done3 ? '● Completed — paid &amp; proof on file' : (o.paid ? '○ Unpaid — attach the payment proof to complete' : '○ Unpaid')}</div>`;
   if (o.remittance) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">📎 Payment proof attached${o.remittanceAt ? ' · ' + esc(niceDate(o.remittanceAt)) : ''}</div>`;
   if (o.podSigned || o.podGoods) h += `<div class="hdv-sub" style="color:var(--hdv-green);font-weight:700">🚚 Delivery proof attached</div>`;
+  if (o.reopenedAt) h += `<div class="hdv-sub" style="color:var(--hdv-amber);font-weight:700">🔓 Reopened for editing · ${esc(o.reopenedBy || '?')}${o.reopenedAt ? ' · ' + esc(o.reopenedAt) : ''}</div>`;
+  if (Array.isArray(o.editLog) && o.editLog.length) {
+    h += `<div class="hdv-sec">Change log</div>` + o.editLog.slice().reverse().slice(0, 20).map((en) =>
+      `<div class="hdv-sub" style="padding:3px 0"><b>${esc(en.at || '')}</b> · ${esc(en.by || '?')} · ${esc(en.action || 'edit')}${en.reason ? ' — ' + esc(en.reason) : ''}${(en.changes && en.changes.length) ? '<br>' + esc(en.changes.join(', ')) : ''}</div>`
+    ).join('');
+  }
   h += `<div class="hdv-actions">
     ${customerId() ? '' : '<button class="hdv-btnG slim" data-act="iedit">✏️ Edit</button>'}
     <button class="hdv-btnG slim" data-act="ishare">Text</button>
@@ -1866,7 +1957,7 @@ function invoiceSheet(body, custId, orderId) {
     if (trk) { const k = trk.dataset.trk, on = !trkDone(o, k); trkSet(o, k, on); toast(k.charAt(0).toUpperCase() + k.slice(1) + (on ? ' ✓' : ' cleared')); refreshSheet(); return; }
     const t = e.target.closest('[data-act]');
     if (!t) return;
-    if (t.dataset.act === 'iedit') openSheet(orderEditSheet(o.id), { static: true });
+    if (t.dataset.act === 'iedit') openOrderEditor(o.id);
     else if (t.dataset.act === 'ishare') shareText(invoiceText(invNo, cust, o));
     else if (t.dataset.act === 'paid') { const on = !o.paid; trkSet(o, 'paid', on); toast(on ? 'Marked paid' : 'Marked unpaid'); refreshSheet(); }
     else if (t.dataset.act === 'oform') { if (!openOrderForm(o, cust)) toast('Allow pop-ups to open the order form'); }
