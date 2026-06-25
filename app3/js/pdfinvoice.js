@@ -114,7 +114,11 @@ export function invoicePdfBytes(d) {
       lbl(LEFT, yL, 'BILL TO / DELIVER TO'); yL -= 13;
       T(LEFT, yL, d.customer || '', 11.5, true); yL -= 13;
       if (d.custContact) { T(LEFT, yL, ascii(d.custContact), 9.5); yL -= 11; }
-      if (d.custAddr) { T(LEFT, yL, fit(d.custAddr, 300, 9.5), 9.5); yL -= 11; }
+      if (d.custAddr) {
+        var _aw = String(d.custAddr);
+        if (widthOf(_aw, 9.5) <= 330) { T(LEFT, yL, _aw, 9.5); yL -= 11; }
+        else { var _ws = _aw.split(' '), _l1 = '', _l2 = ''; for (var _wi = 0; _wi < _ws.length; _wi++) { if (widthOf((_l1 ? _l1 + ' ' : '') + _ws[_wi], 9.5) <= 330) _l1 += (_l1 ? ' ' : '') + _ws[_wi]; else _l2 += (_l2 ? ' ' : '') + _ws[_wi]; } T(LEFT, yL, _l1, 9.5); yL -= 11; if (_l2) { T(LEFT, yL, fit(_l2, 330, 9.5), 9.5); yL -= 11; } }
+      }
       if (d.custPhone) { T(LEFT, yL, ascii(d.custPhone), 9.5); yL -= 11; }
       if (d.custEmail) { T(LEFT, yL, ascii(d.custEmail), 9.5); yL -= 11; }
       if (d.custAbn) { T(LEFT, yL, 'ABN ' + d.custAbn, 9.5); yL -= 11; }
@@ -145,11 +149,12 @@ export function invoicePdfBytes(d) {
   // totals
   const sub = (d.total != null ? Number(d.total) : (d.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0));
   if (y < BOTTOM + 110) newPage(false);
-  y -= 2; RULE(y, C_PRICE - 80, RIGHT, 0.6); y -= 15;
-  TR(C_PRICE, y, 'Subtotal', 10); TR(C_AMT, y, dollars(sub), 10); y -= 13;
-  TR(C_PRICE, y, 'GST', 10); TR(C_AMT, y, '$0.00 (GST-free)', 10); y -= 16;
-  ops.push(GREEN_S); RULE(y + 5, C_PRICE - 80, RIGHT, 1); ops.push(BLACK_S);
-  ops.push(GREEN_F); TR(C_PRICE, y, 'Total', 12.5, true); TR(C_AMT, y, dollars(sub), 12.5, true); ops.push(BLACK_F); y -= 28;
+  var LBLX = C_AMT - 152;   // labels LEFT-aligned here so the wide "$0.00 (GST-free)" value (right-aligned at C_AMT) never collides with them
+  y -= 2; RULE(y, LBLX, RIGHT, 0.6); y -= 16;
+  T(LBLX, y, 'Subtotal', 10); TR(C_AMT, y, dollars(sub), 10); y -= 14;
+  T(LBLX, y, 'GST', 10); TR(C_AMT, y, '$0.00 (GST-free)', 10); y -= 20;
+  ops.push(GREEN_S); RULE(y + 14, LBLX, RIGHT, 1); ops.push(BLACK_S);   // rule sits ABOVE the Total text (previously struck through it)
+  ops.push(GREEN_F); T(LBLX, y, 'Total', 12.5, true); TR(C_AMT, y, dollars(sub), 12.5, true); ops.push(BLACK_F); y -= 28;
 
   // payment box (mirrors the V4 "Payment — bank transfer" panel)
   if (biz.bsb || biz.acc) {
