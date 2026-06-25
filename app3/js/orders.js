@@ -2041,12 +2041,16 @@ function deliveryText(cust, o) {
 function invoiceData(invNo, cust, o) {
   return {
     biz: BIZ,
+    logo: (typeof window !== 'undefined' && window.HD_LOGO) || '',
     invNo,
     date: niceDate(o.completed || o.deliveryDate || todayStr()),
-    customer: cust.name || '',
+    deliveryDate: o.deliveryDate ? niceDate(o.deliveryDate) : '',
+    customer: cust.business || cust.name || '',
+    custContact: cust.contact || (cust.name && cust.name !== cust.business ? cust.name : '') || '',
     custAddr: cust.address || cust.deliveryAddress || cust.addr || '',
     custPhone: cust.phone || cust.mobile || '',
     custEmail: cust.email || '',
+    custAbn: cust.abn || '',
     deliver: deliveryText(cust, o),
     orderRef: o.orderNo || o.id,
     lines: (o.lines || []).map(l => ({
