@@ -272,21 +272,22 @@ function renderBoard(root) {
   const q = qText().toLowerCase();
   const all = asList(orders()).filter(o => o && o.status !== 'cancelled' && Array.isArray(o.lines) && o.lines.length);
   all.sort((a, b) => String(b.deliveryDate || b.date || b.completed || '').localeCompare(String(a.deliveryDate || a.date || a.completed || '')));
-  const placed = all.filter(o => o.status === 'completed');
+  const placed = all.filter(o => o.status === 'completed' && !o.quote);   // quotes are estimates — never in pack/deliver/owed
   const toPack = placed.filter(o => !isPacked(o)).length;
   const toDeliver = placed.filter(o => !isDelivered(o)).length;
   const unpaid = placed.filter(o => !isPaidOrder(o));
   const unpaidAmt = unpaid.reduce((s, o) => s + orderTotal(o.lines), 0);
   // FLAG (never delete) customers with 2+ OPEN orders — the duplicate-open symptom
   const _openByCust = {};
-  for (const o of all) if (o.status !== 'completed') _openByCust[o.custId] = (_openByCust[o.custId] || 0) + 1;
+  for (const o of all) if (o.status !== 'completed' && !o.quote) _openByCust[o.custId] = (_openByCust[o.custId] || 0) + 1;
   const dupCusts = new Set(Object.keys(_openByCust).filter(k => _openByCust[k] > 1));
 
   let list;
   if (boardFilter === 'unpaid') list = placed.filter(o => !isPaidOrder(o));
   else if (boardFilter === 'topack') list = placed.filter(o => !isPacked(o));
   else if (boardFilter === 'todeliver') list = placed.filter(o => !isDelivered(o));
-  else if (boardFilter === 'open') list = all.filter(o => o.status !== 'completed');
+  else if (boardFilter === 'open') list = all.filter(o => o.status !== 'completed' && !o.quote);
+  else if (boardFilter === 'quote') list = all.filter(o => o.quote);
   else list = all;
   if (q) list = list.filter(o => (custName(o.custId) + ' ' + (o.orderNo || '') + ' ' + (o.deliveryDate || o.date || '')).toLowerCase().includes(q));
 
@@ -294,7 +295,7 @@ function renderBoard(root) {
     <div style="font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--hdv-sub)">${k}</div>
     <div style="font-size:19px;font-weight:800;color:${col}">${v}</div>${s ? `<div style="font-size:10.5px;color:var(--hdv-sub)">${s}</div>` : ''}</div>`;
 
-  const FILT = [['all', 'All'], ['unpaid', 'Unpaid'], ['topack', 'To pack'], ['todeliver', 'To deliver'], ['open', 'Open']];
+  const FILT = [['all', 'All'], ['unpaid', 'Unpaid'], ['topack', 'To pack'], ['todeliver', 'To deliver'], ['open', 'Open'], ['quote', 'Quotes']];
   const chip = (k, lbl) => { const on = boardFilter === k; return `<button data-bfilter="${k}" style="flex:0 0 auto;min-height:36px;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid ${on ? 'var(--hdv-green)' : 'var(--hdv-line)'};background:${on ? 'var(--hdv-green)' : 'var(--hdv-card)'};color:${on ? '#fff' : 'var(--hdv-text)'}">${esc(lbl)}</button>`; };
 
   const dot = (o, st, lbl) => { const on = st === 'packed' ? isPacked(o) : st === 'delivered' ? isDelivered(o) : isPaidOrder(o);
@@ -321,10 +322,11 @@ function renderBoard(root) {
     h += `<div class="hdv-sec">${list.length} order${list.length === 1 ? '' : 's'}</div>`;
     h += list.map(o => {
       const completed = o.status === 'completed', paid = isPaidOrder(o);
-      const status = !completed ? '<b style="color:var(--hdv-amber)">Open</b>'
+      const status = o.quote ? '<b style="color:#1d4ed8">Quote</b>'
+        : !completed ? '<b style="color:var(--hdv-amber)">Open</b>'
         : paid ? '<b style="color:var(--hdv-green)">Paid</b>' : '<b style="color:var(--hdv-red)">Unpaid</b>';
       let due = '';
-      if (completed && !paid && o.dueDate) { const od = o.dueDate < todayStr(); due = ` · <span style="color:${od ? 'var(--hdv-red)' : 'var(--hdv-sub)'};font-weight:${od ? '800' : '400'}">${od ? '⚠ overdue ' : 'due '}${esc(o.dueDate)}</span>`; }
+      if (completed && !paid && !o.quote && o.dueDate) { const od = o.dueDate < todayStr(); due = ` · <span style="color:${od ? 'var(--hdv-red)' : 'var(--hdv-sub)'};font-weight:${od ? '800' : '400'}">${od ? '⚠ overdue ' : 'due '}${esc(o.dueDate)}</span>`; }
       const n = o.lines.length;
       const when = o.deliveryDate ? 'deliver ' + niceDate(o.deliveryDate) : (o.completed || 'open');
       return `<div class="hdv-row" data-oopen="${esc(o.id)}" style="cursor:pointer">
@@ -1325,7 +1327,7 @@ function orderEditSheet(orderId) {
     const tot = total();
 
     let h = `<div class="hdv-sheettitle">Edit order · ${esc(cust.name || '—')}</div>
-      <div class="hdv-sheetsub">${esc(o.orderNo || orderRef(o))} · ${o.status === 'completed' ? 'placed' : 'open'} order — changes save to the same record (the dashboard sees them too)</div>`;
+      <div class="hdv-sheetsub">${esc(o.orderNo || orderRef(o))} · ${o.quote ? 'QUOTE — not owed or packed' : (o.status === 'completed' ? 'placed' : 'open') + ' order'} — changes save to the same record (the dashboard sees them too)</div>`;
 
     h += L.map((l, i) => `<div class="hdv-row" style="align-items:flex-start">
       <div class="hdv-info" style="flex:1">
@@ -1750,7 +1752,7 @@ function orderRef(o) {
 
 function completedOrdersOf(custId) {
   return asList(orders())
-    .filter(o => o && o.custId === custId && o.status === 'completed')
+    .filter(o => o && o.custId === custId && o.status === 'completed' && !o.quote)
     .sort((a, b) => (b.placedAt || 0) - (a.placedAt || 0) ||
       String(b.deliveryDate || b.completed || '').localeCompare(String(a.deliveryDate || a.completed || '')));
 }
@@ -1869,7 +1871,7 @@ function statementText(cust, list) {
 function outstandingSheet(body) {
   const render = () => {
     const owed = asList(orders()).filter(o =>
-      o && o.status === 'completed' && !o.paid && Array.isArray(o.lines) && o.lines.length);
+      o && o.status === 'completed' && !o.paid && !o.quote && Array.isArray(o.lines) && o.lines.length);
     owed.sort((a, b) =>
       String(a.deliveryDate || a.completed || '').localeCompare(String(b.deliveryDate || b.completed || '')) ||
       custName(a.custId).localeCompare(custName(b.custId)));
@@ -1912,8 +1914,9 @@ function invoiceSheet(body, custId, orderId) {
   const total = orderTotal(lines);
   const invNo = orderRef(o);
 
-  let h = `<div class="hdv-sheettitle">Invoice ${esc(invNo)}</div>
+  let h = `<div class="hdv-sheettitle">${o.quote ? 'Quote' : 'Invoice'} ${esc(invNo)}</div>
     <div class="hdv-sheetsub">${esc(cust.name)} · ${o.deliveryDate ? 'delivered ' + esc(niceDate(o.deliveryDate)) : esc(o.completed || '')}</div>`;
+  if (o.quote) h += `<div class="hdv-sub" style="padding:6px 0;font-weight:800;color:#1d4ed8">✎ This is a QUOTE — an estimate only. Not owed, not on the buy run or pack list. Convert it to a real order on the V4 dashboard to count it.</div>`;
   if (o.comment) h += noteBanner(o.comment);
   h += lines.map(l => {
     const lq = Number(l.qty) || 0, lp = Number(l.price) || 0;
@@ -2220,7 +2223,7 @@ function custName(id) {
 
 function placedFor(date) {
   return asList(orders()).filter(o =>
-    o && o.status === 'completed' && o.deliveryDate === date &&
+    o && o.status === 'completed' && !o.quote && o.deliveryDate === date &&
     Array.isArray(o.lines) && o.lines.length);
 }
 
@@ -2267,7 +2270,7 @@ function aggregateBuy(dayOrders) {
 
 function pickingSheet(body) {
   const completed = asList(orders()).filter(o =>
-    o && o.status === 'completed' && o.deliveryDate && Array.isArray(o.lines) && o.lines.length);
+    o && o.status === 'completed' && !o.quote && o.deliveryDate && Array.isArray(o.lines) && o.lines.length);
   const dates = Array.from(new Set(completed.map(o => o.deliveryDate))).sort();
 
   if (!dates.length) {

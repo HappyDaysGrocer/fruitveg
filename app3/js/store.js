@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.94';
+export const VERSION = 'v3.95';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -1021,6 +1021,7 @@ export function buyRunList() {
   for (const o of Object.values(mirror.orders)) {
     if (!o || !Array.isArray(o.lines)) continue;
     if (o.status === 'cancelled') continue;          // a cancelled order is never demand (v2 cancel-order)
+    if (o.quote) continue;                           // a QUOTE is an estimate, not a real order — never feeds the buy run
     const upcoming = o.status === 'open' ||
       (o.deliveryDate && o.deliveryDate >= today && o.status !== 'cancelled');
     if (!upcoming) continue;

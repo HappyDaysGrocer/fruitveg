@@ -63,7 +63,7 @@ export function renderHome(root) {
   setActive(() => renderHome(root));
 
   const cat = catalog();
-  const open = asList(orders()).filter(o => o && o.status === 'open' && (o.lines || []).length);
+  const open = asList(orders()).filter(o => o && o.status === 'open' && !o.quote && (o.lines || []).length);
   let toPrice = 0;
   for (const o of open) for (const l of (o.lines || [])) if (l && (l.price === '' || l.price == null)) toPrice++;
   const br = buyRunList();
@@ -77,7 +77,7 @@ export function renderHome(root) {
   const custN = asList(customers()).length;
   const tq = asList(tillqueue()).filter(x => x && (x.status === 'queued' || x.status === 'error')).length;
   // AR / delivery — money-free OPERATIONAL counts only (no $ figures; $ lives in V4).
-  const placed = asList(orders()).filter(o => o && o.status === 'completed' && (o.lines || []).length);
+  const placed = asList(orders()).filter(o => o && o.status === 'completed' && !o.quote && (o.lines || []).length);
   const delToday = placed.filter(o => o.deliveryDate === today).length;
   const unpaid = placed.filter(o => !o.paid).length;
 

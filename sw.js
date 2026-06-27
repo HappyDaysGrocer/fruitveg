@@ -3,7 +3,7 @@
    cache entirely (cache:'no-store') so you ALWAYS get the freshest copy when
    online. This is what kills the "stale/cached old copy" problem. When offline,
    it falls back to the last cached copy so the app still opens at the market. */
-var CACHE = 'mandi-cache-v3';
+var CACHE = 'mandi-cache-v4';
 
 self.addEventListener('install', function (e) {
   self.skipWaiting(); // activate the new worker immediately
