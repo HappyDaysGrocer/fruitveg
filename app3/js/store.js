@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.95';
+export const VERSION = 'v3.96';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -236,14 +236,18 @@ export async function loadSecureCatalog() {
     AFTER a staff login (anonymous reads are blocked, 401). Data only: no docket photos.
     Never in the public app files — same protection as the /catalog cost vault. */
 let _buyhist = null;
+let _buyhistLoaded = false;                 // fetched fresh once this session (so we don't loop on every render)
 export function buyHistData() { if (!_buyhist) { try { _buyhist = LS.get('hd3.buyhist', null); } catch (e) {} } return _buyhist; }
-export async function loadBuyHist() {
+export async function loadBuyHist(force) {
+  if (_buyhistLoaded && !force) return _buyhist;   // already refreshed this session
   let t = null; try { t = await auth.token(); } catch (e) { t = null; }
   if (!t) return _buyhist;
+  _buyhistLoaded = true;                            // guard before the await so concurrent renders don't double-fetch
   try {
     const r = await fetch(FB.databaseURL + '/buyhist.json?auth=' + encodeURIComponent(t));
     if (r.ok) { const blob = await r.json(); if (blob && blob.json) { _buyhist = JSON.parse(blob.json); LS.set('hd3.buyhist', _buyhist); BUS.emit('change'); } }
-  } catch (e) { /* keep whatever cache we have */ }
+    else _buyhistLoaded = false;                    // let it retry on a rejected read
+  } catch (e) { _buyhistLoaded = false; /* keep whatever cache we have; retry next open */ }
   return _buyhist;
 }
 

@@ -141,7 +141,8 @@ export function renderBuyHist(root) {
   ensureCss();
   setActive(() => renderBuyHist(root));
   const H = buyHistData();
-  if (!H) { loadBuyHist(); root.innerHTML = `<div class="hdv-head"><div class="hdv-h1">Buying history</div></div>` + emptyHTML('Loading your buying history…'); return; }
+  loadBuyHist();   // always refresh from /buyhist in the background (once/session) so new market runs appear; re-renders on change
+  if (!H) { root.innerHTML = `<div class="hdv-head"><div class="hdv-h1">Buying history</div></div>` + emptyHTML('Loading your buying history…'); return; }
   const q = qText();
   const searching = !!q && !bRun;          // typing (not inside a run) → jump straight to Buy-price history, like the V4 dashboard
   const hot = searching ? 'prices' : bTab;
