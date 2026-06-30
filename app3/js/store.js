@@ -13,7 +13,7 @@ const FB = {
    Scheme: v3.1, v3.2, … — bump the minor on each shipped milestone.
    PRICES_CHECKED = the date the catalogue was last verified against the
    live EPOS till prices (update whenever the price sync is run). */
-export const VERSION = 'v3.97';
+export const VERSION = 'v3.98';
 export const PRICES_CHECKED = '16 Jun 2026';
 
 /* ---------- tiny utilities ---------- */
@@ -405,6 +405,8 @@ function friendlyAuthError(code) {
   return 'Could not sign in. Check your connection and try again.';
 }
 
+let _needsPwSetup = false;   // true right after a first-time sign-in (see needsPwSetup)
+
 export const auth = {
   async login(username, password) {
     const u = String(username || '').trim();
@@ -441,6 +443,13 @@ export const auth = {
         if (typeof cid === 'string' && cid) blob.custId = cid;
       }
     } catch (e) { /* offline / rules not live yet */ }
+    // First-login check: has this account ever set its own password?
+    // /pwSet/<uid> === true once they have. Best-effort (silent if denied/offline).
+    try {
+      const pr = await fetch(FB.databaseURL + '/pwSet/' +
+        encodeURIComponent(data.localId) + '.json?auth=' + encodeURIComponent(data.idToken));
+      _needsPwSetup = pr.ok ? ((await pr.json()) !== true) : false;
+    } catch (e) { _needsPwSetup = false; }
     setAuth(blob);
     return auth.user();
   },
@@ -479,6 +488,13 @@ export const auth = {
       email: _auth.email,
       custId: _auth.custId || undefined
     });
+    // Record that this account has now set its own password (stops the
+    // first-login prompt from ever showing again). Best-effort.
+    _needsPwSetup = false;
+    try {
+      await fetch(FB.databaseURL + '/pwSet/' + encodeURIComponent(_auth.uid) +
+        '.json?auth=' + encodeURIComponent(_auth.idToken), { method: 'PUT', body: 'true' });
+    } catch (e) { /* best effort */ }
     return true;
   },
 
@@ -524,6 +540,24 @@ export const auth = {
     }
   }
 };
+
+/** First-login helper: true right after a sign-in by an account that has not
+    yet set its own password (tracked at /pwSet/<uid>). app.js uses it to show
+    the one-time "set your password" prompt. */
+export function needsPwSetup() { return _needsPwSetup; }
+
+/** Mark the password-setup prompt as handled (changed OR dismissed) so it never
+    shows again — writes /pwSet/<uid> = true. Best-effort. */
+export async function markPwSetupDone() {
+  _needsPwSetup = false;
+  try {
+    const t = await auth.token();
+    if (t && _auth) {
+      await fetch(FB.databaseURL + '/pwSet/' + encodeURIComponent(_auth.uid) +
+        '.json?auth=' + encodeURIComponent(t), { method: 'PUT', body: 'true' });
+    }
+  } catch (e) { /* best effort */ }
+}
 
 /** The customer id bound to the signed-in login, or null for staff/guests. */
 export function customerId() {

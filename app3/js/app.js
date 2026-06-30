@@ -5,9 +5,9 @@
    and a cost/margin "Money" view fed by the locked /catalog node.
    ========================================================================= */
 
-import { initCatalog, pull, auth, VERSION } from './store.js';
+import { initCatalog, pull, auth, VERSION, needsPwSetup } from './store.js';
 import { renderShop, setActive, openSheet } from './catalog.js';
-import { renderOrders, renderMore, loginSheet } from './orders.js';
+import { renderOrders, renderMore, loginSheet, firstPwSheet } from './orders.js';
 import { renderMoney } from './money.js';
 import { renderBuy } from './buyrun.js';
 import { renderHome } from './home.js';
@@ -56,6 +56,7 @@ function render() {
   // HARD LOGIN WALL — the in-house app shows nothing until a director signs in.
   if (!auth.user()) { renderLoginWall(); return; }
   document.body.classList.remove('hd3-locked');
+  maybePromptPwSetup();
   try {
     VIEWS[current](viewEl);
   } catch (err) {
@@ -93,6 +94,16 @@ function setNavActive() {
     if (active) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   });
+}
+
+/* First-login: prompt a new account to set its own password. needsPwSetup() is
+   true only right after such a sign-in; shown once per session, deliberate
+   (static sheet) so it isn't dismissed by an accidental backdrop tap. */
+let _pwPromptShown = false;
+function maybePromptPwSetup() {
+  if (_pwPromptShown || !needsPwSetup()) return;
+  _pwPromptShown = true;
+  setTimeout(() => { try { openSheet(firstPwSheet, { static: true }); } catch (e) { /* ignore */ } }, 600);
 }
 
 /* ---------- skeleton shown instantly while the catalogue loads ---------- */

@@ -14,7 +14,7 @@ import {
   isOut, outList, setOut,
   auth, pull, VERSION, PRICES_CHECKED, outboxCount, flushOutbox,
   queueForTill, tillQueueStatus,
-  secureLoaded, costOf
+  secureLoaded, costOf, markPwSetupDone
 } from './store.js';
 
 import {
@@ -2819,6 +2819,45 @@ function changePwSheet(body) {
       toast('Password changed');
     } catch (ex) {
       err.textContent = ex.message || 'Could not change the password.';
+      btn.disabled = false;
+    }
+  };
+}
+
+/* First-login prompt (v3.98): a friendly one-time nudge for a new account to
+   set its own password. Shown automatically by app.js after the first sign-in;
+   saving OR dismissing marks it done (store.markPwSetupDone) so it never nags. */
+export function firstPwSheet(body) {
+  const u = auth.user();
+  const nm = u && u.name ? esc(u.name) : '';
+  body.innerHTML = `
+    <div class="hdv-sheettitle">Welcome${nm ? ', ' + nm : ''} 👋</div>
+    <div class="hdv-sheetsub">Set your own password now so only you can sign in. (6+ characters.)</div>
+    <label class="hdv-lbl">New password</label>
+    <input class="hdv-in" id="pw1" type="password" autocomplete="new-password">
+    <label class="hdv-lbl">Type it again</label>
+    <input class="hdv-in" id="pw2" type="password" autocomplete="new-password">
+    <div class="hdv-err" id="pwerr"></div>
+    <div class="hdv-actions">
+      <button class="hdv-btnG" data-pw-later>Maybe later</button>
+      <button class="hdv-btnP" data-pw-save>Set password</button>
+    </div>`;
+  body.onclick = async (e) => {
+    if (e.target.closest('[data-pw-later]')) { markPwSetupDone(); closeSheet(); return; }
+    if (!e.target.closest('[data-pw-save]')) return;
+    const p1 = body.querySelector('#pw1').value;
+    const p2 = body.querySelector('#pw2').value;
+    const err = body.querySelector('#pwerr');
+    if (p1.length < 6) { err.textContent = 'Use at least 6 characters.'; return; }
+    if (p1 !== p2) { err.textContent = 'The two passwords don’t match.'; return; }
+    err.textContent = '';
+    const btn = e.target.closest('[data-pw-save]'); btn.disabled = true;
+    try {
+      await auth.changePassword(p1);
+      closeSheet();
+      toast('Password set — you’re all done');
+    } catch (ex) {
+      err.textContent = ex.message || 'Could not set the password.';
       btn.disabled = false;
     }
   };
