@@ -97,16 +97,16 @@ function suppliersView(H) {
 function pricesView(H, q) {
   const terms = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   const S = stalls(H);
-  const firstDate = (p) => (p.points || []).map((x) => x.date || '').filter(Boolean).sort()[0] || String(p.lastDate || '');
+  const latestDate = (p) => (p.points || []).map((x) => x.date || '').filter(Boolean).sort().slice(-1)[0] || String(p.lastDate || '');
   const hits = (H.priceTrends || []).filter((p) => { const n = p.product.toLowerCase(); return !terms.length ? p.times > 1 : terms.every((t) => n.includes(t)); })
-    .slice().sort((a, b) => String(firstDate(a)).localeCompare(String(firstDate(b))));   // earliest purchase date first
+    .slice().sort((a, b) => String(latestDate(b)).localeCompare(String(latestDate(a))));   // most recent purchase first
   let h = `<div class="hdv-sec">${terms.length ? hits.length + ' product' + (hits.length === 1 ? '' : 's') + ' match “' + esc(q) + '” — every date you bought it + the price each time' : 'Type a product in the search bar above (banana, tomato…) to see every buy price + kg per box. Showing items bought more than once.'}</div>`;
   if (!hits.length) return h + emptyHTML(`No products match “${esc(q)}” — try a simpler word (e.g. just “banana”)`);
   h += hits.slice(0, 120).map((p) => {
     const arrow = p.changePct == null ? '' : (p.changePct > 0 ? ` <span style="color:#c0392b;font-weight:700">↑${p.changePct}%</span>` : p.changePct < 0 ? ` <span style="color:#15662f;font-weight:700">↓${Math.abs(p.changePct)}%</span>` : '');
     const box = p.boxLabel ? ` <span style="font-size:11px;color:#15662f;background:#eaf3ec;border-radius:6px;padding:1px 6px">📦 ${esc(p.boxLabel)}</span>` : '';
     const pk = !!p.boxKg;
-    const pts = (p.points || []).slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))).map((x) => {
+    const pts = (p.points || []).slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).map((x) => {
       const st = S.exact[(x.date || '') + '|' + (p.product || '') + '|' + (x.supplier || '')] || S.bySup[x.supplier] || '';
       return `<div class="hdv-sub" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.date)} · ${supLink(x.supplier)}${st ? ' · 🏪 ' + esc(st) : ''}</span><span style="white-space:nowrap"><b>${m(x.price)}</b>${pk && x.perKg != null ? ' · ' + m(x.perKg) + '/kg' : ''}</span></div>`;
     }).join('');
